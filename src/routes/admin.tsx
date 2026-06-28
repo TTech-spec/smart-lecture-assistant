@@ -4,6 +4,7 @@ import {
   ArrowLeft, MapPin, Lock, Unlock, Sparkles, Users, Trash2, RefreshCw, Loader2, Send, LogOut, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { VoiceAssistant } from "@/components/VoiceAssistant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -162,7 +163,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <SettingsCard />
           <div className="lg:col-span-2 grid gap-6">
             <StatsRow records={todays} />
-            <AIAssistant records={records} />
+            <VoiceAssistant records={records} />
             <RecordsTable records={records} />
           </div>
         </div>
