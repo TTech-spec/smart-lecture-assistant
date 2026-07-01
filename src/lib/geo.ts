@@ -1,4 +1,4 @@
-export type Coords = { lat: number; lng: number };
+export type Coords = { lat: number; lng: number; accuracy?: number };
 
 /** Haversine distance in meters between two coordinates. */
 export function distanceMeters(a: Coords, b: Coords): number {
@@ -14,6 +14,17 @@ export function distanceMeters(a: Coords, b: Coords): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/**
+ * Effective distance accounting for device GPS accuracy.
+ * Subtracts up to 40 m of reported accuracy so a student in the same room
+ * isn't rejected because their phone's GPS drifted by the usual 10–50 m.
+ */
+export function effectiveDistance(studentPos: Coords, classPos: Coords): number {
+  const raw = distanceMeters(studentPos, classPos);
+  const buffer = Math.min(studentPos.accuracy ?? 0, 40);
+  return Math.max(0, raw - buffer);
+}
+
 export function getCurrentPosition(options?: PositionOptions): Promise<Coords> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -21,9 +32,15 @@ export function getCurrentPosition(options?: PositionOptions): Promise<Coords> {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => resolve({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy ?? undefined,
+      }),
       (err) => reject(new Error(err.message || "Unable to read your location.")),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0, ...options },
+      // maximumAge: 30 s — allows a recent cached fix which is often more stable
+      // than forcing a brand-new cold reading every time
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000, ...options },
     );
   });
 }

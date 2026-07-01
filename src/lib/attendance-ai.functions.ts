@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { generateText } from "ai";
 import { z } from "zod";
 
 const RecordSchema = z.object({
@@ -24,34 +23,40 @@ const InputSchema = z.object({
     .default([]),
 });
 
+// ── Server function ───────────────────────────────────────────────────────────
 export const askAttendanceAi = createServerFn({ method: "POST" })
   .validator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
-    const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("Missing LOVABLE_API_KEY");
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    const { createLovableAiGatewayProvider } = await import("./ai-gateway.server");
-    const gateway = createLovableAiGatewayProvider(key);
-    const model = gateway("google/gemini-3-flash-preview");
+    if (!apiKey) {
+      return { text: "⚠️ Gemini API key not configured. Add GEMINI_API_KEY to your .env file and restart the server. Get a free key at aistudio.google.com/apikey" };
+    }
 
-    const recordsJson = JSON.stringify(data.records, null, 0);
-    const system = [
-      "You are an AI voice assistant for a university lecturer using Campus Presence, an attendance app.",
-      "You help the lecturer sort, filter, count, and summarize today's attendance records.",
-      "Be concise and conversational since your replies will be spoken out loud.",
-      "Prefer short sentences. When listing students, group by department or course and keep it brief.",
-      "If the data does not contain the answer, say so plainly.",
-      `Here is the current attendance dataset as JSON (${data.records.length} records): ${recordsJson}`,
-    ].join("\n");
+    try {
+      const { callGemini } = await import("./ai-gateway.server");
 
-    const { text } = await generateText({
-      model,
-      system,
-      messages: [
-        ...data.history.map((m) => ({ role: m.role, content: m.content })),
-        { role: "user" as const, content: data.question },
-      ],
-    });
+      const recordsJson = JSON.stringify(data.records, null, 0);
+      const system = [
+        "You are an AI voice assistant for a university lecturer using Attendly, a GPS-verified attendance app.",
+        "You help the lecturer sort, filter, count, and summarize attendance records.",
+        "Be concise and conversational since your replies may be spoken out loud.",
+        "Prefer short sentences. When listing students, group by department or course and keep it brief.",
+        "If the data does not contain the answer, say so plainly.",
+        `Current attendance dataset (${data.records.length} records): ${recordsJson}`,
+      ].join("\n");
 
-    return { text };
+      const text = await callGemini(apiKey, system, data.history, data.question);
+      return { text };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
+        return { text: "Gemini quota reached for today. Try again tomorrow or upgrade your Gemini API plan." };
+      }
+      if (msg.includes("401") || msg.includes("403") || msg.includes("UNAUTHENTICATED") || msg.includes("PERMISSION_DENIED")) {
+        return { text: `⚠️ Gemini API key rejected (${msg.includes("401") ? "401" : "403"}). Make sure the key is copied correctly from aistudio.google.com/apikey and the Gemini API is enabled for your Google account.` };
+      }
+      console.error("[Gemini] Request failed:", err);
+      return { text: `AI error: ${msg}` };
+    }
   });
