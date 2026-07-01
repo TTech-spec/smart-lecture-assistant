@@ -23,18 +23,17 @@ const InputSchema = z.object({
     .default([]),
 });
 
-// ── Server function ───────────────────────────────────────────────────────────
 export const askAttendanceAi = createServerFn({ method: "POST" })
   .validator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
 
     if (!apiKey) {
-      return { text: "⚠️ Gemini API key not configured. Add GEMINI_API_KEY to your .env file and restart the server. Get a free key at aistudio.google.com/apikey" };
+      return { text: "Groq API key not configured. Add GROQ_API_KEY to your .env file and restart the server." };
     }
 
     try {
-      const { callGemini } = await import("./ai-gateway.server");
+      const { callGroq } = await import("./ai-gateway.server");
 
       const recordsJson = JSON.stringify(data.records, null, 0);
       const system = [
@@ -46,17 +45,17 @@ export const askAttendanceAi = createServerFn({ method: "POST" })
         `Current attendance dataset (${data.records.length} records): ${recordsJson}`,
       ].join("\n");
 
-      const text = await callGemini(apiKey, system, data.history, data.question);
+      const text = await callGroq(apiKey, system, data.history, data.question);
       return { text };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
-        return { text: "Gemini quota reached for today. Try again tomorrow or upgrade your Gemini API plan." };
+      if (msg.includes("429") || msg.includes("rate_limit") || msg.includes("quota")) {
+        return { text: "Groq rate limit reached. Try again later or check your Groq API plan." };
       }
-      if (msg.includes("401") || msg.includes("403") || msg.includes("UNAUTHENTICATED") || msg.includes("PERMISSION_DENIED")) {
-        return { text: `⚠️ Gemini API key rejected (${msg.includes("401") ? "401" : "403"}). Make sure the key is copied correctly from aistudio.google.com/apikey and the Gemini API is enabled for your Google account.` };
+      if (msg.includes("401") || msg.includes("403") || msg.includes("invalid_api_key")) {
+        return { text: `Groq API key rejected (${msg.includes("401") ? "401" : "403"}). Make sure the key is copied correctly from console.groq.com.` };
       }
-      console.error("[Gemini] Request failed:", err);
+      console.error("[Groq] Request failed:", err);
       return { text: `AI error: ${msg}` };
     }
   });

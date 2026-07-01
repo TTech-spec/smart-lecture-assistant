@@ -1,16 +1,20 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { MapPin, Loader2, CheckCircle2, ShieldAlert, ArrowLeft, Navigation } from "lucide-react";
+import { MapPin, Loader2, CheckCircle2, ShieldAlert, ArrowLeft, Navigation, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { VoiceAssistant } from "@/components/VoiceAssistant";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   addRecord, getDeviceId, isWindowOpen, loadRecords, loadSettings,
-  minutesRemaining, todayKey, type AdminSettings, type Gender,
+  minutesRemaining, todayKey, type AdminSettings, type AttendanceRecord, type Gender,
 } from "@/lib/attendance-store";
 import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition } from "@/lib/geo";
 
@@ -56,6 +60,9 @@ function useSettings() {
 
 function AttendancePage() {
   const settings = useSettings();
+  const [records, setRecords] = useState<AttendanceRecord[]>(() =>
+    typeof window === "undefined" ? [] : loadRecords(),
+  );
   const [form, setForm] = useState<Form>(() => ({
     ...empty,
     courseCode: settings.courseCode,
@@ -72,6 +79,17 @@ function AttendancePage() {
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const sync = () => setRecords(loadRecords());
+    window.addEventListener("att:records", sync);
+    window.addEventListener("storage", sync);
+    sync();
+    return () => {
+      window.removeEventListener("att:records", sync);
+      window.removeEventListener("storage", sync);
+    };
   }, []);
 
   useEffect(() => {
@@ -237,10 +255,24 @@ function AttendancePage() {
         <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> Home
         </Link>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <MapPin className="h-3.5 w-3.5 shrink-0" />
-          <span className="hidden sm:inline">GPS required</span>
-          <span className="sm:hidden">GPS</span>
+        <div className="flex items-center gap-2">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button type="button" size="sm" variant="outline" className="h-8 px-2.5 text-xs sm:px-3">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>AI voice</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[92vh] w-[calc(100vw-2rem)] max-w-xl overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:rounded-2xl [&>button]:-right-2 [&>button]:-top-2 [&>button]:z-20 [&>button]:rounded-full [&>button]:bg-background [&>button]:p-2 [&>button]:shadow-md">
+              <DialogTitle className="sr-only">AI voice assistant</DialogTitle>
+              <VoiceAssistant records={records} />
+            </DialogContent>
+          </Dialog>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span className="hidden sm:inline">GPS required</span>
+            <span className="sm:hidden">GPS</span>
+          </div>
         </div>
       </header>
 

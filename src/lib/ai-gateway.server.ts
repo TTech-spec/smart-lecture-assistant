@@ -1,41 +1,37 @@
-export async function callGemini(
+export async function callGroq(
   apiKey: string,
   system: string,
   history: { role: "user" | "assistant"; content: string }[],
   question: string,
 ): Promise<string> {
-  const contents = [
-    ...history.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    })),
-    { role: "user", parts: [{ text: question }] },
+  const messages = [
+    { role: "system", content: system },
+    ...history,
+    { role: "user", content: question },
   ];
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: system }] },
-        contents,
-        generationConfig: { maxOutputTokens: 600 },
-      }),
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      model: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
+      messages,
+      max_tokens: 600,
+      temperature: 0.2,
+    }),
+  });
 
   const json = await res.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    error?: { code: number; message: string; status: string };
+    choices?: Array<{ message?: { content?: string } }>;
+    error?: { message?: string; type?: string; code?: string };
   };
 
   if (!res.ok || json.error) {
     throw new Error(JSON.stringify(json.error ?? { code: res.status, message: res.statusText }));
   }
 
-  return json.candidates?.[0]?.content?.parts?.[0]?.text ?? "No response from Gemini.";
+  return json.choices?.[0]?.message?.content ?? "No response from Groq.";
 }
