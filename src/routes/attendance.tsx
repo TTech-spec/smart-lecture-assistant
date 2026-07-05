@@ -113,11 +113,21 @@ function AttendancePage() {
   const alreadySubmitted = useMemo(() => {
     if (typeof window === "undefined") return false;
     const today = todayKey();
-    return loadRecords().some(
-      (r) => r.deviceId === deviceId && r.dayKey === today &&
-        (!settings.courseCode || r.courseCode.toLowerCase() === settings.courseCode.toLowerCase()),
-    );
-  }, [deviceId, settings.courseCode, done]);
+    // If there's an active session, check against that specific session so
+    // students can attend multiple classes (different sessions) in one day.
+    // Fall back to date + course code check when no session is active.
+    const activeSession = settings.activeSessionId;
+    return loadRecords().some((r) => {
+      if (r.deviceId !== deviceId) return false;
+      if (activeSession) {
+        // Block only if already signed into THIS session on THIS device
+        return r.sessionId === activeSession;
+      }
+      // Legacy / no-session fallback: same device, same day, same course
+      return r.dayKey === today &&
+        (!settings.courseCode || r.courseCode.toLowerCase() === settings.courseCode.toLowerCase());
+    });
+  }, [deviceId, settings.courseCode, settings.activeSessionId, done]);
 
   const locationSet = settings.classLat != null && settings.classLng != null;
   const windowOpen = isWindowOpen(settings, now);
@@ -162,7 +172,7 @@ function AttendancePage() {
     e.preventDefault();
     if (!locationSet) return toast.error("Lecturer hasn't set the class location yet.");
     if (!windowOpen) return toast.error("Attendance form is locked. Ask the lecturer to reopen.");
-    if (alreadySubmitted) return toast.error("This device has already submitted today.");
+    if (alreadySubmitted) return toast.error("You've already signed attendance for this session.");
 
     if (!form.fullName.trim())      return toast.error("Please fill full name.");
     if (!form.matricNumber.trim())  return toast.error("Please fill matric number.");
@@ -297,7 +307,7 @@ function AttendancePage() {
             </Banner>
           ) : alreadySubmitted ? (
             <Banner tone="warn" title="Already submitted">
-              This device has already submitted attendance today.
+              You've already signed attendance for this session on this device.
             </Banner>
           ) : (
             <Banner tone="ok" title="Form open">
