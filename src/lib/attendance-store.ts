@@ -33,6 +33,7 @@ export type AttendanceRecord = {
   lng: number;
   sessionId: string;
   customFields: Record<string, string>;
+  assignedClassCode?: string;
 };
 
 export type AdminSettings = {
@@ -131,6 +132,7 @@ function recordToDb(r: AttendanceRecord): Row {
     lng: r.lng,
     session_id: r.sessionId,
     custom_fields: r.customFields,
+    assigned_class_code: r.assignedClassCode || null,
   };
 }
 
@@ -153,6 +155,7 @@ function recordFromDb(row: Row): AttendanceRecord {
     lng: row.lng || 0,
     sessionId: row.session_id || "",
     customFields: row.custom_fields || {},
+    assignedClassCode: row.assigned_class_code || undefined,
   };
 }
 
@@ -299,6 +302,31 @@ export function loadRecords(): AttendanceRecord[] {
     return JSON.parse(localStorage.getItem(REC_KEY) || "[]") as AttendanceRecord[];
   } catch {
     return [];
+  }
+}
+
+export function findStudentByMatric(matricNumber: string): AttendanceRecord | null {
+  const records = loadRecords();
+  return records.find(r => r.matricNumber === matricNumber) || null;
+}
+
+export function updateStudentClassCode(matricNumber: string, classCode: string): void {
+  const records = loadRecords();
+  const updated = records.map(r => {
+    if (r.matricNumber === matricNumber) {
+      return { ...r, assignedClassCode: classCode };
+    }
+    return r;
+  });
+  localStorage.setItem(REC_KEY, JSON.stringify(updated));
+  window.dispatchEvent(new Event("att:records"));
+  
+  // Sync to Supabase
+  if (supabase) {
+    const student = updated.find(r => r.matricNumber === matricNumber);
+    if (student) {
+      sync(supabase.from("attendance").update({ assigned_class_code: classCode }).eq("matric_number", matricNumber));
+    }
   }
 }
 
@@ -530,3 +558,18 @@ export async function syncFromSupabase(): Promise<void> {
 }
 
 export { fetchAllFromSupabaseOnce as fetchAllFromSupabase };
+
+// ── Lightweight settings-only fetch (used for student-side polling) ───────────
+export async function fetchSettingsFromSupabase(): Promise<AdminSettings | null> {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase
+      .from("admin_settings")
+      .select("data")
+      .eq("id", "default")
+      .maybeSingle();
+    return data ? (data.data as AdminSettings) : null;
+  } catch {
+    return null;
+  }
+}

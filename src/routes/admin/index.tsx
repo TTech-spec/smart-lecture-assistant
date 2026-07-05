@@ -25,6 +25,7 @@ import { getCurrentPosition } from "@/lib/geo";
 import { getStoredPass, PASS_KEY } from "@/routes/admin";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
+import { calculateTotalEarnings } from "@/lib/materials-store";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminDashboard,
@@ -57,16 +58,16 @@ function AdminDashboard() {
   const minsLeft = minutesRemaining(settings, now);
 
   return (
-    <main className="mx-auto max-w-7xl px-6 pb-16 pt-8">
+    <main className="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-6">
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="flex flex-wrap items-end justify-between gap-4"
+        className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4"
       >
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Today's session</h1>
-          <p className="mt-1 text-muted-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Today's session</h1>
+          <p className="mt-1 text-sm sm:text-base text-muted-foreground">
             Pin the class location, set the rules, watch sign-ins come in.
           </p>
         </div>
@@ -74,7 +75,7 @@ function AdminDashboard() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.15, duration: 0.3 }}
-          className="flex items-center gap-2 rounded-full border bg-card px-4 py-2 text-sm shadow-soft"
+          className="flex items-center gap-2 rounded-full border bg-card px-3 py-2 text-xs sm:text-sm shadow-soft self-start sm:self-auto"
         >
           <span className={`h-2 w-2 rounded-full ${open ? "bg-[color:var(--color-success)] animate-pulse" : "bg-[color:var(--color-warning)]"}`} />
           {open ? (
@@ -85,13 +86,17 @@ function AdminDashboard() {
         </motion.div>
       </motion.div>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+      <div className="mt-8 grid gap-6 grid-cols-1 md:grid-cols-3">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1, duration: 0.4 }}>
           <SettingsCard />
         </motion.div>
 
-        <div className="lg:col-span-2 grid gap-6">
+        <div className="md:col-span-2 grid gap-6">
           <StatsRow records={todays} allRecords={records} settings={settings} />
+
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.4 }}>
+            <EarningsDisplay />
+          </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.4 }}>
             <VoiceAssistant records={records} />
@@ -279,7 +284,7 @@ function SettingsCard() {
   const pinned = draft.classLat != null && draft.classLng != null;
 
   return (
-    <aside className="rounded-2xl border bg-card p-6 shadow-soft">
+    <aside className="rounded-2xl border bg-card p-4 sm:p-6 shadow-soft">
       <h2 className="flex items-center gap-2 text-lg font-semibold">
         <MapPin className="h-5 w-5 text-[color:var(--color-primary)]" /> Class settings
       </h2>
@@ -342,7 +347,7 @@ function SettingsCard() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-sm">Course code</Label>
-            <Input value={draft.courseCode ?? ""} onChange={(e) => update("courseCode", e.target.value)} placeholder="CSC 401" />
+            <Input value={draft.courseCode ?? ""} onChange={(e) => update("courseCode", e.target.value)} placeholder="CSC 401" className="h-9" />
           </div>
           <div>
             <Label className="text-sm">Level</Label>
@@ -352,7 +357,7 @@ function SettingsCard() {
                 onChange={(e) => update("level", e.target.value)}
                 placeholder="400"
                 list="level-options"
-                className="flex-1"
+                className="flex-1 h-9"
               />
               <datalist id="level-options">
                 {["100","200","300","400","500","600"].map((l) => <option key={l} value={l} />)}
@@ -388,7 +393,7 @@ function SettingsCard() {
 
         <div>
           <Label className="text-sm">Topic</Label>
-          <Input value={draft.topic ?? ""} onChange={(e) => update("topic", e.target.value)} placeholder="Distributed Systems" />
+          <Input value={draft.topic ?? ""} onChange={(e) => update("topic", e.target.value)} placeholder="Distributed Systems" className="h-9" />
         </div>
 
         <div>
@@ -561,9 +566,15 @@ function SettingsCard() {
 
         <Button onClick={save} className="w-full" variant="secondary">Save settings</Button>
 
-        <div className="flex gap-2">
-          <Button onClick={openWindow} className="flex-1"><Unlock className="mr-2 h-4 w-4" /> Open form</Button>
-          <Button onClick={closeWindow} variant="outline" className="flex-1"><Lock className="mr-2 h-4 w-4" /> Lock form</Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button onClick={openWindow} className="w-full text-xs sm:text-sm px-2 sm:px-4">
+            <Unlock className="mr-1.5 h-4 w-4 shrink-0" />
+            <span className="truncate">Open form</span>
+          </Button>
+          <Button onClick={closeWindow} variant="outline" className="w-full text-xs sm:text-sm px-2 sm:px-4">
+            <Lock className="mr-1.5 h-4 w-4 shrink-0" />
+            <span className="truncate">Lock form</span>
+          </Button>
         </div>
 
         {(draft.sessionOpenCount || 0) > 0 && (
@@ -591,19 +602,67 @@ function StatsRow({ records, allRecords, settings }: { records: AttendanceRecord
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
       {cards.map((c, i) => (
         <motion.div key={c.label} custom={i} variants={cardVariants} initial="hidden" animate="visible"
-          className="rounded-2xl border bg-card p-5 shadow-soft hover:shadow-md transition-shadow duration-200">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">{c.label}</p>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-primary text-primary-foreground">
-              <c.icon className="h-4 w-4" />
+          className="rounded-2xl border bg-card p-3 sm:p-5 shadow-soft hover:shadow-md transition-shadow duration-200">
+          <div className="flex items-start justify-between gap-1">
+            <p className="text-[11px] sm:text-xs leading-tight text-muted-foreground">{c.label}</p>
+            <div className="flex h-7 w-7 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-primary text-primary-foreground">
+              <c.icon className="h-3 w-3 sm:h-4 sm:w-4" />
             </div>
           </div>
-          <p className="mt-3 text-3xl font-semibold">{c.value}</p>
+          <p className="mt-2 text-2xl sm:text-3xl font-semibold leading-none">{c.value}</p>
         </motion.div>
       ))}
+    </div>
+  );
+}
+
+// ── Earnings Display ──────────────────────────────────────────────────────────
+function EarningsDisplay() {
+  const [earnings, setEarnings] = useState(() => calculateTotalEarnings());
+
+  useEffect(() => {
+    const handlePurchasesChange = () => {
+      setEarnings(calculateTotalEarnings());
+    };
+    window.addEventListener("att:purchases", handlePurchasesChange);
+    return () => window.removeEventListener("att:purchases", handlePurchasesChange);
+  }, []);
+
+  const { amount, currency, salesCount } = earnings;
+
+  return (
+    <div className="rounded-2xl border bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 p-6 shadow-soft">
+      <div className="flex items-center gap-3">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg">
+          <span className="text-2xl font-bold">₦</span>
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-green-900 dark:text-green-100">Total Earnings</h2>
+          <p className="text-sm text-green-700 dark:text-green-300">From material sales</p>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-4">
+        <div className="rounded-xl border border-green-200 dark:border-green-800 bg-white/50 dark:bg-black/20 p-4">
+          <p className="text-xs text-green-600 dark:text-green-400 uppercase tracking-wider font-medium">Total Revenue</p>
+          <p className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">
+            {currency} {amount.toLocaleString()}
+          </p>
+        </div>
+        <div className="rounded-xl border border-green-200 dark:border-green-800 bg-white/50 dark:bg-black/20 p-4">
+          <p className="text-xs text-green-600 dark:text-green-400 uppercase tracking-wider font-medium">Total Sales</p>
+          <p className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">
+            {salesCount}
+          </p>
+        </div>
+      </div>
+      {salesCount === 0 && (
+        <p className="mt-4 text-sm text-green-700 dark:text-green-300 text-center">
+          No material sales yet. Upload paid materials to start earning.
+        </p>
+      )}
     </div>
   );
 }
@@ -621,7 +680,7 @@ function SessionsPanel({ sessions, records }: { sessions: AttendanceSession[]; r
 
   return (
     <div className="rounded-2xl border bg-card shadow-soft">
-      <div className="border-b p-5 flex items-center justify-between">
+      <div className="border-b p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold">
             <ClipboardList className="h-5 w-5 text-[color:var(--color-primary)]" /> Session history
@@ -633,7 +692,7 @@ function SessionsPanel({ sessions, records }: { sessions: AttendanceSession[]; r
             variant="outline"
             size="sm"
             onClick={handleClearSessions}
-            className="text-destructive hover:text-destructive"
+            className="text-destructive hover:text-destructive w-full sm:w-auto"
           >
             <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear All
           </Button>
@@ -642,43 +701,74 @@ function SessionsPanel({ sessions, records }: { sessions: AttendanceSession[]; r
       {sorted.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-muted-foreground">No sessions yet. Open the attendance form to start tracking.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">Course</th>
-                <th className="px-4 py-3">Level</th>
-                <th className="px-4 py-3">Topic</th>
-                <th className="px-4 py-3">Opened</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Students</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((s, i) => {
-                const count = records.filter((r) => r.sessionId === s.id).length;
-                const isOpen = !s.closedAt;
-                return (
-                  <tr key={s.id} className="border-t hover:bg-secondary/40 transition-colors">
-                    <td className="px-4 py-3 text-muted-foreground">{sorted.length - i}</td>
-                    <td className="px-4 py-3 font-medium">{s.courseCode || "—"}</td>
-                    <td className="px-4 py-3">{s.level || "—"}</td>
-                    <td className="px-4 py-3">{s.topic || "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{new Date(s.openedAt).toLocaleString()}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${isOpen ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-secondary text-muted-foreground"}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${isOpen ? "bg-green-500" : "bg-gray-400"}`} />
-                        {isOpen ? "Open" : "Closed"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold">{count}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Mobile card list */}
+          <div className="sm:hidden divide-y">
+            {sorted.map((s, i) => {
+              const count = records.filter((r) => r.sessionId === s.id).length;
+              const isOpen = !s.closedAt;
+              return (
+                <div key={s.id} className="px-4 py-3 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="shrink-0 text-xs text-muted-foreground">#{sorted.length - i}</span>
+                      <span className="font-medium text-sm truncate">{s.courseCode || "—"}</span>
+                      {s.level && <span className="shrink-0 text-xs text-muted-foreground">· {s.level}</span>}
+                    </div>
+                    <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${isOpen ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-secondary text-muted-foreground"}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${isOpen ? "bg-green-500" : "bg-gray-400"}`} />
+                      {isOpen ? "Open" : "Closed"}
+                    </span>
+                  </div>
+                  {s.topic && <p className="text-xs text-muted-foreground truncate">{s.topic}</p>}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{new Date(s.openedAt).toLocaleString()}</span>
+                    <span className="font-semibold text-foreground">{count} student{count !== 1 ? "s" : ""}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm min-w-[540px]">
+              <thead className="bg-secondary text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3">#</th>
+                  <th className="px-4 py-3">Course</th>
+                  <th className="px-4 py-3">Level</th>
+                  <th className="px-4 py-3">Topic</th>
+                  <th className="px-4 py-3">Opened</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Students</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((s, i) => {
+                  const count = records.filter((r) => r.sessionId === s.id).length;
+                  const isOpen = !s.closedAt;
+                  return (
+                    <tr key={s.id} className="border-t hover:bg-secondary/40 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground">{sorted.length - i}</td>
+                      <td className="px-4 py-3 font-medium">{s.courseCode || "—"}</td>
+                      <td className="px-4 py-3">{s.level || "—"}</td>
+                      <td className="px-4 py-3 max-w-[140px] truncate">{s.topic || "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(s.openedAt).toLocaleString()}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${isOpen ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-secondary text-muted-foreground"}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${isOpen ? "bg-green-500" : "bg-gray-400"}`} />
+                          {isOpen ? "Open" : "Closed"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold">{count}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -835,7 +925,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
 
   return (
     <div className="rounded-2xl border bg-card shadow-soft">
-      <div className="flex items-center justify-between border-b p-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b p-4 sm:p-5">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold">
             <FileQuestion className="h-5 w-5 text-[color:var(--color-primary)]" /> Tests &amp; quizzes
@@ -844,38 +934,42 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" className="sr-only" onChange={handlePdfUpload} />
-          <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={parsing}>
+          <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={parsing} className="flex-1 sm:flex-none">
             {parsing ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-2 h-3.5 w-3.5" />}
-            {parsing ? "Reading PDF…" : "Upload PDF"}
+            {parsing ? "Reading…" : "Upload PDF"}
           </Button>
-          {!creating && <Button size="sm" onClick={() => setCreating(true)}><Plus className="mr-2 h-3.5 w-3.5" /> New test</Button>}
+          {!creating && (
+            <Button size="sm" onClick={() => setCreating(true)} className="flex-1 sm:flex-none">
+              <Plus className="mr-2 h-3.5 w-3.5" /> New test
+            </Button>
+          )}
         </div>
       </div>
 
       <AnimatePresence>
         {creating && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }} className="overflow-hidden">
-            <div className="border-b p-5 space-y-4">
+            <div className="border-b p-4 sm:p-5 space-y-4">
               <h3 className="font-semibold">New test</h3>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
                 <div className="sm:col-span-2">
                   <Label className="text-sm">Test title</Label>
-                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Midterm Quiz — Chapter 3" className="mt-1" autoFocus />
+                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Midterm Quiz — Chapter 3" className="mt-1 h-9" autoFocus />
                 </div>
                 <div>
                   <Label className="text-sm">Course code</Label>
-                  <Input value={courseCode} onChange={(e) => setCourseCode(e.target.value)} placeholder="CSC 401" className="mt-1" />
+                  <Input value={courseCode} onChange={(e) => setCourseCode(e.target.value)} placeholder="CSC 401" className="mt-1 h-9" />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-4">
-                <div className="w-40">
+              <div className="grid gap-3 grid-cols-2">
+                <div>
                   <Label className="text-sm">Duration (minutes)</Label>
-                  <Input type="number" min={1} max={180} value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))} className="mt-1" />
+                  <Input type="number" min={1} max={180} value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))} className="mt-1 h-9" />
                 </div>
-                <div className="w-40">
+                <div>
                   <Label className="text-sm">Assessment</Label>
                   <Select value={testType} onValueChange={(v) => setTestType(v as TestType)}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="C1">C1</SelectItem>
                       <SelectItem value="C2">C2</SelectItem>
@@ -924,12 +1018,12 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                       <Label className="text-sm font-semibold">Question {qi + 1}</Label>
                       <button type="button" onClick={() => removeQuestion(qi)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
-                    <Input value={q.text} onChange={(e) => updateQuestion(qi, { text: e.target.value })} placeholder="Enter question text…" className="text-sm" />
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <Input value={q.text} onChange={(e) => updateQuestion(qi, { text: e.target.value })} placeholder="Enter question text…" className="text-sm h-9" />
+                    <div className="grid gap-2 grid-cols-2">
                       {q.options.map((opt, oi) => (
                         <div key={oi} className="flex items-center gap-2">
                           <input type="radio" name={`correct-${q.id}`} checked={q.correctIndex === oi} onChange={() => updateQuestion(qi, { correctIndex: oi as 0 | 1 | 2 | 3 })} className="shrink-0 accent-primary" title="Mark as correct answer" />
-                          <Input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + oi)}`} className="text-sm" />
+                          <Input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + oi)}`} className="text-sm h-9" />
                         </div>
                       ))}
                     </div>
@@ -954,10 +1048,10 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
         <div className="divide-y">
           {tests.map((t) => (
             <div key={t.id}>
-              <div className="flex items-center gap-3 px-5 py-4">
+              <div className="flex items-center gap-3 px-4 py-4">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium truncate">{t.title}</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="font-medium text-sm truncate max-w-[140px] sm:max-w-none">{t.title}</p>
                     <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{t.testType || "C1"}</span>
                     {t.isActive && (
                       <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -966,7 +1060,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                     )}
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {t.courseCode} · {t.questions.length} question{t.questions.length !== 1 ? "s" : ""} · {t.durationMinutes} min
+                    {t.courseCode} · {t.questions.length} Q · {t.durationMinutes} min
                     {t.questions.some((q) => q.text.startsWith("[HUMAN VERIFICATION")) && (
                       <span className="ml-1.5 rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
                         + AI trap
@@ -974,9 +1068,13 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                     )}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" variant={t.isActive ? "destructive" : "outline"} onClick={() => toggleActive(t)}>
-                    {t.isActive ? <><ToggleRight className="mr-1.5 h-3.5 w-3.5" /> Deactivate</> : <><ToggleLeft className="mr-1.5 h-3.5 w-3.5" /> Activate</>}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button size="sm" variant={t.isActive ? "destructive" : "outline"} onClick={() => toggleActive(t)} className="text-xs px-2 sm:px-3">
+                    {t.isActive
+                      ? <><ToggleRight className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="hidden xs:inline">Deactivate</span></>
+                      : <><ToggleLeft className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="hidden xs:inline">Activate</span></>
+                    }
+                    <span className="xs:hidden">{t.isActive ? "Off" : "On"}</span>
                   </Button>
                   <button type="button" onClick={() => setExpandedId(expandedId === t.id ? null : t.id)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary transition-colors">
                     {expandedId === t.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

@@ -16,6 +16,7 @@ import {
   generateOrderId, savePaymentRecord,
   type OPayPaymentMethod, type OPayPaymentStatus, type PaymentRecord,
 } from "@/lib/opay";
+import { addPurchase } from "@/lib/materials-store";
 import { toast } from "sonner";
 
 interface PaymentModalProps {
@@ -26,6 +27,7 @@ interface PaymentModalProps {
   amount: number;
   currency: string;
   onSuccess: () => void;
+  studentMatricNumber?: string;
 }
 
 const PAYMENT_METHODS: { value: OPayPaymentMethod; label: string; icon: React.ElementType }[] = [
@@ -36,12 +38,12 @@ const PAYMENT_METHODS: { value: OPayPaymentMethod; label: string; icon: React.El
 ];
 
 export function PaymentModal({
-  open, onClose, materialId, materialTitle, amount, currency, onSuccess,
+  open, onClose, materialId, materialTitle, amount, currency, onSuccess, studentMatricNumber,
 }: PaymentModalProps) {
   const [step, setStep] = useState<"form" | "processing" | "success" | "failed">("form");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(studentMatricNumber || "");
   const [payMethod, setPayMethod] = useState<OPayPaymentMethod>("BankCard");
   const [loading, setLoading] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
@@ -145,6 +147,20 @@ export function PaymentModal({
               p.orderId === orderId ? { ...p, status: "successful", transactionId: response.data?.transactionId, updatedAt: new Date().toISOString() } : p
             );
             localStorage.setItem("att.payments.v1", JSON.stringify(updated));
+            
+            // Record purchase for earnings tracking
+            const purchase = {
+              id: crypto.randomUUID(),
+              materialId,
+              studentName: name,
+              matricNumber: phone, // Using phone as matric for now - this might need adjustment
+              purchaseAmount: amount,
+              currency,
+              purchasedAt: new Date().toISOString(),
+            };
+            // Don't await - let it happen in background
+            addPurchase(purchase).catch((err) => console.error("Failed to record purchase:", err));
+            
             return;
           } else if (status === "FAIL" || status === "CLOSE") {
             setStep("failed");

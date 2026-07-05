@@ -62,6 +62,11 @@ function MaterialsPage() {
   const settings = loadSettings();
   const [search, setSearch] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
+  const [userMatric, setUserMatric] = useState(() => {
+    // Try to get matric number from attendance records
+    const records = JSON.parse(localStorage.getItem("att.records.v1") || "[]");
+    return records.length > 0 ? records[0].matricNumber : "";
+  });
   const [paymentModal, setPaymentModal] = useState<{
     open: boolean;
     materialId: string;
@@ -179,6 +184,7 @@ function MaterialsPage() {
                 key={material.id} 
                 material={material} 
                 index={i} 
+                userMatric={userMatric}
                 onPaymentClick={(m) => setPaymentModal({
                   open: true,
                   materialId: m.id,
@@ -208,24 +214,19 @@ function MaterialsPage() {
           amount={paymentModal.amount}
           currency={paymentModal.currency}
           onSuccess={handlePaymentSuccess}
+          studentMatricNumber={userMatric}
         />
       </main>
     </div>
   );
 }
 
-function MaterialCard({ material, index, onPaymentClick }: { material: Material; index: number; onPaymentClick: (m: Material) => void }) {
+function MaterialCard({ material, index, userMatric, onPaymentClick }: { material: Material; index: number; userMatric: string; onPaymentClick: (m: Material) => void }) {
   const ft = FILE_TYPE_CONFIG[material.fileType] || FILE_TYPE_CONFIG.link;
   const Icon = ft.icon;
   const isPaid = material.accessType === "paid";
   
-  // Check if user has paid (simplified - in real app, you'd get user email from auth)
-  const [userEmail] = useState(() => {
-    // Try to get email from localStorage or attendance records
-    const records = JSON.parse(localStorage.getItem("att.records.v1") || "[]");
-    return records.length > 0 ? records[0].matricNumber : "";
-  });
-  const hasPaid = isPaid && hasUserPaidForMaterial(material.id, userEmail);
+  const hasPaid = isPaid && hasUserPaidForMaterial(material.id, userMatric);
 
   return (
     <motion.div

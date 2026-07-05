@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen } from "lucide-react";
+import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,26 +53,26 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 py-6">
         <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> Home
         </Link>
       </header>
-      <main className="mx-auto flex max-w-md flex-col items-center px-6 pt-16">
+      <main className="mx-auto flex max-w-md flex-col items-center px-4 sm:px-6 pt-16">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
           <ShieldCheck className="h-6 w-6" />
         </div>
-        <h1 className="mt-5 text-3xl font-bold tracking-tight">Lecturer access only</h1>
-        <p className="mt-2 text-center text-muted-foreground">
+        <h1 className="mt-5 text-2xl sm:text-3xl font-bold tracking-tight text-center">Lecturer access only</h1>
+        <p className="mt-2 text-center text-sm sm:text-base text-muted-foreground">
           Enter the admin password to open the dashboard. Students don't have access to this area.
         </p>
-        <form onSubmit={submit} className="mt-8 w-full rounded-2xl border bg-card p-6 shadow-soft">
+        <form onSubmit={submit} className="mt-8 w-full rounded-2xl border bg-card p-4 sm:p-6 shadow-soft">
           <Label htmlFor="pass">Admin password</Label>
           <Input
             id="pass" type="password" value={pass} onChange={(e) => setPass(e.target.value)}
-            placeholder="Enter password" className="mt-2" autoFocus
+            placeholder="Enter password" className="mt-2 h-10" autoFocus
           />
-          <Button type="submit" className="mt-4 w-full">Unlock dashboard</Button>
+          <Button type="submit" className="mt-4 w-full h-10">Unlock dashboard</Button>
           <button
             type="button" onClick={() => setShowHint((s) => !s)}
             className="mt-3 block w-full text-center text-xs text-muted-foreground hover:text-foreground"
@@ -86,18 +86,22 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function AdminShell({ onLogout }: { onLogout: () => void }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-gradient-hero">
       <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur-md shadow-soft">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-4">
             <Link to="/" className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow">
                 <MapPin className="h-4 w-4" />
               </div>
-              <span className="font-semibold tracking-tight">Attendly</span>
+              <span className="font-semibold tracking-tight hidden sm:block">Attendly</span>
             </Link>
-            <nav className="flex items-center gap-1">
+            
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-1">
               <Link
                 to="/admin"
                 activeOptions={{ exact: true }}
@@ -119,10 +123,61 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
               </Link>
             </nav>
           </div>
-          <Button size="sm" variant="outline" onClick={onLogout}>
-            <LogOut className="mr-2 h-3.5 w-3.5" /> Sign out
-          </Button>
+
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={onLogout} className="hidden sm:flex">
+              <LogOut className="mr-2 h-3.5 w-3.5" /> Sign out
+            </Button>
+            
+            {/* Mobile Menu Button */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="md:hidden"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+          </div>
         </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t bg-card/95 backdrop-blur-md">
+            <nav className="flex flex-col p-4 space-y-2">
+              <Link
+                to="/admin"
+                activeOptions={{ exact: true }}
+                onClick={() => setMobileMenuOpen(false)}
+                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                <LayoutDashboard className="h-4 w-4" /> Dashboard
+              </Link>
+              <Link
+                to="/admin/records"
+                onClick={() => setMobileMenuOpen(false)}
+                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                <ClipboardList className="h-4 w-4" /> Records
+              </Link>
+              <Link
+                to="/admin/materials"
+                onClick={() => setMobileMenuOpen(false)}
+                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                <BookOpen className="h-4 w-4" /> Materials
+              </Link>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { onLogout(); setMobileMenuOpen(false); }}
+                className="w-full justify-start"
+              >
+                <LogOut className="mr-2 h-4 w-4" /> Sign out
+              </Button>
+            </nav>
+          </div>
+        )}
       </header>
       <Outlet />
     </div>

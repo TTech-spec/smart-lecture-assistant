@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   lng             FLOAT,
   session_id      TEXT        DEFAULT '',
   custom_fields   JSONB       DEFAULT '{}',
+  assigned_class_code TEXT DEFAULT NULL,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -124,6 +125,21 @@ CREATE INDEX IF NOT EXISTS idx_payment_records_material_id ON payment_records (m
 CREATE INDEX IF NOT EXISTS idx_payment_records_customer_email ON payment_records (customer_email);
 CREATE INDEX IF NOT EXISTS idx_payment_records_status ON payment_records (status);
 
+-- Material purchases tracking for earnings calculation
+CREATE TABLE IF NOT EXISTS material_purchases (
+  id              TEXT        PRIMARY KEY,
+  material_id     TEXT        NOT NULL,
+  student_name    TEXT        NOT NULL,
+  matric_number   TEXT        NOT NULL,
+  purchase_amount FLOAT       NOT NULL,
+  currency        TEXT        NOT NULL DEFAULT 'NGN',
+  purchased_at    TIMESTAMPTZ NOT NULL,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_material_purchases_material_id ON material_purchases (material_id);
+CREATE INDEX IF NOT EXISTS idx_material_purchases_matric_number ON material_purchases (matric_number);
+
 -- Row Level Security (disabled — anon key has full access)
 ALTER TABLE attendance_records   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE test_configs         DISABLE ROW LEVEL SECURITY;
@@ -132,3 +148,4 @@ ALTER TABLE admin_settings       DISABLE ROW LEVEL SECURITY;
 ALTER TABLE attendance_sessions  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE materials            DISABLE ROW LEVEL SECURITY;
 ALTER TABLE payment_records      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE material_purchases  DISABLE ROW LEVEL SECURITY;

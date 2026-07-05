@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
+import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -193,16 +193,40 @@ function Landing() {
     if (!codeName.trim()) { toast.error("Enter your full name."); return; }
     if (!codeMatric.trim()) { toast.error("Enter your matric number."); return; }
     if (!codeLevel.trim()) { toast.error("Select your level."); return; }
+    
+    // Check if student has marked attendance first
+    const student = findStudentByMatric(codeMatric);
+    if (!student) {
+      toast.error("You must mark attendance first before you can get a class code. Please sign attendance and try again.");
+      return;
+    }
+    
+    // Verify the name and level match the attendance record
+    if (student.fullName.toLowerCase() !== codeName.toLowerCase()) {
+      toast.error("The name you entered doesn't match your attendance record. Please use the same name you used to sign attendance.");
+      return;
+    }
+    
+    if (student.level !== codeLevel) {
+      toast.error("The level you entered doesn't match your attendance record. Please use the same level you used to sign attendance.");
+      return;
+    }
+    
     if (hasUsedClassCode(codeMatric)) {
       toast.error("You have already received your class code. You cannot generate a class code twice.");
       return;
     }
+    
     if (settings.classCodeLevel && codeLevel !== settings.classCodeLevel) {
       toast.error(`This class code is for ${settings.classCodeLevel} Level students only.`);
       return;
     }
+    
+    // Update the student's attendance record with the class code
+    updateStudentClassCode(codeMatric, settings.classCode);
     markClassCodeUsed(codeMatric);
     setCodeRevealed(true);
+    toast.success("Class code assigned to your attendance record!");
   }
 
   function copyCode() {

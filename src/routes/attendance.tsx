@@ -9,8 +9,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  addRecord, getDeviceId, isWindowOpen, loadRecords, loadSettings,
-  minutesRemaining, todayKey, type AdminSettings, type Gender,
+  addRecord, fetchSettingsFromSupabase, getDeviceId, isWindowOpen,
+  loadRecords, loadSettings, minutesRemaining, todayKey,
+  type AdminSettings, type Gender,
 } from "@/lib/attendance-store";
 import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition } from "@/lib/geo";
 
@@ -42,15 +43,37 @@ const empty: Form = {
 
 function useSettings() {
   const [s, setS] = useState<AdminSettings>(() => loadSettings());
+
   useEffect(() => {
+    // Keep in sync within the same browser (same-device changes)
     const sync = () => setS(loadSettings());
     window.addEventListener("att:settings", sync);
     window.addEventListener("storage", sync);
+
+    // Poll Supabase every 15 s so students see the form open/close
+    // on the lecturer's device without needing a page refresh.
+    const poll = async () => {
+      const remote = await fetchSettingsFromSupabase();
+      if (remote) {
+        setS((current) => {
+          // Only update (and re-render) when something actually changed
+          const remoteStr = JSON.stringify(remote);
+          return JSON.stringify(current) === remoteStr ? current : remote;
+        });
+      }
+    };
+
+    // Fire once immediately so a freshly-loaded page doesn't have to wait 15 s
+    poll();
+    const timer = setInterval(poll, 15_000);
+
     return () => {
       window.removeEventListener("att:settings", sync);
       window.removeEventListener("storage", sync);
+      clearInterval(timer);
     };
   }, []);
+
   return s;
 }
 

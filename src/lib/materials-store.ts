@@ -17,6 +17,18 @@ export type Material = {
   uploadedAt: string;
 };
 
+export type MaterialPurchase = {
+  id: string;
+  materialId: string;
+  studentName: string;
+  matricNumber: string;
+  purchaseAmount: number;
+  currency: string;
+  purchasedAt: string;
+};
+
+const PURCHASE_KEY = "att.material.purchases.v1";
+
 const MAT_KEY = "att.materials.v1";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,5 +107,69 @@ export async function syncMaterialsFromSupabase(): Promise<void> {
     }
   } catch {
     // silently fail — local data remains
+  }
+}
+
+// ── Material Purchases ──────────────────────────────────────────────────────────
+export function loadPurchases(): MaterialPurchase[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const data = localStorage.getItem(PURCHASE_KEY);
+    if (!data) return [];
+    return JSON.parse(data) as MaterialPurchase[];
+  } catch (error) {
+    console.error("Failed to load purchases:", error);
+    return [];
+  }
+}
+
+export function savePurchases(purchases: MaterialPurchase[]) {
+  localStorage.setItem(PURCHASE_KEY, JSON.stringify(purchases));
+  window.dispatchEvent(new Event("att:purchases"));
+}
+
+export async function addPurchase(purchase: MaterialPurchase): Promise<void> {
+  if (supabase) {
+    try {
+      const { error } = await supabase.from("material_purchases").upsert({
+        id: purchase.id,
+        material_id: purchase.materialId,
+        student_name: purchase.studentName,
+        matric_number: purchase.matricNumber,
+        purchase_amount: purchase.purchaseAmount,
+        currency: purchase.currency,
+        purchased_at: purchase.purchasedAt,
+      });
+      if (error) {
+        console.error("Supabase purchase sync error:", error);
+        // Continue with local storage even if Supabase fails
+      }
+    } catch (err) {
+      console.error("Supabase purchase sync error:", err);
+      // Continue with local storage even if Supabase fails
+    }
+  }
+  const all = loadPurchases();
+  all.push(purchase);
+  savePurchases(all);
+}
+
+export function calculateTotalEarnings(): { amount: number; currency: string; salesCount: number } {
+  try {
+    const purchases = loadPurchases();
+    const totalAmount = purchases.reduce((sum, p) => sum + (p.purchaseAmount || 0), 0);
+    const currency = purchases.length > 0 ? purchases[0].currency : "NGN";
+    return {
+      amount: totalAmount,
+      currency,
+      salesCount: purchases.length,
+    };
+  } catch (error) {
+    console.error("Failed to calculate earnings:", error);
+    return {
+      amount: 0,
+      currency: "NGN",
+      salesCount: 0,
+    };
   }
 }
