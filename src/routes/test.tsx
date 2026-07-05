@@ -9,19 +9,28 @@ import {
   GraduationCap,
   MapPin,
   XCircle,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   getActiveTest,
   addTestSubmission,
   loadTestSubmissions,
+  loadSettings,
+  markClassCodeUsed,
   type TestConfig,
   type TestSubmission,
 } from "@/lib/attendance-store";
+import { supabase } from "@/lib/supabase";
+
+const LEVEL_OPTIONS = ["100", "200", "300", "400", "500", "600"];
 
 export const Route = createFileRoute("/test")({
   head: () => ({
@@ -41,7 +50,7 @@ function formatSeconds(s: number) {
 }
 
 // ── Stages ────────────────────────────────────────────────────────────────────
-type Stage = "identity" | "taking" | "cheated" | "result" | "already_taken";
+type Stage = "identity" | "class_code" | "taking" | "cheated" | "result" | "already_taken" | "not_signed";
 
 function TestPage() {
   const [test, setTest] = useState<TestConfig | null>(() => getActiveTest());
@@ -86,24 +95,63 @@ function TestFlow({ test }: { test: TestConfig }) {
   const [stage, setStage] = useState<Stage>("identity");
   const [studentName, setStudentName] = useState("");
   const [matricNumber, setMatricNumber] = useState("");
+  const [level, setLevel] = useState("");
   const [answers, setAnswers] = useState<(number | null)[]>(
     Array(test.questions.length).fill(null),
   );
   const [result, setResult] = useState<TestSubmission | null>(null);
+  const settings = loadSettings();
 
-  function handleIdentitySubmit(name: string, matric: string) {
+  async function handleIdentitySubmit(name: string, matric: string, lvl: string) {
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from("attendance_records")
+          .select("id")
+          .eq("course_code", test.courseCode)
+          .ilike("matric_number", matric.trim())
+          .limit(1)
+          .maybeSingle();
+        if (!data) {
+          setStudentName(name);
+          setMatricNumber(matric);
+          setLevel(lvl);
+          setStage("not_signed");
+          return;
+        }
+      } catch {
+        // If the attendance check itself fails (network hiccup), don't block
+        // the student — fall through and let them attempt the test.
+      }
+    }
+
     const existing = loadTestSubmissions().find(
       (s) => s.testId === test.id && s.matricNumber.toLowerCase() === matric.trim().toLowerCase(),
     );
     if (existing) {
       setStudentName(name);
       setMatricNumber(matric);
+      setLevel(lvl);
       setResult(existing);
       setStage("already_taken");
       return;
     }
+    
     setStudentName(name);
     setMatricNumber(matric);
+    setLevel(lvl);
+    
+    // Check if class code is required (lecturer has generated one)
+    if (settings.classCodeEnabled && settings.classCode) {
+      setStage("class_code");
+      return;
+    }
+    
+    setStage("taking");
+  }
+
+  function handleClassCodeSubmit(code: string) {
+    markClassCodeUsed(matricNumber);
     setStage("taking");
   }
 
@@ -121,11 +169,13 @@ function TestFlow({ test }: { test: TestConfig }) {
       testId: test.id,
       studentName,
       matricNumber,
+      level,
       answers: finalAnswers,
       score,
       total: test.questions.length,
       submittedAt: new Date().toISOString(),
       cheated,
+      testType: test.testType || "C1",
     };
 
     addTestSubmission(submission);
@@ -160,6 +210,18 @@ function TestFlow({ test }: { test: TestConfig }) {
               transition={{ duration: 0.35 }}
             >
               <IdentityForm test={test} onSubmit={handleIdentitySubmit} />
+            </motion.div>
+          )}
+
+          {stage === "class_code" && (
+            <motion.div
+              key="class_code"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.35 }}
+            >
+              <ClassCodeForm settings={settings} onSubmit={handleClassCodeSubmit} />
             </motion.div>
           )}
 
@@ -199,12 +261,40 @@ function TestFlow({ test }: { test: TestConfig }) {
                 <div className="mt-6 rounded-2xl border bg-card p-5 text-left shadow-soft space-y-2">
                   <p className="text-sm"><span className="text-muted-foreground">Name:</span> <span className="font-medium">{result.studentName}</span></p>
                   <p className="text-sm"><span className="text-muted-foreground">Matric:</span> <span className="font-medium">{result.matricNumber}</span></p>
+                  {result.level && <p className="text-sm"><span className="text-muted-foreground">Level:</span> <span className="font-medium">{result.level} Level</span></p>}
                   <p className="text-sm"><span className="text-muted-foreground">Score:</span> <span className="font-semibold text-primary">{result.score}/{result.total}</span></p>
                   <p className="text-sm"><span className="text-muted-foreground">Submitted:</span> <span className="font-medium">{new Date(result.submittedAt).toLocaleString()}</span></p>
                 </div>
                 <Button asChild className="mt-6" variant="outline">
                   <Link to="/">Back to home</Link>
                 </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {stage === "not_signed" && (
+            <motion.div
+              key="not_signed"
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.35 }}
+            >
+              <div className="mx-auto max-w-md text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-100 dark:bg-red-900/30">
+                  <XCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+                </div>
+                <h2 className="text-2xl font-bold">Attendance not found</h2>
+                <p className="mt-2 text-muted-foreground">
+                  We couldn't find an attendance record for <span className="font-medium">{matricNumber}</span> under {test.courseCode}. You must sign attendance for this course before you can take the test.
+                </p>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                  <Button asChild>
+                    <Link to="/">
+                      <MapPin className="mr-2 h-4 w-4" /> Sign attendance
+                    </Link>
+                  </Button>
+                  <Button variant="outline" onClick={() => setStage("identity")}>Try a different matric number</Button>
+                </div>
               </div>
             </motion.div>
           )}
@@ -236,16 +326,119 @@ function TestFlow({ test }: { test: TestConfig }) {
   );
 }
 
+// ── Class code form ─────────────────────────────────────────────────────────────
+function ClassCodeForm({ settings, onSubmit }: { settings: any; onSubmit: (code: string) => void }) {
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!code.trim()) {
+      toast.error("Please enter the class code");
+      return;
+    }
+    
+    setChecking(true);
+    
+    // Validate the class code
+    const inputCode = code.trim();
+    const expectedCode = settings.classCode.trim();
+    
+    if (inputCode !== expectedCode) {
+      setChecking(false);
+      toast.error("Invalid class code. Please check with your lecturer.");
+      return;
+    }
+    
+    onSubmit(inputCode);
+  }
+
+  return (
+    <div className="mx-auto max-w-md">
+      <div className="mb-8 text-center">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
+          <GraduationCap className="h-7 w-7" />
+        </div>
+        <h1 className="text-2xl font-bold">Enter Class Code</h1>
+        <p className="mt-1 text-muted-foreground">
+          Your lecturer has provided a class code for this test. Enter it below to proceed.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="rounded-2xl border bg-card p-6 shadow-soft space-y-4">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800/40 dark:bg-blue-900/20 dark:text-blue-300">
+          <AlertTriangle className="mr-2 inline h-4 w-4" />
+          The class code is provided by your lecturer. Make sure you enter it correctly.
+        </div>
+        <div>
+          <Label htmlFor="classCode">Class Code</Label>
+          <Input
+            id="classCode"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="Enter the class code"
+            className="mt-1 text-center text-lg tracking-wider"
+            autoFocus
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={checking}>
+          {checking ? "Verifying..." : <>Verify & Start Test <ChevronRight className="ml-2 h-4 w-4" /></>}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 // ── Identity form ──────────────────────────────────────────────────────────────
-function IdentityForm({ test, onSubmit }: { test: TestConfig; onSubmit: (name: string, matric: string) => void }) {
+function IdentityForm({ test, onSubmit }: { test: TestConfig; onSubmit: (name: string, matric: string, level: string) => void | Promise<void> }) {
   const [name, setName] = useState("");
   const [matric, setMatric] = useState("");
+  const [level, setLevel] = useState("");
+  const [matched, setMatched] = useState(false);
+  const [looking, setLooking] = useState(false);
+  const [checking, setChecking] = useState(false);
 
-  function submit(e: React.FormEvent) {
+  async function lookupMatric() {
+    const m = matric.trim();
+    if (!m || !supabase) return;
+    setLooking(true);
+    try {
+      const { data } = await supabase
+        .from("attendance_records")
+        .select("full_name, level")
+        .eq("course_code", test.courseCode)
+        .ilike("matric_number", m)
+        .limit(1)
+        .maybeSingle();
+      if (data) {
+        setName(data.full_name || "");
+        setLevel(data.level || "");
+        setMatched(true);
+      }
+    } catch {
+      // Lookup is best-effort — students can still fill in the fields manually.
+    } finally {
+      setLooking(false);
+    }
+  }
+
+  function clearMatch() {
+    setMatched(false);
+    setName("");
+    setLevel("");
+  }
+
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) { toast.error("Enter your full name."); return; }
     if (!matric.trim()) { toast.error("Enter your matric number."); return; }
-    onSubmit(name.trim(), matric.trim());
+    if (!level) { toast.error("Select your level."); return; }
+    setChecking(true);
+    try {
+      await onSubmit(name.trim(), matric.trim(), level);
+    } finally {
+      setChecking(false);
+    }
   }
 
   return (
@@ -266,15 +459,48 @@ function IdentityForm({ test, onSubmit }: { test: TestConfig; onSubmit: (name: s
           Do not switch tabs or minimize the window during the test. Doing so will flag you for cheating.
         </div>
         <div>
-          <Label htmlFor="name">Full name</Label>
-          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amaka Okafor" className="mt-1" autoFocus />
+          <Label htmlFor="matric">Matric number</Label>
+          <Input
+            id="matric"
+            value={matric}
+            onChange={(e) => { setMatric(e.target.value); if (matched) clearMatch(); }}
+            onBlur={lookupMatric}
+            placeholder="e.g. 2021/12345"
+            className="mt-1"
+            autoFocus
+          />
+          {looking && <p className="mt-1 text-xs text-muted-foreground">Checking attendance records…</p>}
         </div>
         <div>
-          <Label htmlFor="matric">Matric number</Label>
-          <Input id="matric" value={matric} onChange={(e) => setMatric(e.target.value)} placeholder="e.g. 2021/12345" className="mt-1" />
+          <div className="flex items-center justify-between">
+            <Label htmlFor="name">Full name</Label>
+            {matched && (
+              <button type="button" onClick={clearMatch} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                Not you? Clear <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          <Input
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Amaka Okafor"
+            className="mt-1"
+            readOnly={matched}
+          />
+          {matched && <p className="mt-1 text-xs text-green-600 dark:text-green-400">Matched from your attendance record.</p>}
         </div>
-        <Button type="submit" className="w-full">
-          Start test <ChevronRight className="ml-2 h-4 w-4" />
+        <div>
+          <Label htmlFor="level">Level</Label>
+          <Select value={level} onValueChange={setLevel} disabled={matched}>
+            <SelectTrigger id="level" className="mt-1"><SelectValue placeholder="Select level" /></SelectTrigger>
+            <SelectContent>
+              {LEVEL_OPTIONS.map((l) => <SelectItem key={l} value={l}>{l} Level</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button type="submit" className="w-full" disabled={checking}>
+          {checking ? "Checking attendance…" : <>Start test <ChevronRight className="ml-2 h-4 w-4" /></>}
         </Button>
       </form>
     </div>
@@ -440,7 +666,10 @@ function ResultScreen({ test, submission }: { test: TestConfig; submission: Test
         <h1 className="text-3xl font-bold">{submission.score}/{submission.total}</h1>
         <p className="mt-1 text-xl font-semibold text-muted-foreground">{percentage}%</p>
         {submission.cheated && <p className="mt-2 text-sm text-red-600 dark:text-red-400 font-medium">Test ended due to cheating violation</p>}
-        <p className="mt-3 text-muted-foreground">{submission.studentName} &middot; {submission.matricNumber}</p>
+        <p className="mt-3 text-muted-foreground">
+          {submission.studentName} &middot; {submission.matricNumber}
+          {submission.level && <> &middot; {submission.level} Level</>}
+        </p>
         <div className={`mt-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold ${passed ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
           {passed ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
           {passed ? "Passed" : "Failed"}

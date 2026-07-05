@@ -42,11 +42,12 @@ type Draft = {
   url: string;
   courseCode: string;
   topic: string;
+  file: File | null;
 };
 
 const emptyDraft: Draft = {
   title: "", description: "", fileType: "pdf", accessType: "free",
-  price: "", currency: "NGN", url: "", courseCode: "", topic: "",
+  price: "", currency: "NGN", url: "", courseCode: "", topic: "", file: null,
 };
 
 function useMaterials() {
@@ -90,13 +91,31 @@ function MaterialsAdmin() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.title.trim()) return toast.error("Please enter a material title.");
-    if (!draft.url.trim())   return toast.error("Please enter a URL or link.");
+    
+    // Either file or URL must be provided
+    if (!draft.file && !draft.url.trim()) {
+      return toast.error("Please upload a file or enter a URL.");
+    }
+    
     if (draft.accessType === "paid" && (!draft.price || isNaN(Number(draft.price)))) {
       return toast.error("Please enter a valid price for paid materials.");
     }
 
     setSaving(true);
     try {
+      let finalUrl = draft.url.trim();
+      
+      // If file is uploaded, convert to base64 for storage
+      if (draft.file) {
+        const reader = new FileReader();
+        const filePromise = new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(draft.file as File);
+        });
+        finalUrl = await filePromise;
+      }
+
       await addMaterial({
         id: crypto.randomUUID(),
         title: draft.title.trim(),
@@ -105,7 +124,7 @@ function MaterialsAdmin() {
         accessType: draft.accessType,
         price: draft.accessType === "paid" ? Number(draft.price) : 0,
         currency: draft.currency || "NGN",
-        url: draft.url.trim(),
+        url: finalUrl,
         courseCode: draft.courseCode.trim().toUpperCase(),
         topic: draft.topic.trim(),
         uploadedAt: new Date().toISOString(),
@@ -286,9 +305,22 @@ function MaterialsAdmin() {
                 />
               </div>
 
+              {/* File Upload */}
+              <div className="sm:col-span-2">
+                <Label htmlFor="mat-file">Upload File (PDF, DOC, PPT)</Label>
+                <Input
+                  id="mat-file"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.ppt,.pptx"
+                  onChange={(e) => upd("file", e.target.files?.[0] || null)}
+                  className="mt-1.5"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Upload a file directly. Max size: 10MB.</p>
+              </div>
+
               {/* URL */}
               <div className="sm:col-span-2">
-                <Label htmlFor="mat-url">URL / Link <span className="text-destructive">*</span></Label>
+                <Label htmlFor="mat-url">Or paste URL / Link</Label>
                 <Input
                   id="mat-url"
                   type="url"

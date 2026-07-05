@@ -18,9 +18,12 @@ import {
 import {
   saveRecords, addRecord, syncRecord, deleteRecordById, clearAllRecords,
   loadTestSubmissions, loadSettings, saveTestSubmissions, syncTestSubmission,
-  type AttendanceRecord, type Gender, type TestSubmission,
+  type AttendanceRecord, type Gender, type TestSubmission, type TestType,
 } from "@/lib/attendance-store";
+
+const TEST_TYPES: TestType[] = ["C1", "C2", "C3"];
 import { useStore } from "@/hooks/use-store";
+import { VoiceAssistant } from "@/components/VoiceAssistant";
 
 export const Route = createFileRoute("/admin/records")({
   head: () => ({ meta: [{ title: "Attendance records — Attendly" }] }),
@@ -28,9 +31,25 @@ export const Route = createFileRoute("/admin/records")({
 });
 
 // ── CSV / JSON export ─────────────────────────────────────────────────────────
-function exportCSV(records: AttendanceRecord[]) {
-  const headers = ["Full Name", "Matric Number", "Department", "Level", "Course Code", "Topic", "Gender", "Phone", "Session ID", "Submitted At", "Day"];
-  const rows = records.map((r) => [r.fullName, r.matricNumber, r.department, r.level || "", r.courseCode, r.topic, r.gender, r.phone, r.sessionId || "", new Date(r.submittedAt).toLocaleString(), r.dayKey]);
+type TestResultsByType = Partial<Record<TestType, TestSubmission>>;
+
+function exportCSV(records: AttendanceRecord[], testResultMap: Map<string, TestResultsByType>) {
+  const headers = [
+    "Full Name", "Matric Number", "Department", "Level", "Course Code", "Topic", "Gender", "Phone", "Session ID", "Submitted At", "Day",
+    "C1 Score", "C1 Total", "C1 Cheated", "C2 Score", "C2 Total", "C2 Cheated", "C3 Score", "C3 Total", "C3 Cheated",
+  ];
+  const rows = records.map((r) => {
+    const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
+    const typeCols = TEST_TYPES.flatMap((t) => {
+      const res = byType[t];
+      return [res ? String(res.score) : "", res ? String(res.total) : "", res ? (res.cheated ? "Yes" : "No") : ""];
+    });
+    return [
+      r.fullName, r.matricNumber, r.department, r.level || "", r.courseCode, r.topic, r.gender, r.phone,
+      r.sessionId || "", new Date(r.submittedAt).toLocaleString(), r.dayKey,
+      ...typeCols,
+    ];
+  });
   const csv = [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -40,8 +59,12 @@ function exportCSV(records: AttendanceRecord[]) {
   toast.success(`Exported ${records.length} record${records.length !== 1 ? "s" : ""} to CSV`);
 }
 
-function exportJSON(records: AttendanceRecord[]) {
-  const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" });
+function exportJSON(records: AttendanceRecord[], testResultMap: Map<string, TestResultsByType>) {
+  const enriched = records.map((r) => ({
+    ...r,
+    testResults: testResultMap.get(r.matricNumber.toLowerCase()) ?? {},
+  }));
+  const blob = new Blob([JSON.stringify(enriched, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = `attendance-${new Date().toISOString().slice(0, 10)}.json`;
@@ -164,7 +187,10 @@ function TestResultModal({ submission, onSave, onClose }: { submission: TestSubm
         className="relative w-full max-w-sm rounded-2xl border bg-card p-6 shadow-soft">
         <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"><X className="h-4 w-4" /></button>
         <h2 className="mb-1 text-lg font-semibold">Edit test result</h2>
-        <p className="mb-5 text-sm text-muted-foreground">{submission.studentName} · {submission.matricNumber}</p>
+        <p className="mb-5 text-sm text-muted-foreground">
+          {submission.studentName} · {submission.matricNumber}
+          {submission.level && <> · {submission.level} Level</>}
+        </p>
         <form onSubmit={save} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-sm">Score</Label><Input className="mt-1" type="number" min={0} value={score} onChange={(e) => setScore(e.target.value)} autoFocus /></div>
@@ -201,11 +227,15 @@ function RecordsPage() {
 
   const testResultMap = useMemo(() => {
     const all = testSubmissions.length > 0 ? testSubmissions : loadTestSubmissions();
-    const map = new Map<string, TestSubmission>();
+    const map = new Map<string, TestResultsByType>();
     all.forEach((s) => {
       const key = s.matricNumber.toLowerCase();
-      const existing = map.get(key);
-      if (!existing || s.score > existing.score) map.set(key, s);
+      const type = s.testType || "C1";
+      const existing = map.get(key) ?? {};
+      const existingForType = existing[type];
+      if (!existingForType || s.score > existingForType.score) {
+        map.set(key, { ...existing, [type]: s });
+      }
     });
     return map;
   }, [testSubmissions]);
@@ -314,12 +344,16 @@ function RecordsPage() {
               <Button size="sm" disabled={filtered.length === 0} className="gap-1.5"><Download className="h-3.5 w-3.5" /> Export ({filtered.length})</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => exportCSV(filtered)}><FileText className="mr-2 h-4 w-4" /> Download CSV</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportJSON(filtered)}><FileText className="mr-2 h-4 w-4" /> Download JSON</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportCSV(filtered, testResultMap)}><FileText className="mr-2 h-4 w-4" /> Download CSV</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportJSON(filtered, testResultMap)}><FileText className="mr-2 h-4 w-4" /> Download JSON</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button variant="outline" size="sm" onClick={clearAll} className="text-destructive hover:text-destructive"><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear all</Button>
         </div>
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.4 }} className="mt-5">
+        <VoiceAssistant records={records} />
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }} className="mt-5 rounded-2xl border bg-card shadow-soft">
@@ -384,7 +418,9 @@ function RecordsPage() {
                 <th className="px-4 py-3 whitespace-nowrap">Topic</th>
                 <th className="px-4 py-3 whitespace-nowrap">Gender</th>
                 <th className="px-4 py-3 whitespace-nowrap">Phone</th>
-                <th className="px-4 py-3 whitespace-nowrap">Test result</th>
+                <th className="px-4 py-3 whitespace-nowrap">C1</th>
+                <th className="px-4 py-3 whitespace-nowrap">C2</th>
+                <th className="px-4 py-3 whitespace-nowrap">C3</th>
                 <th className="px-4 py-3 whitespace-nowrap">Time</th>
                 <th className="px-4 py-3 whitespace-nowrap">Actions</th>
               </tr>
@@ -392,7 +428,7 @@ function RecordsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-14 text-center text-muted-foreground">
+                  <td colSpan={13} className="px-4 py-14 text-center text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <ClipboardList className="h-10 w-10 opacity-20" />
                       <p className="text-base font-medium">No records match these filters</p>
@@ -402,7 +438,7 @@ function RecordsPage() {
                 </tr>
               ) : (
                 filtered.map((r) => {
-                  const testResult = testResultMap.get(r.matricNumber.toLowerCase());
+                  const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
                   return (
                     <tr key={r.id} className="border-t hover:bg-secondary/40 transition-colors">
                       <td className="px-4 py-3 font-medium whitespace-nowrap">{r.fullName}</td>
@@ -415,28 +451,33 @@ function RecordsPage() {
                       <td className="px-4 py-3 whitespace-nowrap max-w-[140px] truncate" title={r.topic}>{r.topic || "—"}</td>
                       <td className="px-4 py-3 capitalize whitespace-nowrap">{r.gender}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{r.phone || "—"}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          {testResult ? (
-                            testResult.cheated ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                <XCircle className="h-3 w-3" /> Cheated
-                              </span>
-                            ) : (
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${testResult.score / testResult.total >= 0.5 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}>
-                                <CheckCircle2 className="h-3 w-3" />{testResult.score}/{testResult.total}
-                              </span>
-                            )
-                          ) : (
-                            <span className="text-xs text-muted-foreground">No test</span>
-                          )}
-                          {testResult && (
-                            <button onClick={() => setEditingTestResult(testResult)} className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Edit test result">
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                      {TEST_TYPES.map((t) => {
+                        const testResult = byType[t];
+                        return (
+                          <td key={t} className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              {testResult ? (
+                                testResult.cheated ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                    <XCircle className="h-3 w-3" /> Cheated
+                                  </span>
+                                ) : (
+                                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${testResult.score / testResult.total >= 0.5 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}>
+                                    <CheckCircle2 className="h-3 w-3" />{testResult.score}/{testResult.total}
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                              {testResult && (
+                                <button onClick={() => setEditingTestResult(testResult)} className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title={`Edit ${t} result`}>
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs sm:text-sm">{new Date(r.submittedAt).toLocaleString()}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-1">
@@ -455,7 +496,7 @@ function RecordsPage() {
         {filtered.length > 0 && (
           <div className="border-t px-4 py-3 flex items-center justify-between sm:px-5">
             <span className="text-xs text-muted-foreground sm:text-sm">Showing {filtered.length} of {records.length} records</span>
-            <Button size="sm" variant="ghost" onClick={() => exportCSV(filtered)} className="gap-1.5 text-xs sm:text-sm"><Download className="h-3.5 w-3.5" /> Download CSV</Button>
+            <Button size="sm" variant="ghost" onClick={() => exportCSV(filtered, testResultMap)} className="gap-1.5 text-xs sm:text-sm"><Download className="h-3.5 w-3.5" /> Download CSV</Button>
           </div>
         )}
       </motion.div>

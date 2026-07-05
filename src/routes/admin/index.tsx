@@ -12,10 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  saveSettings, isWindowOpen, minutesRemaining, addSession, closeSession,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  saveSettings, isWindowOpen, minutesRemaining, addSession, closeSession, clearSessions,
   addTest, deleteTest, setTestActive,
   type AdminSettings, type AttendanceRecord, type AttendanceSession,
-  type CustomField, type TestConfig,
+  type CustomField, type TestConfig, type TestType,
 } from "@/lib/attendance-store";
 import { parsePdfQuestions } from "@/lib/pdf-parser";
 import { getCurrentPosition } from "@/lib/geo";
@@ -165,7 +168,10 @@ function SettingsCard() {
       setDraft(next);
       saveSettings(next);
       const acc = pos.accuracy ? Math.round(pos.accuracy) : null;
-      if (acc && acc > 100) {
+      // If accuracy is extremely high (>10km), it's likely using IP geolocation instead of GPS
+      if (acc && acc > 10000) {
+        toast.error(`Location accuracy is very poor (±${(acc / 1000).toFixed(0)} km). This device may be using IP-based location instead of GPS. Please use a mobile device or enter coordinates manually.`);
+      } else if (acc && acc > 100) {
         toast.warning(`Location pinned but GPS accuracy is poor (±${acc} m). Students nearby may be wrongly rejected. Pin from a mobile phone or enter coordinates manually for better results.`);
       } else {
         toast.success(acc ? `Class location pinned (±${acc} m accuracy).` : "Class location pinned.");
@@ -606,13 +612,32 @@ function StatsRow({ records, allRecords, settings }: { records: AttendanceRecord
 function SessionsPanel({ sessions, records }: { sessions: AttendanceSession[]; records: AttendanceRecord[] }) {
   const sorted = useMemo(() => [...sessions].sort((a, b) => b.openedAt.localeCompare(a.openedAt)), [sessions]);
 
+  function handleClearSessions() {
+    if (sorted.length === 0) return;
+    if (!window.confirm(`Are you sure you want to clear all ${sorted.length} sessions? This action cannot be undone.`)) return;
+    clearSessions();
+    toast.success("All sessions cleared.");
+  }
+
   return (
     <div className="rounded-2xl border bg-card shadow-soft">
-      <div className="border-b p-5">
-        <h2 className="flex items-center gap-2 text-lg font-semibold">
-          <ClipboardList className="h-5 w-5 text-[color:var(--color-primary)]" /> Session history
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">{sorted.length} form open event{sorted.length !== 1 ? "s" : ""}</p>
+      <div className="border-b p-5 flex items-center justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <ClipboardList className="h-5 w-5 text-[color:var(--color-primary)]" /> Session history
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">{sorted.length} form open event{sorted.length !== 1 ? "s" : ""}</p>
+        </div>
+        {sorted.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearSessions}
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear All
+          </Button>
+        )}
       </div>
       {sorted.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-muted-foreground">No sessions yet. Open the attendance form to start tracking.</p>
@@ -726,9 +751,10 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
   const [title, setTitle] = useState("");
   const [courseCode, setCourseCode] = useState("");
   const [duration, setDuration] = useState(30);
+  const [testType, setTestType] = useState<TestType>("C1");
   const [questions, setQuestions] = useState<QuestionDraft[]>([emptyQuestion()]);
 
-  function resetForm() { setTitle(""); setCourseCode(""); setDuration(30); setQuestions([emptyQuestion()]); setCreating(false); }
+  function resetForm() { setTitle(""); setCourseCode(""); setDuration(30); setTestType("C1"); setQuestions([emptyQuestion()]); setCreating(false); }
 
   function updateQuestion(idx: number, patch: Partial<QuestionDraft>) {
     setQuestions((qs) => qs.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
@@ -792,6 +818,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
       isActive: false,
       createdAt: new Date().toISOString(),
       questions: allQuestions,
+      testType,
     };
 
     addTest(config);
@@ -840,9 +867,22 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                   <Input value={courseCode} onChange={(e) => setCourseCode(e.target.value)} placeholder="CSC 401" className="mt-1" />
                 </div>
               </div>
-              <div className="w-40">
-                <Label className="text-sm">Duration (minutes)</Label>
-                <Input type="number" min={1} max={180} value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))} className="mt-1" />
+              <div className="flex flex-wrap gap-4">
+                <div className="w-40">
+                  <Label className="text-sm">Duration (minutes)</Label>
+                  <Input type="number" min={1} max={180} value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))} className="mt-1" />
+                </div>
+                <div className="w-40">
+                  <Label className="text-sm">Assessment</Label>
+                  <Select value={testType} onValueChange={(v) => setTestType(v as TestType)}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="C1">C1</SelectItem>
+                      <SelectItem value="C2">C2</SelectItem>
+                      <SelectItem value="C3">C3</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Human verification toggle */}
@@ -918,6 +958,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-medium truncate">{t.title}</p>
+                    <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{t.testType || "C1"}</span>
                     {t.isActive && (
                       <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                         <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" /> Live

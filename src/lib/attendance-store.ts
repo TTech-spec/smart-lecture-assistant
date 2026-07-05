@@ -72,6 +72,8 @@ export type TestQuestion = {
   correctIndex: 0 | 1 | 2 | 3;
 };
 
+export type TestType = "C1" | "C2" | "C3";
+
 export type TestConfig = {
   id: string;
   title: string;
@@ -80,6 +82,7 @@ export type TestConfig = {
   isActive: boolean;
   createdAt: string;
   questions: TestQuestion[];
+  testType: TestType;
 };
 
 export type TestSubmission = {
@@ -87,11 +90,13 @@ export type TestSubmission = {
   testId: string;
   studentName: string;
   matricNumber: string;
+  level: string;
   answers: (number | null)[];
   score: number;
   total: number;
   submittedAt: string;
   cheated: boolean;
+  testType: TestType;
 };
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
@@ -182,6 +187,7 @@ function testToDb(t: TestConfig): Row {
     is_active: t.isActive,
     created_at: t.createdAt,
     questions: t.questions,
+    test_type: t.testType,
   };
 }
 
@@ -194,6 +200,7 @@ function testFromDb(row: Row): TestConfig {
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     questions: (row.questions as TestQuestion[]) || [],
+    testType: (row.test_type as TestType) || "C1",
   };
 }
 
@@ -203,11 +210,13 @@ function submissionToDb(s: TestSubmission): Row {
     test_id: s.testId,
     student_name: s.studentName,
     matric_number: s.matricNumber,
+    level: s.level,
     answers: s.answers,
     score: s.score,
     total: s.total,
     submitted_at: s.submittedAt,
     cheated: s.cheated,
+    test_type: s.testType,
   };
 }
 
@@ -217,11 +226,13 @@ function submissionFromDb(row: Row): TestSubmission {
     testId: row.test_id,
     studentName: row.student_name,
     matricNumber: row.matric_number,
+    level: row.level || "",
     answers: (row.answers as (number | null)[]) || [],
     score: row.score || 0,
     total: row.total || 0,
     submittedAt: row.submitted_at,
     cheated: Boolean(row.cheated),
+    testType: (row.test_type as TestType) || "C1",
   };
 }
 
@@ -345,6 +356,12 @@ export function addSession(s: AttendanceSession) {
 export function closeSession(id: string, closedAt: string) {
   saveSessions(loadSessions().map((s) => (s.id === id ? { ...s, closedAt } : s)));
   sync(supabase?.from("attendance_sessions").update({ closed_at: closedAt }).eq("id", id));
+}
+
+export function clearSessions() {
+  localStorage.removeItem(SES_KEY);
+  window.dispatchEvent(new Event("att:sessions"));
+  sync(supabase?.from("attendance_sessions").delete().gte("created_at", "1970-01-01T00:00:00Z"));
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

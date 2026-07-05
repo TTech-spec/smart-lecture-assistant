@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft, BookOpen, FileText, Video, Globe,
-  File, Lock, ExternalLink, Search, GraduationCap,
+  File, Lock, ExternalLink, Search, GraduationCap, CheckCircle2,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/select";
 import { loadMaterials, syncMaterialsFromSupabase, type Material, type MaterialFileType } from "@/lib/materials-store";
 import { loadSettings } from "@/lib/attendance-store";
+import { PaymentModal } from "@/components/PaymentModal";
+import { hasUserPaidForMaterial } from "@/lib/opay";
 
 export const Route = createFileRoute("/materials")({
   head: () => ({
@@ -60,6 +62,13 @@ function MaterialsPage() {
   const settings = loadSettings();
   const [search, setSearch] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
+  const [paymentModal, setPaymentModal] = useState<{
+    open: boolean;
+    materialId: string;
+    materialTitle: string;
+    amount: number;
+    currency: string;
+  }>({ open: false, materialId: "", materialTitle: "", amount: 0, currency: "NGN" });
 
   const courses = Array.from(new Set(materials.map((m) => m.courseCode).filter(Boolean)));
 
@@ -69,6 +78,11 @@ function MaterialsPage() {
     const matchSearch = !q || m.title.toLowerCase().includes(q) || m.description.toLowerCase().includes(q) || m.courseCode.toLowerCase().includes(q) || m.topic.toLowerCase().includes(q);
     return matchCourse && matchSearch;
   });
+
+  const handlePaymentSuccess = () => {
+    // Refresh materials to update access status
+    syncMaterialsFromSupabase();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -161,7 +175,18 @@ function MaterialsPage() {
         {filtered.length > 0 && (
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((material, i) => (
-              <MaterialCard key={material.id} material={material} index={i} />
+              <MaterialCard 
+                key={material.id} 
+                material={material} 
+                index={i} 
+                onPaymentClick={(m) => setPaymentModal({
+                  open: true,
+                  materialId: m.id,
+                  materialTitle: m.title,
+                  amount: m.price,
+                  currency: m.currency,
+                })}
+              />
             ))}
           </div>
         )}
@@ -173,15 +198,34 @@ function MaterialsPage() {
             {settings.courseCode ? ` · Course: ${settings.courseCode}` : ""}
           </p>
         )}
+
+        {/* Payment Modal */}
+        <PaymentModal
+          open={paymentModal.open}
+          onClose={() => setPaymentModal({ ...paymentModal, open: false })}
+          materialId={paymentModal.materialId}
+          materialTitle={paymentModal.materialTitle}
+          amount={paymentModal.amount}
+          currency={paymentModal.currency}
+          onSuccess={handlePaymentSuccess}
+        />
       </main>
     </div>
   );
 }
 
-function MaterialCard({ material, index }: { material: Material; index: number }) {
+function MaterialCard({ material, index, onPaymentClick }: { material: Material; index: number; onPaymentClick: (m: Material) => void }) {
   const ft = FILE_TYPE_CONFIG[material.fileType] || FILE_TYPE_CONFIG.link;
   const Icon = ft.icon;
   const isPaid = material.accessType === "paid";
+  
+  // Check if user has paid (simplified - in real app, you'd get user email from auth)
+  const [userEmail] = useState(() => {
+    // Try to get email from localStorage or attendance records
+    const records = JSON.parse(localStorage.getItem("att.records.v1") || "[]");
+    return records.length > 0 ? records[0].matricNumber : "";
+  });
+  const hasPaid = isPaid && hasUserPaidForMaterial(material.id, userEmail);
 
   return (
     <motion.div
@@ -202,10 +246,17 @@ function MaterialCard({ material, index }: { material: Material; index: number }
             {ft.label}
           </span>
           {isPaid ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-              <Lock className="h-3 w-3" />
-              Paid · {material.currency} {material.price.toLocaleString()}
-            </span>
+            hasPaid ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                <CheckCircle2 className="h-3 w-3" />
+                Purchased
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                <Lock className="h-3 w-3" />
+                Paid · {material.currency} {material.price.toLocaleString()}
+              </span>
+            )
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
               Free
@@ -234,21 +285,38 @@ function MaterialCard({ material, index }: { material: Material; index: number }
         </div>
 
         {/* CTA */}
-        <a
-          href={material.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-auto"
-        >
+        {isPaid && !hasPaid ? (
           <Button
-            className="w-full"
+            className="w-full mt-auto"
+            variant="default"
+            size="sm"
+            onClick={() => onPaymentClick(material)}
+          >
+            <Lock className="mr-1.5 h-3.5 w-3.5" />
+            Pay {material.currency} {material.price.toLocaleString()}
+          </Button>
+        ) : (
+          <Button
+            className="w-full mt-auto"
             variant={isPaid ? "outline" : "default"}
             size="sm"
+            onClick={() => {
+              // Only allow access if material is free OR user has paid
+              if (!isPaid || hasPaid) {
+                if (material.fileType === "pdf") {
+                  // Open PDF in new tab for inline viewing
+                  window.open(material.url, "_blank");
+                } else {
+                  // For other file types, open in new tab
+                  window.open(material.url, "_blank");
+                }
+              }
+            }}
           >
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-            {isPaid ? "View (Paid)" : "Open Material"}
+            {hasPaid ? "Access Material" : "Open Material"}
           </Button>
-        </a>
+        )}
 
         {/* Date */}
         <p className="text-center text-[10px] text-muted-foreground/70">

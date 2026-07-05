@@ -1,14 +1,48 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Mic, Send, Volume2, VolumeX, Sparkles } from "lucide-react";
+import { Mic, Send, Volume2, VolumeX, Sparkles, Repeat } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { askAttendanceAi } from "@/lib/attendance-ai.functions";
-import type { AttendanceRecord } from "@/lib/attendance-store";
+import {
+  loadRecords,
+  loadTestSubmissions,
+  syncFromSupabase,
+  type AttendanceRecord,
+  type TestSubmission,
+  type TestType,
+} from "@/lib/attendance-store";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type AiTable = { columns: string[]; rows: string[][] };
+type Msg = { role: "user" | "assistant"; content: string; table?: AiTable };
+
+// ── Response table ─────────────────────────────────────────────────────────
+function ResponseTable({ table }: { table: AiTable }) {
+  return (
+    <div className="mt-2 overflow-x-auto rounded-lg border bg-card">
+      <table className="w-full text-left text-xs">
+        <thead className="bg-secondary text-muted-foreground">
+          <tr>
+            {table.columns.map((c, i) => (
+              <th key={i} className="whitespace-nowrap px-2.5 py-1.5 font-semibold">{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, ri) => (
+            <tr key={ri} className="border-t">
+              {row.map((cell, ci) => (
+                <td key={ci} className="whitespace-nowrap px-2.5 py-1.5">{cell || "—"}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 type VoiceState = "idle" | "listening" | "thinking" | "speaking";
 
 type SpeechRecognitionLike = {
@@ -32,11 +66,12 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
 }
 
 // ── Animated orb ─────────────────────────────────────────────────────────────
-function VoiceOrb({ state, onToggle, supportsSTT, busy }: {
+function VoiceOrb({ state, onToggle, supportsSTT, busy, conversationMode }: {
   state: VoiceState;
   onToggle: () => void;
   supportsSTT: boolean;
   busy: boolean;
+  conversationMode: boolean;
 }) {
   const isListening = state === "listening";
   const isThinking  = state === "thinking";
@@ -152,7 +187,7 @@ function VoiceOrb({ state, onToggle, supportsSTT, busy }: {
             transition={{ duration: 0.2 }}
             className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium"
           >
-            {state === "idle"      && "tap to speak"}
+            {state === "idle"      && (conversationMode ? "starting…" : "tap to speak")}
             {state === "listening" && "listening…"}
             {state === "thinking"  && "thinking…"}
             {state === "speaking"  && "speaking…"}
@@ -170,11 +205,17 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
   const [input, setInput] = useState("");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [speakReplies, setSpeakReplies] = useState(true);
+  const [conversationMode, setConversationMode] = useState(false);
+  const conversationModeRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const supportsSTT = typeof window !== "undefined" && !!getSpeechRecognitionCtor();
   const supportsTTS = typeof window !== "undefined" && "speechSynthesis" in window;
   const busy = voiceState === "thinking";
+
+  useEffect(() => {
+    conversationModeRef.current = conversationMode;
+  }, [conversationMode]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -187,19 +228,67 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
     };
   }, [supportsTTS]);
 
+  function startListening() {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) return;
+    const rec = new Ctor();
+    rec.lang = "en-US";
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .map((r) => r[0]?.transcript ?? "")
+        .join(" ")
+        .trim();
+      if (transcript) {
+        void submit(transcript);
+      } else if (conversationModeRef.current) {
+        // No speech captured — keep the conversation going.
+        startListening();
+      }
+    };
+    rec.onerror = (e) => {
+      setVoiceState("idle");
+      if (e.error && e.error !== "aborted" && e.error !== "no-speech") {
+        toast.error(`Mic error: ${e.error}`);
+        setConversationMode(false);
+      } else if (e.error === "no-speech" && conversationModeRef.current) {
+        startListening();
+      }
+    };
+    rec.onend = () => { if (voiceState === "listening") setVoiceState("idle"); };
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+      setVoiceState("listening");
+    } catch {
+      setVoiceState("idle");
+    }
+  }
+
   function speak(text: string) {
-    if (!speakReplies || !supportsTTS) return;
+    if (!speakReplies || !supportsTTS) {
+      if (conversationModeRef.current) startListening();
+      return;
+    }
     try {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.rate = 1;
       u.pitch = 1;
       u.onstart = () => setVoiceState("speaking");
-      u.onend = () => setVoiceState("idle");
-      u.onerror = () => setVoiceState("idle");
+      u.onend = () => {
+        setVoiceState("idle");
+        if (conversationModeRef.current) startListening();
+      };
+      u.onerror = () => {
+        setVoiceState("idle");
+        if (conversationModeRef.current) startListening();
+      };
       window.speechSynthesis.speak(u);
     } catch {
       setVoiceState("idle");
+      if (conversationModeRef.current) startListening();
     }
   }
 
@@ -211,29 +300,60 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
     setMessages((m) => [...m, { role: "user", content: q }]);
     setVoiceState("thinking");
     try {
-      const payloadRecords = records.map((r) => ({
-        fullName: r.fullName,
-        matricNumber: r.matricNumber,
-        department: r.department,
-        phone: r.phone,
-        courseCode: r.courseCode,
-        topic: r.topic,
-        gender: r.gender,
-        submittedAt: r.submittedAt,
-        distanceMeters: r.distanceMeters,
-      }));
+      // Refresh from Supabase first so the assistant always answers from the
+      // current attendance_records / test_submissions tables, not a stale cache.
+      await syncFromSupabase();
+      const freshRecords = loadRecords();
+      const testSubmissions = loadTestSubmissions();
+      const bestByMatricAndType = new Map<string, Map<TestType, TestSubmission>>();
+      testSubmissions.forEach((s) => {
+        const key = s.matricNumber.toLowerCase();
+        const type = s.testType || "C1";
+        const byType = bestByMatricAndType.get(key) ?? new Map<TestType, TestSubmission>();
+        const existing = byType.get(type);
+        if (!existing || s.score > existing.score) byType.set(type, s);
+        bestByMatricAndType.set(key, byType);
+      });
+
+      const payloadRecords = (freshRecords.length > 0 ? freshRecords : records).map((r) => {
+        const byType = bestByMatricAndType.get(r.matricNumber.toLowerCase());
+        const c1 = byType?.get("C1");
+        const c2 = byType?.get("C2");
+        const c3 = byType?.get("C3");
+        return {
+          fullName: r.fullName,
+          matricNumber: r.matricNumber,
+          department: r.department,
+          phone: r.phone,
+          courseCode: r.courseCode,
+          topic: r.topic,
+          level: r.level,
+          gender: r.gender,
+          submittedAt: r.submittedAt,
+          distanceMeters: r.distanceMeters,
+          c1Score: c1?.score,
+          c1Total: c1?.total,
+          c2Score: c2?.score,
+          c2Total: c2?.total,
+          c3Score: c3?.score,
+          c3Total: c3?.total,
+          cheatedOnTest: c1?.cheated || c2?.cheated || c3?.cheated,
+        };
+      });
       const res = await ask({ data: { question: q, records: payloadRecords, history } });
-      setMessages((m) => [...m, { role: "assistant", content: res.text }]);
+      setMessages((m) => [...m, { role: "assistant", content: res.text, table: res.table ?? undefined }]);
       if (speakReplies && supportsTTS) {
         speak(res.text);
       } else {
         setVoiceState("idle");
+        if (conversationModeRef.current) startListening();
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
       toast.error(msg.includes("402") ? "AI credits exhausted." : "AI request failed.");
       setMessages((m) => [...m, { role: "assistant", content: "Sorry, I couldn't process that." }]);
       setVoiceState("idle");
+      if (conversationModeRef.current) startListening();
     }
   }
 
@@ -244,33 +364,26 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
       return;
     }
     if (voiceState === "listening") {
+      setConversationMode(false);
       try { recognitionRef.current?.stop(); } catch { /* ignore */ }
       setVoiceState("idle");
       return;
     }
-    const rec = new Ctor();
-    rec.lang = "en-US";
-    rec.interimResults = false;
-    rec.continuous = false;
-    rec.onresult = (e) => {
-      const transcript = Array.from(e.results)
-        .map((r) => r[0]?.transcript ?? "")
-        .join(" ")
-        .trim();
-      if (transcript) void submit(transcript);
-    };
-    rec.onerror = (e) => {
-      setVoiceState("idle");
-      if (e.error && e.error !== "aborted" && e.error !== "no-speech") {
-        toast.error(`Mic error: ${e.error}`);
-      }
-    };
-    rec.onend = () => { if (voiceState === "listening") setVoiceState("idle"); };
-    recognitionRef.current = rec;
-    try {
-      rec.start();
-      setVoiceState("listening");
-    } catch {
+    startListening();
+  }
+
+  function toggleConversationMode() {
+    if (!supportsSTT) {
+      toast.error("Voice input isn't supported in this browser. Try Chrome.");
+      return;
+    }
+    const next = !conversationMode;
+    setConversationMode(next);
+    if (next && voiceState === "idle") {
+      startListening();
+    }
+    if (!next && voiceState === "listening") {
+      try { recognitionRef.current?.stop(); } catch { /* ignore */ }
       setVoiceState("idle");
     }
   }
@@ -284,23 +397,39 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
         <h2 className="flex items-center gap-2 text-base font-semibold">
           <Sparkles className="h-4 w-4 text-[color:var(--color-primary)]" />
           AI attendance assistant
+          {conversationMode && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+              Conversation mode
+            </span>
+          )}
         </h2>
-        {supportsTTS && (
-          <button
-            onClick={() => { setSpeakReplies((v) => !v); if (speakReplies) window.speechSynthesis.cancel(); }}
-            className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-            title={speakReplies ? "Mute voice replies" : "Unmute voice replies"}
-          >
-            {speakReplies ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {supportsSTT && (
+            <button
+              onClick={toggleConversationMode}
+              className={`rounded-lg p-1.5 transition-colors ${conversationMode ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+              title={conversationMode ? "Turn off hands-free conversation mode" : "Turn on hands-free conversation mode"}
+            >
+              <Repeat className="h-4 w-4" />
+            </button>
+          )}
+          {supportsTTS && (
+            <button
+              onClick={() => { setSpeakReplies((v) => !v); if (speakReplies) window.speechSynthesis.cancel(); }}
+              className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              title={speakReplies ? "Mute voice replies" : "Unmute voice replies"}
+            >
+              {speakReplies ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </button>
+          )}
+        </div>
       </div>
 
       <div
         className="flex flex-col items-center py-8 px-5"
         style={{ background: "radial-gradient(ellipse at 50% 0%, hsl(var(--primary)/0.07) 0%, transparent 70%)" }}
       >
-        <VoiceOrb state={voiceState} onToggle={toggleListening} supportsSTT={supportsSTT} busy={busy} />
+        <VoiceOrb state={voiceState} onToggle={toggleListening} supportsSTT={supportsSTT} busy={busy} conversationMode={conversationMode} />
         <p className="mt-10 text-center text-xs text-muted-foreground max-w-xs">
           Ask things like <em>"Who from Computer Science signed in?"</em> or <em>"How many female students?"</em>
         </p>
@@ -324,10 +453,11 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
               className={
                 m.role === "user"
                   ? "ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-sm text-primary-foreground"
-                  : "mr-auto max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm border bg-card px-3 py-2 text-sm shadow-soft"
+                  : "mr-auto w-full max-w-full whitespace-pre-wrap rounded-2xl rounded-bl-sm border bg-card px-3 py-2 text-sm shadow-soft"
               }
             >
               {m.content}
+              {m.table && <ResponseTable table={m.table} />}
             </motion.div>
           ))
         )}

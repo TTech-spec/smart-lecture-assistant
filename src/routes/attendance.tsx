@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { MapPin, Loader2, CheckCircle2, ShieldAlert, ArrowLeft, Navigation } from "lucide-react";
+import { MapPin, Loader2, CheckCircle2, ShieldAlert, ArrowLeft, Navigation, PenLine, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +68,8 @@ function AttendancePage() {
   const [now, setNow] = useState(() => new Date());
   const [gpsStatus, setGpsStatus] = useState<"idle" | "checking" | "ok" | "far" | "error">("idle");
   const [gpsDistance, setGpsDistance] = useState<number | null>(null);
+  const [levelManual, setLevelManual] = useState(false);
+  const [deptManual, setDeptManual] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
@@ -109,12 +111,18 @@ function AttendancePage() {
       const raw  = distanceMeters(pos, classPos);
       const eff  = effectiveDistance(pos, classPos);
       setGpsDistance(Math.round(raw));
+      const sourceLabel = pos.source === "ip" ? " (IP-based location — less precise)" : "";
       if (eff <= settings.radiusMeters) {
         setGpsStatus("ok");
-        toast.success(`You're ${formatDistance(raw)} away — within range.`);
+        toast.success(`You're ${formatDistance(raw)} away — within range.${sourceLabel}`);
       } else {
         setGpsStatus("far");
-        toast.error(`You're ${formatDistance(raw)} away — must be within ${settings.radiusMeters}m.`);
+        toast.error(
+          `You're ${formatDistance(raw)} away — must be within ${settings.radiusMeters}m of class.` +
+          (pos.source === "ip"
+            ? " Your browser denied GPS so IP location is being used, which may be inaccurate. Please allow location access and try again."
+            : sourceLabel)
+        );
       }
     } catch (err) {
       setGpsStatus("error");
@@ -163,7 +171,12 @@ function AttendancePage() {
       if (eff > settings.radiusMeters) {
         setGpsStatus("far");
         setGpsDistance(Math.round(dist));
-        toast.error(`You're ${formatDistance(dist)} away. Must be within ${settings.radiusMeters}m of class.`);
+        toast.error(
+          `You're ${formatDistance(dist)} away. Must be within ${settings.radiusMeters}m of class.` +
+          (pos.source === "ip"
+            ? " Your browser denied GPS so IP location is being used, which may be inaccurate. Please allow location access and try again."
+            : "")
+        );
         setSubmitting(false);
         return;
       }
@@ -280,17 +293,56 @@ function AttendancePage() {
             <Input value={form.matricNumber} onChange={(e) => update("matricNumber", e.target.value)} placeholder="CSC/2021/001" />
           </Field>
           <Field label="Department">
-            {(settings.departments || []).length > 0 ? (
-              <Select value={form.department} onValueChange={(v) => update("department", v)}>
-                <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
-                <SelectContent>
-                  {(settings.departments || []).map((d) => (
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {deptManual ? (
+              <div className="flex gap-2">
+                <Input
+                  value={form.department}
+                  onChange={(e) => update("department", e.target.value)}
+                  placeholder="e.g. Computer Science"
+                  className="flex-1"
+                  autoFocus
+                />
+                {(settings.departments || []).length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 px-2.5"
+                    onClick={() => { setDeptManual(false); update("department", ""); }}
+                    title="Switch to dropdown"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ) : (settings.departments || []).length > 0 ? (
+              <div className="flex gap-2">
+                <Select value={form.department} onValueChange={(v) => update("department", v)}>
+                  <SelectTrigger className="flex-1 w-full"><SelectValue placeholder="Select department" /></SelectTrigger>
+                  <SelectContent>
+                    {(settings.departments || []).map((d) => (
+                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 px-2.5"
+                  onClick={() => { setDeptManual(true); update("department", ""); }}
+                  title="Type department manually"
+                >
+                  <PenLine className="h-4 w-4" />
+                </Button>
+              </div>
             ) : (
               <Input value={form.department} onChange={(e) => update("department", e.target.value)} placeholder="Computer Science" />
+            )}
+            {(settings.departments || []).length > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {deptManual ? "Type your department, then tap the arrow to switch back to dropdown." : "Not in the list? Tap the pen icon to type manually."}
+              </p>
             )}
           </Field>
           <Field label="Phone number">
