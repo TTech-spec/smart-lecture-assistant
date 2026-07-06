@@ -105,14 +105,20 @@ function GenerateLinkForm({
   onCreated: (link: AttendanceLink) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [courseCode, setCourseCode] = useState(courses[0] || "");
+  const [courseCode, setCourseCode] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [expiryMinutes, setExpiryMinutes] = useState(15);
   const [creating, setCreating] = useState(false);
+
+  // Suggestions: courses that match what's been typed
+  const suggestions = courses.filter(
+    (c) => c.toLowerCase().includes(courseCode.toLowerCase()) && c !== courseCode.toUpperCase()
+  );
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return toast.error("Enter a title for this link.");
-    if (!courseCode.trim()) return toast.error("Select or enter a course.");
+    if (!courseCode.trim()) return toast.error("Enter a course code.");
     setCreating(true);
     try {
       const now = new Date();
@@ -130,6 +136,7 @@ function GenerateLinkForm({
       await addLink(link);
       toast.success(`Link "${link.title}" created and saved to database.`);
       setTitle("");
+      setCourseCode("");
       onCreated(link);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -164,22 +171,40 @@ function GenerateLinkForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label className="text-sm">Course</Label>
-          {courses.length > 0 ? (
-            <Select value={courseCode} onValueChange={setCourseCode}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Select course" /></SelectTrigger>
-              <SelectContent>
-                {courses.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          ) : (
+          <Label className="text-sm">Course code</Label>
+          {/* Free-type combobox — works for any number of courses */}
+          <div className="relative mt-1">
             <Input
-              className="mt-1"
               value={courseCode}
-              onChange={(e) => setCourseCode(e.target.value.toUpperCase())}
-              placeholder="e.g. PSY101"
+              onChange={(e) => {
+                setCourseCode(e.target.value.toUpperCase());
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              placeholder="e.g. PSY101, CSC401…"
+              autoComplete="off"
             />
-          )}
+            {/* Suggestions dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute z-20 mt-1 w-full rounded-xl border bg-card shadow-soft overflow-hidden">
+                {suggestions.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { setCourseCode(c); setShowSuggestions(false); }}
+                    className="flex w-full items-center px-3 py-2 text-sm hover:bg-secondary transition-colors text-left"
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Type any course — saved courses appear as suggestions.
+          </p>
         </div>
         <div>
           <Label className="text-sm">Expires in</Label>
