@@ -18,7 +18,8 @@ import {
 import {
   saveRecords, addRecord, syncRecord, deleteRecordById, clearAllRecords,
   loadTestSubmissions, loadSettings, saveTestSubmissions, syncTestSubmission,
-  type AttendanceRecord, type AttendanceLink, type Gender, type TestSubmission, type TestType,
+  type AttendanceRecord, type AttendanceLink, type Gender,
+  type TestSubmission, type TestType,
 } from "@/lib/attendance-store";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
@@ -29,10 +30,9 @@ export const Route = createFileRoute("/admin/records")({
 });
 
 const TEST_TYPES: TestType[] = ["C1", "C2", "C3"];
-
-// ── CSV / JSON export ─────────────────────────────────────────────────────────
 type TestResultsByType = Partial<Record<TestType, TestSubmission>>;
 
+// ── CSV export ────────────────────────────────────────────────────────────────
 function exportCSV(
   records: AttendanceRecord[],
   testResultMap: Map<string, TestResultsByType>,
@@ -49,7 +49,11 @@ function exportCSV(
     const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
     const typeCols = TEST_TYPES.flatMap((t) => {
       const res = byType[t];
-      return [res ? String(res.score) : "", res ? String(res.total) : "", res ? (res.cheated ? "Yes" : "No") : ""];
+      return [
+        res ? String(res.score) : "",
+        res ? String(res.total) : "",
+        res ? (res.cheated ? "Yes" : "No") : "",
+      ];
     });
     return [
       r.fullName, r.matricNumber, r.department, r.level || "",
@@ -63,7 +67,7 @@ function exportCSV(
   const csv = [headers, ...rows]
     .map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
     .join("\n");
-  const blob = new Blob(["" + csv], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -73,6 +77,7 @@ function exportCSV(
   toast.success(`Exported ${records.length} record${records.length !== 1 ? "s" : ""} to CSV`);
 }
 
+// ── JSON export ───────────────────────────────────────────────────────────────
 function exportJSON(
   records: AttendanceRecord[],
   testResultMap: Map<string, TestResultsByType>,
@@ -91,7 +96,79 @@ function exportJSON(
   toast.success(`Exported ${records.length} record${records.length !== 1 ? "s" : ""} to JSON`);
 }
 
-// ── Record form ───────────────────────────────────────────────────────────────
+// ── PDF export ────────────────────────────────────────────────────────────────
+async function exportPDF(
+  records: AttendanceRecord[],
+  testResultMap: Map<string, TestResultsByType>,
+  linkMap: Map<string, string>,
+) {
+  const { default: jsPDF } = await import("jspdf");
+  const { default: autoTable } = await import("jspdf-autotable");
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const dateStr = new Date().toLocaleDateString();
+
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.text("Attendance Records", 14, 16);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100);
+  doc.text(`Generated: ${dateStr}  ·  ${records.length} record${records.length !== 1 ? "s" : ""}`, 14, 22);
+  doc.setTextColor(0);
+
+  const head = [["#", "Name", "Matric", "Dept", "Level", "Course", "Gender", "Phone", "Class Code", "Link Used", "C1", "C2", "C3", "Time"]];
+
+  const body = records.map((r, i) => {
+    const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
+    const fmtTest = (t: TestType) => {
+      const res = byType[t];
+      if (!res) return "—";
+      if (res.cheated) return "Cheat";
+      return `${res.score}/${res.total}`;
+    };
+    return [
+      String(i + 1), r.fullName, r.matricNumber, r.department,
+      r.level ? `${r.level}L` : "—", r.courseCode,
+      r.gender.charAt(0).toUpperCase(), r.phone || "—",
+      r.assignedClassCode || "—",
+      r.linkId ? (linkMap.get(r.linkId) ?? "—") : "—",
+      fmtTest("C1"), fmtTest("C2"), fmtTest("C3"),
+      new Date(r.submittedAt).toLocaleString(),
+    ];
+  });
+
+  autoTable(doc, {
+    head, body, startY: 27,
+    styles: { fontSize: 7, cellPadding: 2 },
+    headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [245, 245, 255] },
+    columnStyles: {
+      0: { cellWidth: 8 },  1: { cellWidth: 32 }, 2: { cellWidth: 26 },
+      3: { cellWidth: 26 }, 4: { cellWidth: 12 }, 5: { cellWidth: 18 },
+      6: { cellWidth: 12 }, 7: { cellWidth: 22 }, 8: { cellWidth: 18 },
+      9: { cellWidth: 24 }, 10: { cellWidth: 12 }, 11: { cellWidth: 12 },
+      12: { cellWidth: 12 }, 13: { cellWidth: 34 },
+    },
+    didParseCell: (data) => {
+      if (data.section === "body" && [10, 11, 12].includes(data.column.index) && data.cell.raw === "Cheat") {
+        data.cell.styles.textColor = [220, 38, 38];
+        data.cell.styles.fontStyle = "bold";
+      }
+    },
+    didDrawPage: (data) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      doc.setFontSize(7);
+      doc.setTextColor(150);
+      doc.text(`Page ${data.pageNumber} of ${pageCount}`, data.settings.margin.left, doc.internal.pageSize.getHeight() - 5);
+    },
+  });
+
+  doc.save(`attendance-${new Date().toISOString().slice(0, 10)}.pdf`);
+  toast.success(`Exported ${records.length} record${records.length !== 1 ? "s" : ""} to PDF`);
+}
+
 type RecordDraft = {
   fullName: string; matricNumber: string; department: string; phone: string;
   courseCode: string; topic: string; level: string; gender: Gender | "";
@@ -104,27 +181,16 @@ const emptyDraft: RecordDraft = {
 
 function recordToDraft(r: AttendanceRecord): RecordDraft {
   return {
-    fullName: r.fullName,
-    matricNumber: r.matricNumber,
-    department: r.department,
-    phone: r.phone,
-    courseCode: r.courseCode,
-    topic: r.topic,
-    level: r.level || "",
-    gender: r.gender,
+    fullName: r.fullName, matricNumber: r.matricNumber, department: r.department,
+    phone: r.phone, courseCode: r.courseCode, topic: r.topic,
+    level: r.level || "", gender: r.gender,
   };
 }
 
-function RecordModal({
-  mode,
-  initial,
-  onSave,
-  onClose,
-}: {
-  mode: "add" | "edit";
-  initial: RecordDraft;
-  onSave: (d: RecordDraft) => void;
-  onClose: () => void;
+// ── Add / Edit record modal ───────────────────────────────────────────────────
+function RecordModal({ mode, initial, onSave, onClose }: {
+  mode: "add" | "edit"; initial: RecordDraft;
+  onSave: (d: RecordDraft) => void; onClose: () => void;
 }) {
   const [d, setD] = useState<RecordDraft>(initial);
   const u = <K extends keyof RecordDraft>(k: K, v: RecordDraft[K]) =>
@@ -132,11 +198,11 @@ function RecordModal({
 
   function save(e: { preventDefault(): void }) {
     e.preventDefault();
-    if (!d.fullName.trim()) return toast.error("Full name is required.");
+    if (!d.fullName.trim())    return toast.error("Full name is required.");
     if (!d.matricNumber.trim()) return toast.error("Matric number is required.");
-    if (!d.department.trim()) return toast.error("Department is required.");
-    if (!d.courseCode.trim()) return toast.error("Course code is required.");
-    if (!d.gender) return toast.error("Gender is required.");
+    if (!d.department.trim())  return toast.error("Department is required.");
+    if (!d.courseCode.trim())  return toast.error("Course code is required.");
+    if (!d.gender)             return toast.error("Gender is required.");
     onSave(d);
   }
 
@@ -209,11 +275,7 @@ function RecordModal({
 }
 
 // ── Test result edit modal ────────────────────────────────────────────────────
-function TestResultModal({
-  submission,
-  onSave,
-  onClose,
-}: {
+function TestResultModal({ submission, onSave, onClose }: {
   submission: TestSubmission;
   onSave: (updated: TestSubmission) => void;
   onClose: () => void;
@@ -268,7 +330,7 @@ function TestResultModal({
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Main records page ─────────────────────────────────────────────────────────
 function RecordsPage() {
   const { records, testSubmissions, settings, links } = useStore();
   const [matric, setMatric] = useState("");
@@ -282,25 +344,20 @@ function RecordsPage() {
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [editingTestResult, setEditingTestResult] = useState<TestSubmission | null>(null);
 
-  // Map linkId → link title for display/export
   const linkMap = useMemo(() => {
     const m = new Map<string, string>();
     links.forEach((l: AttendanceLink) => m.set(l.id, l.title));
     return m;
   }, [links]);
 
-  // Links that appear in at least one record (for the filter dropdown)
   const usedLinks = useMemo(() => {
     const ids = new Set(records.map((r) => r.linkId).filter(Boolean) as string[]);
     return links.filter((l: AttendanceLink) => ids.has(l.id));
   }, [records, links]);
 
-  // Unique class codes that have been assigned (for the filter dropdown)
-  const usedClassCodes = useMemo(() => {
-    return Array.from(
-      new Set(records.map((r) => r.assignedClassCode).filter(Boolean) as string[])
-    ).sort();
-  }, [records]);
+  const usedClassCodes = useMemo(() =>
+    Array.from(new Set(records.map((r) => r.assignedClassCode).filter(Boolean) as string[])).sort(),
+  [records]);
 
   const testResultMap = useMemo(() => {
     const all = testSubmissions.length > 0 ? testSubmissions : loadTestSubmissions();
@@ -310,9 +367,8 @@ function RecordsPage() {
       const type = s.testType || "C1";
       const existing = map.get(key) ?? {};
       const existingForType = existing[type];
-      if (!existingForType || s.score > existingForType.score) {
+      if (!existingForType || s.score > existingForType.score)
         map.set(key, { ...existing, [type]: s });
-      }
     });
     return map;
   }, [testSubmissions]);
@@ -340,28 +396,21 @@ function RecordsPage() {
         if (level !== "all" && (r.level || "") !== level) return false;
         if (course !== "all" && r.courseCode !== course) return false;
         if (linkFilter !== "all") {
-          if (linkFilter === "__none__") {
-            if (r.linkId) return false;
-          } else {
-            if (r.linkId !== linkFilter) return false;
-          }
+          if (linkFilter === "__none__") { if (r.linkId) return false; }
+          else { if (r.linkId !== linkFilter) return false; }
         }
         if (classCodeFilter !== "all") {
-          if (classCodeFilter === "__none__") {
-            if (r.assignedClassCode) return false;
-          } else {
-            if (r.assignedClassCode !== classCodeFilter) return false;
-          }
+          if (classCodeFilter === "__none__") { if (r.assignedClassCode) return false; }
+          else { if (r.assignedClassCode !== classCodeFilter) return false; }
         }
         return true;
       });
-  }, [records, matric, dept, gender, level, course, linkFilter]);
+  }, [records, matric, dept, gender, level, course, linkFilter, classCodeFilter]);
 
   function resetFilters() {
     setMatric(""); setDept("all"); setGender("all");
     setLevel("all"); setCourse("all"); setLinkFilter("all"); setClassCodeFilter("all");
   }
-
   function clearAll() {
     if (!confirm("Clear ALL attendance records? This cannot be undone.")) return;
     clearAllRecords(); toast.success("All records cleared.");
@@ -376,8 +425,7 @@ function RecordsPage() {
 
   function handleSaveTestResult(updated: TestSubmission) {
     const all = loadTestSubmissions();
-    const next = all.map((s) => (s.id === updated.id ? updated : s));
-    saveTestSubmissions(next);
+    saveTestSubmissions(all.map((s) => (s.id === updated.id ? updated : s)));
     syncTestSubmission(updated);
     setEditingTestResult(null);
     toast.success("Test result updated and synced.");
@@ -385,7 +433,7 @@ function RecordsPage() {
 
   async function handleSave(draft: RecordDraft) {
     if (modalMode === "add") {
-      const newRecord: AttendanceRecord = {
+      const newRec: AttendanceRecord = {
         id: `manual-${Date.now()}`,
         fullName: draft.fullName.trim(),
         matricNumber: draft.matricNumber.trim().toUpperCase(),
@@ -397,18 +445,14 @@ function RecordsPage() {
         gender: draft.gender as Gender,
         submittedAt: new Date().toISOString(),
         dayKey: new Date().toISOString().slice(0, 10),
-        deviceId: "manual",
-        distanceMeters: 0,
-        lat: 0, lng: 0,
-        sessionId: "",
-        customFields: {},
+        deviceId: "manual", distanceMeters: 0, lat: 0, lng: 0,
+        sessionId: "", customFields: {},
       };
       try {
-        await addRecord(newRecord);
+        await addRecord(newRec);
         toast.success("Record added and synced to database.");
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Database error";
-        toast.error(`Could not save to database: ${msg}`);
+        toast.error(`Could not save: ${err instanceof Error ? err.message : "Database error"}`);
         return;
       }
     } else if (editingRecord) {
@@ -425,13 +469,14 @@ function RecordsPage() {
       };
       saveRecords(records.map((r) => (r.id === updated.id ? updated : r)));
       syncRecord(updated);
-      toast.success("Record updated and synced to database.");
+      toast.success("Record updated and synced.");
     }
     closeModal();
   }
 
   return (
     <main className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+      {/* ── Header ── */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
         className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -456,6 +501,9 @@ function RecordsPage() {
               <DropdownMenuItem onClick={() => exportJSON(filtered, testResultMap)}>
                 <FileText className="mr-2 h-4 w-4" /> Download JSON
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportPDF(filtered, testResultMap, linkMap)}>
+                <FileText className="mr-2 h-4 w-4" /> Download PDF
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button variant="outline" size="sm" onClick={clearAll} className="text-destructive hover:text-destructive">
@@ -464,6 +512,7 @@ function RecordsPage() {
         </div>
       </motion.div>
 
+      {/* ── Voice assistant ── */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.4 }} className="mt-5">
         <VoiceAssistant records={records} />
       </motion.div>
@@ -543,9 +592,7 @@ function RecordsPage() {
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="__none__">No code yet</SelectItem>
-                {usedClassCodes.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
+                {usedClassCodes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -605,39 +652,33 @@ function RecordsPage() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-xs font-mono font-semibold text-violet-700 dark:text-violet-400">
                             <KeyRound className="h-3 w-3" />{r.assignedClassCode}
                           </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {linkTitle ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">
                             <Link2 className="h-3 w-3" />{linkTitle}
                           </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                       {TEST_TYPES.map((t) => {
-                        const testResult = byType[t];
+                        const res = byType[t];
                         return (
                           <td key={t} className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
-                              {testResult ? (
-                                testResult.cheated ? (
+                              {res ? (
+                                res.cheated ? (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
                                     <XCircle className="h-3 w-3" /> Cheated
                                   </span>
                                 ) : (
-                                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${testResult.score / testResult.total >= 0.5 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}>
-                                    <CheckCircle2 className="h-3 w-3" />{testResult.score}/{testResult.total}
+                                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${res.score / res.total >= 0.5 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}>
+                                    <CheckCircle2 className="h-3 w-3" />{res.score}/{res.total}
                                   </span>
                                 )
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                              {testResult && (
-                                <button onClick={() => setEditingTestResult(testResult)}
+                              ) : <span className="text-xs text-muted-foreground">—</span>}
+                              {res && (
+                                <button onClick={() => setEditingTestResult(res)}
                                   className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                                   title={`Edit ${t} result`}>
                                   <Pencil className="h-3 w-3" />
@@ -652,12 +693,12 @@ function RecordsPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => openEdit(r)}
-                            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Edit record">
+                          <button onClick={() => openEdit(r)} title="Edit record"
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={() => deleteRecord(r.id)}
-                            className="rounded-md p-1.5 text-muted-foreground hover:bg-red-50 hover:text-destructive transition-colors" title="Delete record">
+                          <button onClick={() => deleteRecord(r.id)} title="Delete record"
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-red-50 hover:text-destructive transition-colors">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -682,22 +723,14 @@ function RecordsPage() {
 
       <AnimatePresence>
         {modalMode && (
-          <RecordModal
-            mode={modalMode}
-            initial={editingRecord ? recordToDraft(editingRecord) : emptyDraft}
-            onSave={handleSave}
-            onClose={closeModal}
-          />
+          <RecordModal mode={modalMode} initial={editingRecord ? recordToDraft(editingRecord) : emptyDraft}
+            onSave={handleSave} onClose={closeModal} />
         )}
       </AnimatePresence>
-
       <AnimatePresence>
         {editingTestResult && (
-          <TestResultModal
-            submission={editingTestResult}
-            onSave={handleSaveTestResult}
-            onClose={() => setEditingTestResult(null)}
-          />
+          <TestResultModal submission={editingTestResult}
+            onSave={handleSaveTestResult} onClose={() => setEditingTestResult(null)} />
         )}
       </AnimatePresence>
     </main>
