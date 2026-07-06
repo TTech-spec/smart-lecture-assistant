@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import {
   loadMaterials, addMaterial, deleteMaterial, syncMaterialsFromSupabase,
-  type Material, type MaterialFileType, type MaterialAccessType,
+  uploadMaterialFile, type Material, type MaterialFileType, type MaterialAccessType,
 } from "@/lib/materials-store";
 
 export const Route = createFileRoute("/admin/materials")({
@@ -105,15 +105,10 @@ function MaterialsAdmin() {
     try {
       let finalUrl = draft.url.trim();
       
-      // If file is uploaded, convert to base64 for storage
+      // If file is uploaded, store it in Supabase Storage
       if (draft.file) {
-        const reader = new FileReader();
-        const filePromise = new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(draft.file as File);
-        });
-        finalUrl = await filePromise;
+        const tempId = crypto.randomUUID();
+        finalUrl = await uploadMaterialFile(draft.file, tempId);
       }
 
       await addMaterial({
@@ -315,7 +310,7 @@ function MaterialsAdmin() {
                   onChange={(e) => upd("file", e.target.files?.[0] || null)}
                   className="mt-1.5"
                 />
-                <p className="mt-1 text-xs text-muted-foreground">Upload a file directly. Max size: 10MB.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Upload a file directly. Stored in Supabase Storage. Recommended max: 50MB.</p>
               </div>
 
               {/* URL */}

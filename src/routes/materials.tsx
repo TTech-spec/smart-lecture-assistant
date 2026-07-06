@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft, BookOpen, FileText, Video, Globe,
   File, Lock, ExternalLink, Search, GraduationCap, CheckCircle2,
+  X, Download,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ function MaterialsPage() {
     const records = JSON.parse(localStorage.getItem("att.records.v1") || "[]");
     return records.length > 0 ? records[0].matricNumber : "";
   });
+  const [viewer, setViewer] = useState<{ open: boolean; material: Material | null }>({ open: false, material: null });
   const [paymentModal, setPaymentModal] = useState<{
     open: boolean;
     materialId: string;
@@ -185,6 +187,7 @@ function MaterialsPage() {
                 material={material} 
                 index={i} 
                 userMatric={userMatric}
+                onView={(m) => setViewer({ open: true, material: m })}
                 onPaymentClick={(m) => setPaymentModal({
                   open: true,
                   materialId: m.id,
@@ -195,6 +198,14 @@ function MaterialsPage() {
               />
             ))}
           </div>
+        )}
+
+        {/* Material viewer modal */}
+        {viewer.open && viewer.material && (
+          <MaterialViewer
+            material={viewer.material}
+            onClose={() => setViewer({ open: false, material: null })}
+          />
         )}
 
         {/* Count */}
@@ -221,7 +232,7 @@ function MaterialsPage() {
   );
 }
 
-function MaterialCard({ material, index, userMatric, onPaymentClick }: { material: Material; index: number; userMatric: string; onPaymentClick: (m: Material) => void }) {
+function MaterialCard({ material, index, userMatric, onView, onPaymentClick }: { material: Material; index: number; userMatric: string; onView: (m: Material) => void; onPaymentClick: (m: Material) => void }) {
   const ft = FILE_TYPE_CONFIG[material.fileType] || FILE_TYPE_CONFIG.link;
   const Icon = ft.icon;
   const isPaid = material.accessType === "paid";
@@ -302,14 +313,11 @@ function MaterialCard({ material, index, userMatric, onPaymentClick }: { materia
             variant={isPaid ? "outline" : "default"}
             size="sm"
             onClick={() => {
-              // Only allow access if material is free OR user has paid
               if (!isPaid || hasPaid) {
-                if (material.fileType === "pdf") {
-                  // Open PDF in new tab for inline viewing
-                  window.open(material.url, "_blank");
+                if (material.fileType === "link" || material.fileType === "video") {
+                  window.open(material.url, "_blank", "noopener,noreferrer");
                 } else {
-                  // For other file types, open in new tab
-                  window.open(material.url, "_blank");
+                  onView(material);
                 }
               }
             }}
@@ -325,5 +333,78 @@ function MaterialCard({ material, index, userMatric, onPaymentClick }: { materia
         </p>
       </div>
     </motion.div>
+  );
+}
+
+// ── Material inline viewer ──────────────────────────────────────────────────
+function MaterialViewer({ material, onClose }: { material: Material; onClose: () => void }) {
+  // Build the viewer URL based on file type and URL
+  function getViewerUrl(): string {
+    const url = material.url;
+    // Base64 data URLs — use directly in iframe
+    if (url.startsWith("data:")) return url;
+    // For doc/ppt use Google Docs viewer; for pdf use the URL directly
+    if (material.fileType === "doc" || material.fileType === "ppt") {
+      return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+    }
+    // PDF — use directly
+    return url;
+  }
+
+  const viewerUrl = getViewerUrl();
+  const isGoogleViewer = viewerUrl.startsWith("https://docs.google.com");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 bg-card px-4 py-3 shadow-md shrink-0">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold truncate text-sm">{material.title}</p>
+          {material.courseCode && (
+            <p className="text-xs text-muted-foreground">{material.courseCode}{material.topic ? ` · ${material.topic}` : ""}</p>
+          )}
+        </div>
+        <a
+          href={material.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          className="inline-flex items-center gap-1.5 rounded-lg border bg-secondary px-3 py-1.5 text-xs font-medium hover:bg-secondary/80 transition-colors"
+        >
+          <Download className="h-3.5 w-3.5" /> Download
+        </a>
+        <button
+          onClick={onClose}
+          className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          aria-label="Close viewer"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Viewer */}
+      <div className="flex-1 overflow-hidden bg-gray-100 dark:bg-gray-900">
+        {isGoogleViewer ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+            <iframe
+              src={viewerUrl}
+              className="h-full w-full border-0"
+              title={material.title}
+              allow="fullscreen"
+            />
+          </div>
+        ) : (
+          <iframe
+            src={viewerUrl}
+            className="h-full w-full border-0"
+            title={material.title}
+            allow="fullscreen"
+          />
+        )}
+      </div>
+    </div>
   );
 }

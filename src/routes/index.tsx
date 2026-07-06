@@ -10,6 +10,7 @@ import { motion, AnimatePresence, type Variants } from "framer-motion";
 import * as THREE from "three";
 import { toast } from "sonner";
 import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -170,6 +171,7 @@ function Landing() {
   const [codeLevel, setCodeLevel] = useState("");
   const [codeRevealed, setCodeRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [codeChecking, setCodeChecking] = useState(false);
 
   useEffect(() => {
     const syncTests = () => setActiveTest(getActiveTest());
@@ -188,45 +190,69 @@ function Landing() {
     setCodeName(""); setCodeMatric(""); setCodeLevel(""); setCodeRevealed(false); setCopied(false);
   }
 
-  function requestCode(e: { preventDefault(): void }) {
+  async function requestCode(e: { preventDefault(): void }) {
     e.preventDefault();
     if (!codeName.trim()) { toast.error("Enter your full name."); return; }
     if (!codeMatric.trim()) { toast.error("Enter your matric number."); return; }
     if (!codeLevel.trim()) { toast.error("Select your level."); return; }
-    
-    // Check if student has marked attendance first
-    const student = findStudentByMatric(codeMatric);
-    if (!student) {
-      toast.error("You must mark attendance first before you can get a class code. Please sign attendance and try again.");
-      return;
+
+    setCodeChecking(true);
+    try {
+      // First check localStorage (same device that submitted attendance)
+      let student = findStudentByMatric(codeMatric);
+
+      // If not found locally, fall back to Supabase (different device or cleared storage)
+      if (!student && supabase) {
+        const { data } = await supabase
+          .from("attendance_records")
+          .select("full_name, level, matric_number")
+          .ilike("matric_number", codeMatric.trim())
+          .limit(1)
+          .maybeSingle();
+        if (data) {
+          student = {
+            id: "", fullName: data.full_name, matricNumber: data.matric_number,
+            department: "", phone: "", courseCode: "", topic: "", level: data.level || "",
+            gender: "other", submittedAt: "", dayKey: "", deviceId: "",
+            distanceMeters: 0, lat: 0, lng: 0, sessionId: "", customFields: {},
+          };
+        }
+      }
+
+      if (!student) {
+        toast.error("You must mark attendance first before you can get a class code. Please sign attendance and try again.");
+        return;
+      }
+
+      // Verify the name and level match the attendance record
+      if (student.fullName.toLowerCase() !== codeName.trim().toLowerCase()) {
+        toast.error("The name you entered doesn't match your attendance record. Please use the same name you used to sign attendance.");
+        return;
+      }
+
+      if (student.level !== codeLevel) {
+        toast.error("The level you entered doesn't match your attendance record. Please use the same level you used to sign attendance.");
+        return;
+      }
+
+      if (hasUsedClassCode(codeMatric)) {
+        toast.error("You have already received your class code. You cannot generate a class code twice.");
+        return;
+      }
+
+      if (settings.classCodeLevel && codeLevel !== settings.classCodeLevel) {
+        toast.error(`This class code is for ${settings.classCodeLevel} Level students only.`);
+        return;
+      }
+
+      // Update the student's attendance record with the class code
+      updateStudentClassCode(codeMatric, settings.classCode);
+      markClassCodeUsed(codeMatric);
+      setCodeRevealed(true);
+      toast.success("Class code assigned to your attendance record!");
+    } finally {
+      setCodeChecking(false);
     }
-    
-    // Verify the name and level match the attendance record
-    if (student.fullName.toLowerCase() !== codeName.toLowerCase()) {
-      toast.error("The name you entered doesn't match your attendance record. Please use the same name you used to sign attendance.");
-      return;
-    }
-    
-    if (student.level !== codeLevel) {
-      toast.error("The level you entered doesn't match your attendance record. Please use the same level you used to sign attendance.");
-      return;
-    }
-    
-    if (hasUsedClassCode(codeMatric)) {
-      toast.error("You have already received your class code. You cannot generate a class code twice.");
-      return;
-    }
-    
-    if (settings.classCodeLevel && codeLevel !== settings.classCodeLevel) {
-      toast.error(`This class code is for ${settings.classCodeLevel} Level students only.`);
-      return;
-    }
-    
-    // Update the student's attendance record with the class code
-    updateStudentClassCode(codeMatric, settings.classCode);
-    markClassCodeUsed(codeMatric);
-    setCodeRevealed(true);
-    toast.success("Class code assigned to your attendance record!");
   }
 
   function copyCode() {
@@ -407,8 +433,8 @@ function Landing() {
                         <option value="">Select your level</option>
                         {["100","200","300","400","500","600"].map((l) => <option key={l} value={l}>{l} Level</option>)}
                       </select>
-                      <Button type="submit" className="w-full" disabled={!codeName.trim() || !codeMatric.trim() || !codeLevel}>
-                        Get class code
+                      <Button type="submit" className="w-full" disabled={codeChecking || !codeName.trim() || !codeMatric.trim() || !codeLevel}>
+                        {codeChecking ? "Checking…" : "Get class code"}
                       </Button>
                     </form>
                   </motion.div>

@@ -387,9 +387,10 @@ export function closeSession(id: string, closedAt: string) {
 }
 
 export function clearSessions() {
-  localStorage.removeItem(SES_KEY);
-  window.dispatchEvent(new Event("att:sessions"));
-  sync(supabase?.from("attendance_sessions").delete().gte("created_at", "1970-01-01T00:00:00Z"));
+  saveSessions([]);
+  // Mark that sessions were intentionally cleared so syncFromSupabase won't re-populate them
+  localStorage.setItem("att.sessions.cleared.v1", "true");
+  sync(supabase?.from("attendance_sessions").delete().gte("opened_at", "1970-01-01T00:00:00Z"));
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -543,7 +544,8 @@ export async function syncFromSupabase(): Promise<void> {
     localStorage.setItem(REC_KEY, JSON.stringify(data.records));
     window.dispatchEvent(new Event("att:records"));
   }
-  if (data.sessions.length > 0) {
+  const sessionsClearedFlag = localStorage.getItem("att.sessions.cleared.v1");
+  if (data.sessions.length > 0 && !sessionsClearedFlag) {
     localStorage.setItem(SES_KEY, JSON.stringify(data.sessions));
     window.dispatchEvent(new Event("att:sessions"));
   }

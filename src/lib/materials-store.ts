@@ -173,3 +173,20 @@ export function calculateTotalEarnings(): { amount: number; currency: string; sa
     };
   }
 }
+
+// ── Supabase Storage file upload ──────────────────────────────────────────────
+export async function uploadMaterialFile(file: File, id: string): Promise<string> {
+  if (!supabase) throw new Error("Supabase not configured. Paste a URL instead of uploading a file.");
+
+  const ext = file.name.split(".").pop() || "bin";
+  const path = `${id}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from("materials")
+    .upload(path, file, { upsert: true, contentType: file.type });
+
+  if (error) throw new Error(error.message);
+
+  const { data } = supabase.storage.from("materials").getPublicUrl(path);
+  return data.publicUrl;
+}
