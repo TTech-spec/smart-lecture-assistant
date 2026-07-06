@@ -491,7 +491,7 @@ function RecordsPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" disabled={filtered.length === 0} className="gap-1.5">
-                <Download className="h-3.5 w-3.5" /> Export ({filtered.length})
+                <Download className="h-3.5 w-3.5" /> Download ({filtered.length})
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
