@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  saveSettings, isWindowOpen, minutesRemaining, addSession, closeSession, clearSessions,
+  loadSettings, saveSettings, isWindowOpen, minutesRemaining, addSession, closeSession, clearSessions,
   addTest, deleteTest, setTestActive,
   type AdminSettings, type AttendanceRecord, type AttendanceSession,
   type CustomField, type TestConfig, type TestType,
@@ -107,7 +107,7 @@ function AdminDashboard() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.4 }}>
-            <SessionsPanel sessions={sessions} records={records} />
+            <SessionsPanel sessions={sessions} records={records} settings={settings} />
           </motion.div>
         </div>
       </div>
@@ -668,13 +668,16 @@ function EarningsDisplay() {
 }
 
 // ── Sessions panel ─────────────────────────────────────────────────────────────
-function SessionsPanel({ sessions, records }: { sessions: AttendanceSession[]; records: AttendanceRecord[] }) {
+function SessionsPanel({ sessions, records, settings }: { sessions: AttendanceSession[]; records: AttendanceRecord[]; settings: AdminSettings }) {
   const sorted = useMemo(() => [...sessions].sort((a, b) => b.openedAt.localeCompare(a.openedAt)), [sessions]);
 
   function handleClearSessions() {
     if (sorted.length === 0) return;
     if (!window.confirm(`Are you sure you want to clear all ${sorted.length} sessions? This action cannot be undone.`)) return;
     clearSessions();
+    // Also reset the session open count in settings
+    const updated = { ...loadSettings(), sessionOpenCount: 0, activeSessionId: null };
+    saveSettings(updated);
     toast.success("All sessions cleared.");
   }
 

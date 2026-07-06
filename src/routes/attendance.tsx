@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { MapPin, Loader2, CheckCircle2, ShieldAlert, ArrowLeft, Navigation, PenLine, ChevronDown } from "lucide-react";
+import { MapPin, Loader2, CheckCircle2, ShieldAlert, ArrowLeft, Navigation, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -362,11 +362,10 @@ function AttendancePage() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="shrink-0 px-2.5"
+                  className="shrink-0 text-xs px-3"
                   onClick={() => { setDeptManual(true); update("department", ""); }}
-                  title="Type department manually"
                 >
-                  <PenLine className="h-4 w-4" />
+                  Type it
                 </Button>
               </div>
             ) : (
@@ -374,7 +373,7 @@ function AttendancePage() {
             )}
             {(settings.departments || []).length > 0 && (
               <p className="mt-1 text-xs text-muted-foreground">
-                {deptManual ? "Type your department, then tap the arrow to switch back to dropdown." : "Not in the list? Tap the pen icon to type manually."}
+                {deptManual ? "Done typing? Tap the ↓ arrow to go back to the list." : "Your department not in the list? Tap \"Type it\" to enter it yourself."}
               </p>
             )}
           </Field>
