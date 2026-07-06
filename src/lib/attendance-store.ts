@@ -34,6 +34,7 @@ export type AttendanceRecord = {
   sessionId: string;
   customFields: Record<string, string>;
   assignedClassCode?: string;
+  linkId?: string; // References attendance_links.id — which shareable link was used
 };
 
 export type AdminSettings = {
@@ -64,6 +65,17 @@ export type AttendanceSession = {
   topic: string;
   openedAt: string;
   closedAt?: string;
+};
+
+export type AttendanceLink = {
+  id: string;
+  courseCode: string;
+  title: string;
+  token: string;       // unique random string used in /attend/{token}
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
 };
 
 export type TestQuestion = {
@@ -108,6 +120,7 @@ const SES_KEY      = "att.sessions.v1";
 const TST_KEY      = "att.tests.v1";
 const TSUB_KEY     = "att.test-submissions.v1";
 const CODE_USED_KEY = "att.code.used.v1";
+const LINKS_KEY    = "att.links.v1";
 
 // ── DB row mappers ────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,6 +146,7 @@ function recordToDb(r: AttendanceRecord): Row {
     session_id: r.sessionId,
     custom_fields: r.customFields,
     assigned_class_code: r.assignedClassCode || null,
+    link_id: r.linkId || null,
   };
 }
 
@@ -156,6 +170,7 @@ function recordFromDb(row: Row): AttendanceRecord {
     sessionId: row.session_id || "",
     customFields: row.custom_fields || {},
     assignedClassCode: row.assigned_class_code || undefined,
+    linkId: row.link_id || undefined,
   };
 }
 
@@ -393,6 +408,151 @@ export function clearSessions() {
   sync(supabase?.from("attendance_sessions").delete().gte("opened_at", "1970-01-01T00:00:00Z"));
 }
 
+// ── Attendance links ──────────────────────────────────────────────────────────
+
+function linkToDb(l: AttendanceLink): Row {
+  return {
+    id: l.id,
+    course_code: l.courseCode,
+    title: l.title,
+    token: l.token,
+    is_active: l.isActive,
+    created_by: l.createdBy,
+    created_at: l.createdAt,
+    expires_at: l.expiresAt,
+  };
+}
+
+function linkFromDb(row: Row): AttendanceLink {
+  return {
+    id: row.id,
+    courseCode: row.course_code || "",
+    title: row.title || "",
+    token: row.token,
+    isActive: Boolean(row.is_active),
+    createdBy: row.created_by || "admin",
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+  };
+}
+
+export function loadLinks(): AttendanceLink[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(LINKS_KEY) || "[]") as AttendanceLink[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLinks(links: AttendanceLink[]) {
+  localStorage.setItem(LINKS_KEY, JSON.stringify(links));
+  window.dispatchEvent(new Event("att:links"));
+}
+
+export async function addLink(l: AttendanceLink): Promise<void> {
+  // Save locally first so the lecturer sees it immediately
+  const all = loadLinks();
+  all.push(l);
+  saveLinks(all);
+
+  if (supabase) {
+    const { error } = await supabase.from("attendance_links").upsert(linkToDb(l));
+    if (error) {
+      // Surface the error so the lecturer knows the DB write failed
+      throw new Error(error.message);
+    }
+  }
+}
+
+export function disableLink(id: string) {
+  saveLinks(loadLinks().map((l) => (l.id === id ? { ...l, isActive: false } : l)));
+  sync(supabase?.from("attendance_links").update({ is_active: false }).eq("id", id));
+}
+
+export function deleteLink(id: string) {
+  saveLinks(loadLinks().filter((l) => l.id !== id));
+  sync(supabase?.from("attendance_links").delete().eq("id", id));
+}
+
+export function getLinkByToken(token: string): AttendanceLink | null {
+  return loadLinks().find((l) => l.token === token) || null;
+}
+
+export function isLinkValid(l: AttendanceLink, now = new Date()): boolean {
+  return l.isActive && new Date(l.expiresAt) > now;
+}
+
+/** Generate a cryptographically-random URL-safe token */
+export function generateToken(): string {
+  const arr = new Uint8Array(18);
+  crypto.getRandomValues(arr);
+  return Array.from(arr)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Fetch a single link by token.
+ * Returns the link, null if not found, or throws with message "db_error" if
+ * Supabase is reachable but the query failed (e.g. migration not yet run).
+ */
+export async function fetchLinkByToken(token: string): Promise<AttendanceLink | null> {
+  // Always try localStorage first (covers the lecturer's own device without a round-trip)
+  const local = getLinkByToken(token);
+
+  if (!supabase) return local;
+
+  try {
+    const { data, error } = await supabase
+      .from("attendance_links")
+      .select("*")
+      .eq("token", token)
+      .maybeSingle();
+
+    if (error) {
+      // If the table doesn't exist yet (migration not run), fall back to local
+      // so the lecturer's own device still works. For students on other devices,
+      // local will be null and they'll see the "not found" state.
+      console.warn("fetchLinkByToken Supabase error:", error.message);
+      return local;
+    }
+
+    if (!data) return null; // Link genuinely not found in DB
+    return linkFromDb(data);
+  } catch {
+    return local;
+  }
+}
+
+/** Fetch all links for a course directly from Supabase */
+export async function fetchLinksFromSupabase(): Promise<AttendanceLink[]> {
+  if (!supabase) return loadLinks();
+  const { data, error } = await supabase
+    .from("attendance_links")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error || !data) return loadLinks();
+  return data.map(linkFromDb);
+}
+
+/**
+ * Check if a student has already marked attendance for a given course today
+ * across ALL links (Option B — once per course per day).
+ */
+export function hasMarkedAttendanceForCourseToday(
+  matricNumber: string,
+  courseCode: string,
+  dayKey: string
+): boolean {
+  return loadRecords().some(
+    (r) =>
+      r.matricNumber.toLowerCase() === matricNumber.toLowerCase() &&
+      r.courseCode.toUpperCase() === courseCode.toUpperCase() &&
+      r.dayKey === dayKey
+  );
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 export function loadTests(): TestConfig[] {
   if (typeof window === "undefined") return [];
@@ -507,17 +667,19 @@ type AllData = {
   sessions: AttendanceSession[];
   tests: TestConfig[];
   testSubmissions: TestSubmission[];
+  links: AttendanceLink[];
 };
 
 export async function fetchAllFromSupabaseOnce(): Promise<AllData | null> {
   if (!supabase) return null;
   try {
-    const [settingsRes, recordsRes, sessionsRes, testsRes, subsRes] = await Promise.all([
+    const [settingsRes, recordsRes, sessionsRes, testsRes, subsRes, linksRes] = await Promise.all([
       supabase.from("admin_settings").select("data").eq("id", "default").maybeSingle(),
       supabase.from("attendance_records").select("*"),
       supabase.from("attendance_sessions").select("*"),
       supabase.from("test_configs").select("*"),
       supabase.from("test_submissions").select("*"),
+      supabase.from("attendance_links").select("*").order("created_at", { ascending: false }),
     ]);
 
     return {
@@ -526,6 +688,7 @@ export async function fetchAllFromSupabaseOnce(): Promise<AllData | null> {
       sessions: (sessionsRes.data || []).map(sessionFromDb),
       tests: (testsRes.data || []).map(testFromDb),
       testSubmissions: (subsRes.data || []).map(submissionFromDb),
+      links: (linksRes.data || []).map(linkFromDb),
     };
   } catch {
     return null;
@@ -556,6 +719,10 @@ export async function syncFromSupabase(): Promise<void> {
   if (data.testSubmissions.length > 0) {
     localStorage.setItem(TSUB_KEY, JSON.stringify(data.testSubmissions));
     window.dispatchEvent(new Event("att:test-submissions"));
+  }
+  if (data.links.length > 0) {
+    localStorage.setItem(LINKS_KEY, JSON.stringify(data.links));
+    window.dispatchEvent(new Event("att:links"));
   }
 }
 

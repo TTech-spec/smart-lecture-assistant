@@ -5,10 +5,12 @@ import {
   loadSessions,
   loadTests,
   loadTestSubmissions,
+  loadLinks,
   syncFromSupabase,
   type AdminSettings,
   type AttendanceRecord,
   type AttendanceSession,
+  type AttendanceLink,
   type TestConfig,
   type TestSubmission,
 } from "@/lib/attendance-store";
@@ -21,6 +23,7 @@ export function useStore() {
   const [tests, setTests] = useState<TestConfig[]>(() => loadTests());
   const [testSubmissions, setTestSubmissions] = useState<TestSubmission[]>(() => loadTestSubmissions());
   const [materials, setMaterials] = useState<Material[]>(() => loadMaterials());
+  const [links, setLinks] = useState<AttendanceLink[]>(() => loadLinks());
 
   // On mount, pull latest data from Supabase and populate localStorage + state
   useEffect(() => {
@@ -35,7 +38,8 @@ export function useStore() {
     const syncT   = () => setTests(loadTests());
     const syncTS  = () => setTestSubmissions(loadTestSubmissions());
     const syncM   = () => setMaterials(loadMaterials());
-    const syncAll = () => { syncS(); syncR(); syncSes(); syncT(); syncTS(); syncM(); };
+    const syncL   = () => setLinks(loadLinks());
+    const syncAll = () => { syncS(); syncR(); syncSes(); syncT(); syncTS(); syncM(); syncL(); };
 
     window.addEventListener("att:settings",         syncS);
     window.addEventListener("att:records",          syncR);
@@ -43,6 +47,7 @@ export function useStore() {
     window.addEventListener("att:tests",            syncT);
     window.addEventListener("att:test-submissions", syncTS);
     window.addEventListener("att:materials",        syncM);
+    window.addEventListener("att:links",            syncL);
     window.addEventListener("storage",              syncAll);
 
     return () => {
@@ -52,9 +57,10 @@ export function useStore() {
       window.removeEventListener("att:tests",            syncT);
       window.removeEventListener("att:test-submissions", syncTS);
       window.removeEventListener("att:materials",        syncM);
+      window.removeEventListener("att:links",            syncL);
       window.removeEventListener("storage",              syncAll);
     };
   }, []);
 
-  return { settings, setSettings, records, setRecords, sessions, tests, testSubmissions, materials };
+  return { settings, setSettings, records, setRecords, sessions, tests, testSubmissions, materials, links };
 }

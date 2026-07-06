@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   RefreshCw, Trash2, Download, FileText, ClipboardList,
-  Plus, Pencil, X, CheckCircle2, XCircle,
+  Plus, Pencil, X, CheckCircle2, XCircle, Link2, KeyRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,10 +18,8 @@ import {
 import {
   saveRecords, addRecord, syncRecord, deleteRecordById, clearAllRecords,
   loadTestSubmissions, loadSettings, saveTestSubmissions, syncTestSubmission,
-  type AttendanceRecord, type Gender, type TestSubmission, type TestType,
+  type AttendanceRecord, type AttendanceLink, type Gender, type TestSubmission, type TestType,
 } from "@/lib/attendance-store";
-
-const TEST_TYPES: TestType[] = ["C1", "C2", "C3"];
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
 
@@ -30,13 +28,22 @@ export const Route = createFileRoute("/admin/records")({
   component: RecordsPage,
 });
 
+const TEST_TYPES: TestType[] = ["C1", "C2", "C3"];
+
 // ── CSV / JSON export ─────────────────────────────────────────────────────────
 type TestResultsByType = Partial<Record<TestType, TestSubmission>>;
 
-function exportCSV(records: AttendanceRecord[], testResultMap: Map<string, TestResultsByType>) {
+function exportCSV(
+  records: AttendanceRecord[],
+  testResultMap: Map<string, TestResultsByType>,
+  linkMap: Map<string, string>,
+) {
   const headers = [
-    "Full Name", "Matric Number", "Department", "Level", "Course Code", "Topic", "Gender", "Phone", "Session ID", "Submitted At", "Day",
-    "C1 Score", "C1 Total", "C1 Cheated", "C2 Score", "C2 Total", "C2 Cheated", "C3 Score", "C3 Total", "C3 Cheated",
+    "Full Name", "Matric Number", "Department", "Level", "Course Code", "Topic",
+    "Gender", "Phone", "Class Code", "Link Used", "Session ID", "Submitted At", "Day",
+    "C1 Score", "C1 Total", "C1 Cheated",
+    "C2 Score", "C2 Total", "C2 Cheated",
+    "C3 Score", "C3 Total", "C3 Cheated",
   ];
   const rows = records.map((r) => {
     const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
@@ -45,21 +52,31 @@ function exportCSV(records: AttendanceRecord[], testResultMap: Map<string, TestR
       return [res ? String(res.score) : "", res ? String(res.total) : "", res ? (res.cheated ? "Yes" : "No") : ""];
     });
     return [
-      r.fullName, r.matricNumber, r.department, r.level || "", r.courseCode, r.topic, r.gender, r.phone,
+      r.fullName, r.matricNumber, r.department, r.level || "",
+      r.courseCode, r.topic, r.gender, r.phone,
+      r.assignedClassCode || "—",
+      r.linkId ? (linkMap.get(r.linkId) ?? r.linkId) : "—",
       r.sessionId || "", new Date(r.submittedAt).toLocaleString(), r.dayKey,
       ...typeCols,
     ];
   });
-  const csv = [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const csv = [headers, ...rows]
+    .map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob(["" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `attendance-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  a.href = url;
+  a.download = `attendance-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
   toast.success(`Exported ${records.length} record${records.length !== 1 ? "s" : ""} to CSV`);
 }
 
-function exportJSON(records: AttendanceRecord[], testResultMap: Map<string, TestResultsByType>) {
+function exportJSON(
+  records: AttendanceRecord[],
+  testResultMap: Map<string, TestResultsByType>,
+) {
   const enriched = records.map((r) => ({
     ...r,
     testResults: testResultMap.get(r.matricNumber.toLowerCase()) ?? {},
@@ -67,8 +84,10 @@ function exportJSON(records: AttendanceRecord[], testResultMap: Map<string, Test
   const blob = new Blob([JSON.stringify(enriched, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `attendance-${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  a.href = url;
+  a.download = `attendance-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
   toast.success(`Exported ${records.length} record${records.length !== 1 ? "s" : ""} to JSON`);
 }
 
@@ -78,15 +97,38 @@ type RecordDraft = {
   courseCode: string; topic: string; level: string; gender: Gender | "";
 };
 
-const emptyDraft: RecordDraft = { fullName: "", matricNumber: "", department: "", phone: "", courseCode: "", topic: "", level: "", gender: "" };
+const emptyDraft: RecordDraft = {
+  fullName: "", matricNumber: "", department: "", phone: "",
+  courseCode: "", topic: "", level: "", gender: "",
+};
 
 function recordToDraft(r: AttendanceRecord): RecordDraft {
-  return { fullName: r.fullName, matricNumber: r.matricNumber, department: r.department, phone: r.phone, courseCode: r.courseCode, topic: r.topic, level: r.level || "", gender: r.gender };
+  return {
+    fullName: r.fullName,
+    matricNumber: r.matricNumber,
+    department: r.department,
+    phone: r.phone,
+    courseCode: r.courseCode,
+    topic: r.topic,
+    level: r.level || "",
+    gender: r.gender,
+  };
 }
 
-function RecordModal({ mode, initial, onSave, onClose }: { mode: "add" | "edit"; initial: RecordDraft; onSave: (d: RecordDraft) => void; onClose: () => void }) {
+function RecordModal({
+  mode,
+  initial,
+  onSave,
+  onClose,
+}: {
+  mode: "add" | "edit";
+  initial: RecordDraft;
+  onSave: (d: RecordDraft) => void;
+  onClose: () => void;
+}) {
   const [d, setD] = useState<RecordDraft>(initial);
-  const u = <K extends keyof RecordDraft>(k: K, v: RecordDraft[K]) => setD((prev) => ({ ...prev, [k]: v }));
+  const u = <K extends keyof RecordDraft>(k: K, v: RecordDraft[K]) =>
+    setD((prev) => ({ ...prev, [k]: v }));
 
   function save(e: { preventDefault(): void }) {
     e.preventDefault();
@@ -102,11 +144,13 @@ function RecordModal({ mode, initial, onSave, onClose }: { mode: "add" | "edit";
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <motion.div initial={{ opacity: 0, scale: 0.93, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.93, y: 12 }} transition={{ duration: 0.22, ease: "circOut" }}
+      <motion.div initial={{ opacity: 0, scale: 0.93, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.93, y: 12 }} transition={{ duration: 0.22, ease: "circOut" }}
         className="relative w-full max-w-lg rounded-2xl border bg-card p-6 shadow-soft max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+          <X className="h-4 w-4" />
+        </button>
         <h2 className="mb-5 text-lg font-semibold">{mode === "add" ? "Add attendance record" : "Edit record"}</h2>
-
         <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Label className="text-sm">Full name *</Label>
@@ -165,7 +209,15 @@ function RecordModal({ mode, initial, onSave, onClose }: { mode: "add" | "edit";
 }
 
 // ── Test result edit modal ────────────────────────────────────────────────────
-function TestResultModal({ submission, onSave, onClose }: { submission: TestSubmission; onSave: (updated: TestSubmission) => void; onClose: () => void }) {
+function TestResultModal({
+  submission,
+  onSave,
+  onClose,
+}: {
+  submission: TestSubmission;
+  onSave: (updated: TestSubmission) => void;
+  onClose: () => void;
+}) {
   const [score, setScore] = useState(String(submission.score));
   const [total, setTotal] = useState(String(submission.total));
   const [cheated, setCheated] = useState(submission.cheated);
@@ -183,9 +235,12 @@ function TestResultModal({ submission, onSave, onClose }: { submission: TestSubm
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <motion.div initial={{ opacity: 0, scale: 0.93, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.93, y: 12 }} transition={{ duration: 0.22, ease: "circOut" }}
+      <motion.div initial={{ opacity: 0, scale: 0.93, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.93, y: 12 }} transition={{ duration: 0.22, ease: "circOut" }}
         className="relative w-full max-w-sm rounded-2xl border bg-card p-6 shadow-soft">
-        <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+          <X className="h-4 w-4" />
+        </button>
         <h2 className="mb-1 text-lg font-semibold">Edit test result</h2>
         <p className="mb-5 text-sm text-muted-foreground">
           {submission.studentName} · {submission.matricNumber}
@@ -215,15 +270,37 @@ function TestResultModal({ submission, onSave, onClose }: { submission: TestSubm
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 function RecordsPage() {
-  const { records, testSubmissions, settings } = useStore();
+  const { records, testSubmissions, settings, links } = useStore();
   const [matric, setMatric] = useState("");
   const [dept, setDept] = useState("all");
   const [gender, setGender] = useState("all");
   const [level, setLevel] = useState("all");
   const [course, setCourse] = useState("all");
+  const [linkFilter, setLinkFilter] = useState("all");
+  const [classCodeFilter, setClassCodeFilter] = useState("all");
   const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null);
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [editingTestResult, setEditingTestResult] = useState<TestSubmission | null>(null);
+
+  // Map linkId → link title for display/export
+  const linkMap = useMemo(() => {
+    const m = new Map<string, string>();
+    links.forEach((l: AttendanceLink) => m.set(l.id, l.title));
+    return m;
+  }, [links]);
+
+  // Links that appear in at least one record (for the filter dropdown)
+  const usedLinks = useMemo(() => {
+    const ids = new Set(records.map((r) => r.linkId).filter(Boolean) as string[]);
+    return links.filter((l: AttendanceLink) => ids.has(l.id));
+  }, [records, links]);
+
+  // Unique class codes that have been assigned (for the filter dropdown)
+  const usedClassCodes = useMemo(() => {
+    return Array.from(
+      new Set(records.map((r) => r.assignedClassCode).filter(Boolean) as string[])
+    ).sort();
+  }, [records]);
 
   const testResultMap = useMemo(() => {
     const all = testSubmissions.length > 0 ? testSubmissions : loadTestSubmissions();
@@ -254,18 +331,45 @@ function RecordsPage() {
 
   const filtered = useMemo(() => {
     const m = matric.toLowerCase().trim();
-    return [...records].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)).filter((r) => {
-      if (m && !r.matricNumber.toLowerCase().includes(m) && !r.fullName.toLowerCase().includes(m)) return false;
-      if (dept !== "all" && r.department !== dept) return false;
-      if (gender !== "all" && r.gender !== gender) return false;
-      if (level !== "all" && (r.level || "") !== level) return false;
-      if (course !== "all" && r.courseCode !== course) return false;
-      return true;
-    });
-  }, [records, matric, dept, gender, level, course]);
+    return [...records]
+      .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+      .filter((r) => {
+        if (m && !r.matricNumber.toLowerCase().includes(m) && !r.fullName.toLowerCase().includes(m)) return false;
+        if (dept !== "all" && r.department !== dept) return false;
+        if (gender !== "all" && r.gender !== gender) return false;
+        if (level !== "all" && (r.level || "") !== level) return false;
+        if (course !== "all" && r.courseCode !== course) return false;
+        if (linkFilter !== "all") {
+          if (linkFilter === "__none__") {
+            if (r.linkId) return false;
+          } else {
+            if (r.linkId !== linkFilter) return false;
+          }
+        }
+        if (classCodeFilter !== "all") {
+          if (classCodeFilter === "__none__") {
+            if (r.assignedClassCode) return false;
+          } else {
+            if (r.assignedClassCode !== classCodeFilter) return false;
+          }
+        }
+        return true;
+      });
+  }, [records, matric, dept, gender, level, course, linkFilter]);
 
-  function clearAll() { if (!confirm("Clear ALL attendance records? This cannot be undone.")) return; clearAllRecords(); toast.success("All records cleared."); }
-  function deleteRecord(id: string) { if (!confirm("Delete this record?")) return; deleteRecordById(id, records); toast.success("Record deleted."); }
+  function resetFilters() {
+    setMatric(""); setDept("all"); setGender("all");
+    setLevel("all"); setCourse("all"); setLinkFilter("all"); setClassCodeFilter("all");
+  }
+
+  function clearAll() {
+    if (!confirm("Clear ALL attendance records? This cannot be undone.")) return;
+    clearAllRecords(); toast.success("All records cleared.");
+  }
+  function deleteRecord(id: string) {
+    if (!confirm("Delete this record?")) return;
+    deleteRecordById(id, records); toast.success("Record deleted.");
+  }
   function openAdd() { setModalMode("add"); setEditingRecord(null); }
   function openEdit(r: AttendanceRecord) { setModalMode("edit"); setEditingRecord(r); }
   function closeModal() { setModalMode(null); setEditingRecord(null); }
@@ -328,27 +432,35 @@ function RecordsPage() {
 
   return (
     <main className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="flex flex-wrap items-start justify-between gap-4">
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
+        className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 sm:text-3xl">
             <ClipboardList className="h-6 w-6 text-[color:var(--color-primary)] sm:h-7 sm:w-7" /> Attendance records
           </h1>
           <p className="mt-1 text-sm text-muted-foreground sm:text-base">{filtered.length} of {records.length} entries</p>
         </div>
-
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={openAdd}><Plus className="mr-1.5 h-3.5 w-3.5" /> Add record</Button>
-          <Button variant="outline" size="sm" onClick={() => { setMatric(""); setDept("all"); setGender("all"); setLevel("all"); setCourse("all"); }}><RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Reset</Button>
+          <Button variant="outline" size="sm" onClick={resetFilters}><RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Reset</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" disabled={filtered.length === 0} className="gap-1.5"><Download className="h-3.5 w-3.5" /> Export ({filtered.length})</Button>
+              <Button size="sm" disabled={filtered.length === 0} className="gap-1.5">
+                <Download className="h-3.5 w-3.5" /> Export ({filtered.length})
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => exportCSV(filtered, testResultMap)}><FileText className="mr-2 h-4 w-4" /> Download CSV</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportJSON(filtered, testResultMap)}><FileText className="mr-2 h-4 w-4" /> Download JSON</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportCSV(filtered, testResultMap, linkMap)}>
+                <FileText className="mr-2 h-4 w-4" /> Download CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportJSON(filtered, testResultMap)}>
+                <FileText className="mr-2 h-4 w-4" /> Download JSON
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="sm" onClick={clearAll} className="text-destructive hover:text-destructive"><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear all</Button>
+          <Button variant="outline" size="sm" onClick={clearAll} className="text-destructive hover:text-destructive">
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear all
+          </Button>
         </div>
       </motion.div>
 
@@ -356,8 +468,11 @@ function RecordsPage() {
         <VoiceAssistant records={records} />
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }} className="mt-5 rounded-2xl border bg-card shadow-soft">
-        <div className="grid gap-3 border-b p-4 sm:p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }}
+        className="mt-5 rounded-2xl border bg-card shadow-soft">
+
+        {/* ── Filters ── */}
+        <div className="grid gap-3 border-b p-4 sm:p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
           <div>
             <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Search name / matric</Label>
             <Input value={matric} onChange={(e) => setMatric(e.target.value)} placeholder="Jane or CSC/19/…" className="mt-1 text-sm sm:text-base" />
@@ -404,8 +519,39 @@ function RecordsPage() {
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground sm:text-sm flex items-center gap-1">
+              <Link2 className="h-3 w-3" /> Link used
+            </Label>
+            <Select value={linkFilter} onValueChange={setLinkFilter}>
+              <SelectTrigger className="mt-1 text-sm sm:text-base"><SelectValue placeholder="All links" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All links</SelectItem>
+                <SelectItem value="__none__">No link (direct form)</SelectItem>
+                {usedLinks.map((l: AttendanceLink) => (
+                  <SelectItem key={l.id} value={l.id}>{l.title} ({l.courseCode})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground sm:text-sm flex items-center gap-1">
+              <KeyRound className="h-3 w-3" /> Class code
+            </Label>
+            <Select value={classCodeFilter} onValueChange={setClassCodeFilter}>
+              <SelectTrigger className="mt-1 text-sm sm:text-base"><SelectValue placeholder="All" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="__none__">No code yet</SelectItem>
+                {usedClassCodes.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
+        {/* ── Table ── */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm sm:text-base">
             <thead className="bg-secondary text-left text-xs uppercase tracking-wider text-muted-foreground">
@@ -418,6 +564,8 @@ function RecordsPage() {
                 <th className="px-4 py-3 whitespace-nowrap">Topic</th>
                 <th className="px-4 py-3 whitespace-nowrap">Gender</th>
                 <th className="px-4 py-3 whitespace-nowrap">Phone</th>
+                <th className="px-4 py-3 whitespace-nowrap">Class code</th>
+                <th className="px-4 py-3 whitespace-nowrap">Link used</th>
                 <th className="px-4 py-3 whitespace-nowrap">C1</th>
                 <th className="px-4 py-3 whitespace-nowrap">C2</th>
                 <th className="px-4 py-3 whitespace-nowrap">C3</th>
@@ -428,7 +576,7 @@ function RecordsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-14 text-center text-muted-foreground">
+                  <td colSpan={15} className="px-4 py-14 text-center text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <ClipboardList className="h-10 w-10 opacity-20" />
                       <p className="text-base font-medium">No records match these filters</p>
@@ -439,6 +587,7 @@ function RecordsPage() {
               ) : (
                 filtered.map((r) => {
                   const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
+                  const linkTitle = r.linkId ? linkMap.get(r.linkId) : null;
                   return (
                     <tr key={r.id} className="border-t hover:bg-secondary/40 transition-colors">
                       <td className="px-4 py-3 font-medium whitespace-nowrap">{r.fullName}</td>
@@ -451,6 +600,24 @@ function RecordsPage() {
                       <td className="px-4 py-3 whitespace-nowrap max-w-[140px] truncate" title={r.topic}>{r.topic || "—"}</td>
                       <td className="px-4 py-3 capitalize whitespace-nowrap">{r.gender}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{r.phone || "—"}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {r.assignedClassCode ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-xs font-mono font-semibold text-violet-700 dark:text-violet-400">
+                            <KeyRound className="h-3 w-3" />{r.assignedClassCode}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {linkTitle ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">
+                            <Link2 className="h-3 w-3" />{linkTitle}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
                       {TEST_TYPES.map((t) => {
                         const testResult = byType[t];
                         return (
@@ -470,7 +637,9 @@ function RecordsPage() {
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
                               {testResult && (
-                                <button onClick={() => setEditingTestResult(testResult)} className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title={`Edit ${t} result`}>
+                                <button onClick={() => setEditingTestResult(testResult)}
+                                  className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                                  title={`Edit ${t} result`}>
                                   <Pencil className="h-3 w-3" />
                                 </button>
                               )}
@@ -478,11 +647,19 @@ function RecordsPage() {
                           </td>
                         );
                       })}
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs sm:text-sm">{new Date(r.submittedAt).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs sm:text-sm">
+                        {new Date(r.submittedAt).toLocaleString()}
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => openEdit(r)} className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Edit record"><Pencil className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => deleteRecord(r.id)} className="rounded-md p-1.5 text-muted-foreground hover:bg-red-50 hover:text-destructive transition-colors" title="Delete record"><Trash2 className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => openEdit(r)}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Edit record">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => deleteRecord(r.id)}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-red-50 hover:text-destructive transition-colors" title="Delete record">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -496,17 +673,32 @@ function RecordsPage() {
         {filtered.length > 0 && (
           <div className="border-t px-4 py-3 flex items-center justify-between sm:px-5">
             <span className="text-xs text-muted-foreground sm:text-sm">Showing {filtered.length} of {records.length} records</span>
-            <Button size="sm" variant="ghost" onClick={() => exportCSV(filtered, testResultMap)} className="gap-1.5 text-xs sm:text-sm"><Download className="h-3.5 w-3.5" /> Download CSV</Button>
+            <Button size="sm" variant="ghost" onClick={() => exportCSV(filtered, testResultMap, linkMap)} className="gap-1.5 text-xs sm:text-sm">
+              <Download className="h-3.5 w-3.5" /> Download CSV
+            </Button>
           </div>
         )}
       </motion.div>
 
       <AnimatePresence>
-        {modalMode && <RecordModal mode={modalMode} initial={editingRecord ? recordToDraft(editingRecord) : emptyDraft} onSave={handleSave} onClose={closeModal} />}
+        {modalMode && (
+          <RecordModal
+            mode={modalMode}
+            initial={editingRecord ? recordToDraft(editingRecord) : emptyDraft}
+            onSave={handleSave}
+            onClose={closeModal}
+          />
+        )}
       </AnimatePresence>
 
       <AnimatePresence>
-        {editingTestResult && <TestResultModal submission={editingTestResult} onSave={handleSaveTestResult} onClose={() => setEditingTestResult(null)} />}
+        {editingTestResult && (
+          <TestResultModal
+            submission={editingTestResult}
+            onSave={handleSaveTestResult}
+            onClose={() => setEditingTestResult(null)}
+          />
+        )}
       </AnimatePresence>
     </main>
   );
