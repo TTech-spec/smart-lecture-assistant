@@ -103,28 +103,7 @@ function TestFlow({ test }: { test: TestConfig }) {
   const settings = loadSettings();
 
   async function handleIdentitySubmit(name: string, matric: string, lvl: string) {
-    if (supabase) {
-      try {
-        const { data } = await supabase
-          .from("attendance_records")
-          .select("id")
-          .eq("course_code", test.courseCode)
-          .ilike("matric_number", matric.trim())
-          .limit(1)
-          .maybeSingle();
-        if (!data) {
-          setStudentName(name);
-          setMatricNumber(matric);
-          setLevel(lvl);
-          setStage("not_signed");
-          return;
-        }
-      } catch {
-        // If the attendance check itself fails (network hiccup), don't block
-        // the student — fall through and let them attempt the test.
-      }
-    }
-
+    // Check if student has already taken this test
     const existing = loadTestSubmissions().find(
       (s) => s.testId === test.id && s.matricNumber.toLowerCase() === matric.trim().toLowerCase(),
     );
