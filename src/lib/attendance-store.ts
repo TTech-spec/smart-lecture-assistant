@@ -622,6 +622,13 @@ export function syncTestSubmission(s: TestSubmission) {
 }
 
 // ── Class code tracking ───────────────────────────────────────────────────────
+
+/** Key: matric (lower) → unique code assigned to that student */
+const STUDENT_CODES_KEY = "att.student.codes.v1";
+
+/** Key: matric (lower) → flagged for sharing someone else's code */
+const CODE_FRAUD_KEY = "att.code.fraud.v1";
+
 export function getUsedClassCodes(): string[] {
   if (typeof window === "undefined") return [];
   try {
@@ -642,6 +649,94 @@ export function markClassCodeUsed(matricNumber: string) {
     used.push(key);
     localStorage.setItem(CODE_USED_KEY, JSON.stringify(used));
   }
+}
+
+/** Returns the matric→code map */
+function getStudentCodeMap(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(STUDENT_CODES_KEY) || "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+/** Generate (or retrieve) a unique class code for a specific student.
+ *  The code is derived from the global classCode prefix + a short unique suffix,
+ *  so the lecturer's format preference is preserved.
+ */
+export function generateStudentClassCode(
+  matricNumber: string,
+  globalCode: string,
+  format: "numbers" | "id" = "numbers"
+): string {
+  const map = getStudentCodeMap();
+  const key = matricNumber.trim().toLowerCase();
+
+  // Already assigned — return the same code every time
+  if (map[key]) return map[key];
+
+  // Build a unique suffix that won't collide
+  const suffix = format === "numbers"
+    ? String(Math.floor(1000 + Math.random() * 9000))
+    : Math.random().toString(36).slice(2, 6).toUpperCase();
+
+  const code = `${globalCode}-${suffix}`;
+  map[key] = code;
+  localStorage.setItem(STUDENT_CODES_KEY, JSON.stringify(map));
+  return code;
+}
+
+/** Return the unique code stored for a matric, or null if none assigned yet */
+export function getStudentCode(matricNumber: string): string | null {
+  const map = getStudentCodeMap();
+  return map[matricNumber.trim().toLowerCase()] ?? null;
+}
+
+/** Validate that the code a student typed matches their own assigned code.
+ *  Returns true = valid, false = wrong code (possibly someone else's).
+ */
+export function validateStudentCode(matricNumber: string, enteredCode: string): boolean {
+  const assigned = getStudentCode(matricNumber);
+  if (!assigned) return false;
+  return assigned.trim().toLowerCase() === enteredCode.trim().toLowerCase();
+}
+
+/** Mark a student as having attempted to use a code that wasn't theirs */
+export function flagCodeFraud(matricNumber: string, enteredCode: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const fraudMap: Record<string, { enteredCode: string; at: string }[]> =
+      JSON.parse(localStorage.getItem(CODE_FRAUD_KEY) || "{}");
+    const key = matricNumber.trim().toLowerCase();
+    if (!fraudMap[key]) fraudMap[key] = [];
+    fraudMap[key].push({ enteredCode, at: new Date().toISOString() });
+    localStorage.setItem(CODE_FRAUD_KEY, JSON.stringify(fraudMap));
+    // Sync fraud flag to Supabase so the lecturer can see it
+    sync(
+      supabase?.from("attendance_records").update({
+        custom_fields: { code_fraud: true, fraud_code_entered: enteredCode },
+      }).ilike("matric_number", matricNumber.trim())
+    );
+  } catch {
+    // non-fatal
+  }
+}
+
+/** Get all flagged fraud attempts (for admin display) */
+export function getCodeFraudMap(): Record<string, { enteredCode: string; at: string }[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(CODE_FRAUD_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+/** Clear all stored student codes and fraud flags (call when lecturer resets class code) */
+export function clearStudentCodes() {
+  localStorage.removeItem(STUDENT_CODES_KEY);
+  localStorage.removeItem(CODE_FRAUD_KEY);
 }
 
 // ── Window helpers ────────────────────────────────────────────────────────────

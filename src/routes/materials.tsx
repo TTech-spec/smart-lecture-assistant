@@ -15,7 +15,7 @@ import {
 import { loadMaterials, syncMaterialsFromSupabase, type Material, type MaterialFileType } from "@/lib/materials-store";
 import { loadSettings } from "@/lib/attendance-store";
 import { PaymentModal } from "@/components/PaymentModal";
-import { hasUserPaidForMaterial } from "@/lib/opay";
+import { hasUserPaidForMaterial } from "@/lib/squad";
 
 export const Route = createFileRoute("/materials")({
   head: () => ({
@@ -75,6 +75,9 @@ function MaterialsPage() {
     materialTitle: string;
     amount: number;
     currency: string;
+    lecturerAccountNumber?: string;
+    lecturerBankCode?: string;
+    lecturerAccountName?: string;
   }>({ open: false, materialId: "", materialTitle: "", amount: 0, currency: "NGN" });
 
   const courses = Array.from(new Set(materials.map((m) => m.courseCode).filter(Boolean)));
@@ -194,6 +197,9 @@ function MaterialsPage() {
                   materialTitle: m.title,
                   amount: m.price,
                   currency: m.currency,
+                  lecturerAccountNumber: m.lecturerAccountNumber,
+                  lecturerBankCode: m.lecturerBankCode,
+                  lecturerAccountName: m.lecturerAccountName,
                 })}
               />
             ))}
@@ -226,6 +232,9 @@ function MaterialsPage() {
           currency={paymentModal.currency}
           onSuccess={handlePaymentSuccess}
           studentMatricNumber={userMatric}
+          lecturerAccountNumber={paymentModal.lecturerAccountNumber}
+          lecturerBankCode={paymentModal.lecturerBankCode}
+          lecturerAccountName={paymentModal.lecturerAccountName}
         />
       </main>
     </div>

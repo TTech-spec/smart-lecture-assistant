@@ -1,314 +1,350 @@
-import { useState } from "react";
-import { Loader2, CreditCard, Smartphone, QrCode, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Loader2, CreditCard, AlertCircle, CheckCircle2, Info, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  createOPayPaymentServer, checkPaymentStatusServer,
-} from "@/lib/opay-server";
-import {
-  generateOrderId, savePaymentRecord,
-  type OPayPaymentMethod, type OPayPaymentStatus, type PaymentRecord,
-} from "@/lib/opay";
-import { addPurchase } from "@/lib/materials-store";
 import { toast } from "sonner";
+import {
+  calcFees, generateTransactionRef, saveSquadPayment,
+  type SquadPaymentRecord,
+} from "@/lib/squad";
+import {
+  initiateSquadPayment, verifySquadTransaction,
+  payoutToLecturer, payoutToPlatform,
+} from "@/lib/squad-server";
+import { addPurchase } from "@/lib/materials-store";
 
 interface PaymentModalProps {
   open: boolean;
   onClose: () => void;
   materialId: string;
   materialTitle: string;
+  /** Lecturer's listed price in NGN */
   amount: number;
   currency: string;
   onSuccess: () => void;
   studentMatricNumber?: string;
+  /** Lecturer payout info */
+  lecturerAccountNumber?: string;
+  lecturerBankCode?: string;
+  lecturerAccountName?: string;
 }
 
-const PAYMENT_METHODS: { value: OPayPaymentMethod; label: string; icon: React.ElementType }[] = [
-  { value: "BankCard", label: "Bank Card", icon: CreditCard },
-  { value: "BankTransfer", label: "Bank Transfer", icon: CreditCard },
-  { value: "OpayWalletNg", label: "OPay Wallet", icon: Smartphone },
-  { value: "OpayWalletNgQR", label: "OPay QR Code", icon: QrCode },
-];
+type Step = "form" | "processing" | "success" | "failed";
 
 export function PaymentModal({
-  open, onClose, materialId, materialTitle, amount, currency, onSuccess, studentMatricNumber,
+  open, onClose,
+  materialId, materialTitle,
+  amount, currency,
+  onSuccess,
+  studentMatricNumber,
+  lecturerAccountNumber, lecturerBankCode, lecturerAccountName,
 }: PaymentModalProps) {
-  const [step, setStep] = useState<"form" | "processing" | "success" | "failed">("form");
+  const [step, setStep] = useState<Step>("form");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState(studentMatricNumber || "");
-  const [payMethod, setPayMethod] = useState<OPayPaymentMethod>("BankCard");
   const [loading, setLoading] = useState(false);
-  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [txRef, setTxRef] = useState<string>("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // ── Fee breakdown ───────────────────────────────────────────────────────────
+  const fees = useMemo(() => calcFees(amount), [amount]);
+
+  // ── Poll for payment verification once checkout opens ──────────────────────
+  useEffect(() => {
+    if (step !== "processing" || !txRef) return;
+
+    let attempts = 0;
+    const MAX = 60; // 2 min at 2s intervals
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function poll() {
+      if (attempts >= MAX) {
+        setStep("failed");
+        setLoading(false);
+        toast.error("Payment verification timed out. Contact support if you were charged.");
+        return;
+      }
+      attempts++;
+
+      try {
+        const res = await verifySquadTransaction({ data: { transactionRef: txRef } });
+        const status = ((res.data?.transaction_status as string) || "").toLowerCase();
+
+        if (status === "success") {
+          await handlePaymentSuccess(txRef);
+          return;
+        }
+        if (status === "failed" || status === "cancelled") {
+          setStep("failed");
+          setLoading(false);
+          toast.error("Payment was not completed.");
+          return;
+        }
+      } catch {
+        // network hiccup — keep polling
+      }
+
+      timer = setTimeout(poll, 2000);
+    }
+
+    timer = setTimeout(poll, 3000); // first check after 3s
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, txRef]);
+
+  // ── After payment confirmed: trigger payouts ───────────────────────────────
+  async function handlePaymentSuccess(ref: string) {
+    setStep("success");
+    setLoading(false);
+    toast.success("Payment successful! Access unlocked.");
+    onSuccess();
+
+    // Update record to successful
+    const record: SquadPaymentRecord = {
+      id: crypto.randomUUID(),
+      transactionRef: ref,
+      materialId,
+      materialTitle,
+      chargedAmount: fees.totalCharge,
+      lecturerAmount: fees.lecturerPrice,
+      platformFee: fees.platformFee,
+      transferFee: fees.transferFee,
+      squadFee: fees.squadFee,
+      currency: "NGN",
+      status: "successful",
+      customerEmail: email,
+      customerName: name,
+      customerPhone: phone,
+      lecturerAccountNumber,
+      lecturerBankCode,
+      lecturerAccountName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await saveSquadPayment(record);
+
+    // Record purchase for earnings tracking
+    addPurchase({
+      id: crypto.randomUUID(),
+      materialId,
+      studentName: name,
+      matricNumber: phone,
+      purchaseAmount: fees.lecturerPrice,
+      currency: "NGN",
+      purchasedAt: new Date().toISOString(),
+    }).catch(() => {});
+
+    // Fire-and-forget payouts (don't block the success UI)
+    if (lecturerAccountNumber && lecturerBankCode) {
+      payoutToLecturer({
+        data: {
+          transferRef: `PAY-LEC-${ref}`,
+          amountNGN: fees.lecturerPrice,
+          lecturerAccountNumber,
+          lecturerBankCode,
+          lecturerAccountName: lecturerAccountName || "Lecturer",
+          narration: `Payout for: ${materialTitle}`,
+        },
+      }).catch((err) => console.error("Lecturer payout failed:", err));
+    }
+
+    payoutToPlatform({
+      data: {
+        transferRef: `PAY-PLAT-${ref}`,
+        amountNGN: fees.platformFee,
+        narration: `Platform fee: ${materialTitle}`,
+      },
+    }).catch((err) => console.error("Platform payout failed:", err));
+  }
+
+  // ── Initiate payment ────────────────────────────────────────────────────────
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email || !name || !phone) {
-      return toast.error("Please fill all fields");
+    if (!email.trim() || !name.trim() || !phone.trim()) {
+      return toast.error("Please fill in all fields.");
     }
 
     setLoading(true);
-    setStep("processing");
 
     try {
-      const orderId = generateOrderId();
-      const response = await createOPayPaymentServer({
+      const ref = generateTransactionRef();
+      setTxRef(ref);
+
+      // Save pending record
+      const pending: SquadPaymentRecord = {
+        id: crypto.randomUUID(),
+        transactionRef: ref,
+        materialId,
+        materialTitle,
+        chargedAmount: fees.totalCharge,
+        lecturerAmount: fees.lecturerPrice,
+        platformFee: fees.platformFee,
+        transferFee: fees.transferFee,
+        squadFee: fees.squadFee,
+        currency: "NGN",
+        status: "pending",
+        customerEmail: email,
+        customerName: name,
+        customerPhone: phone,
+        lecturerAccountNumber,
+        lecturerBankCode,
+        lecturerAccountName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveSquadPayment(pending);
+
+      const callbackUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/materials`
+          : "https://attendly.app/materials";
+
+      const res = await initiateSquadPayment({
         data: {
-          amount,
-          currency,
-          orderId,
-          materialId,
+          transactionRef: ref,
+          amountNGN: fees.totalCharge,
+          email: email.trim(),
+          customerName: name.trim(),
+          customerPhone: phone.trim(),
           materialTitle,
-          customerEmail: email,
-          customerName: name,
-          customerPhone: phone,
-          payMethod,
+          callbackUrl,
         },
       });
 
-      // OPay returns code "00000" (string) for success
-      if ((response.code === "00000" || response.code === 0) && (response.data?.cashierUrl || response.data?.cashUrl)) {
-        // Save pending payment record
-        const record: PaymentRecord = {
-          id: crypto.randomUUID(),
-          orderId,
-          materialId,
-          materialTitle,
-          amount,
-          currency,
-          status: "pending",
-          customerEmail: email,
-          customerName: name,
-          customerPhone: phone,
-          payMethod,
-          reference: response.data.reference,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        await savePaymentRecord(record);
-
-        setPaymentUrl(response.data.cashierUrl || response.data.cashUrl);
-        
-        // Open OPay checkout in new window
-        window.open(response.data.cashierUrl || response.data.cashUrl, "_blank");
-        
-        // Start polling for payment status
-        pollPaymentStatus(orderId);
-      } else {
-        throw new Error(response.message || "Payment initialization failed");
+      if (!res.success || !res.data?.checkout_url) {
+        throw new Error(res.message || "Could not open checkout. Please try again.");
       }
-    } catch (error) {
-      console.error("Payment error:", error);
-      toast.error(error instanceof Error ? error.message : "Payment failed");
-      setStep("form");
+
+      const url = res.data.checkout_url;
+      setCheckoutUrl(url);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setStep("processing");
+    } catch (err) {
+      console.error("Payment initiation error:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to start payment.");
       setLoading(false);
     }
-  };
+  }
 
-  const pollPaymentStatus = async (orderId: string) => {
-    const maxAttempts = 30; // 30 attempts with 2-second intervals = 1 minute
-    let attempts = 0;
-
-    const poll = async () => {
-      if (attempts >= maxAttempts) {
-        setStep("failed");
-        setLoading(false);
-        toast.error("Payment verification timed out");
-        return;
-      }
-
-      attempts++;
-      try {
-        const response = await checkPaymentStatusServer({
-          data: { orderId },
-        });
-        
-        if (response.code === 0 && response.data) {
-          // Check if payment was successful
-          // OPay status values: INITIAL, PENDING, SUCCESS, FAIL, CLOSE
-          const status = (response.data.status as string)?.toUpperCase();
-          
-          if (status === "SUCCESS") {
-            setStep("success");
-            setLoading(false);
-            toast.success("Payment successful!");
-            onSuccess();
-            
-            // Update payment record
-            const payments = JSON.parse(localStorage.getItem("att.payments.v1") || "[]");
-            const updated = payments.map((p: PaymentRecord) => 
-              p.orderId === orderId ? { ...p, status: "successful", transactionId: response.data?.transactionId, updatedAt: new Date().toISOString() } : p
-            );
-            localStorage.setItem("att.payments.v1", JSON.stringify(updated));
-            
-            // Record purchase for earnings tracking
-            const purchase = {
-              id: crypto.randomUUID(),
-              materialId,
-              studentName: name,
-              matricNumber: phone, // Using phone as matric for now - this might need adjustment
-              purchaseAmount: amount,
-              currency,
-              purchasedAt: new Date().toISOString(),
-            };
-            // Don't await - let it happen in background
-            addPurchase(purchase).catch((err) => console.error("Failed to record purchase:", err));
-            
-            return;
-          } else if (status === "FAIL" || status === "CLOSE") {
-            setStep("failed");
-            setLoading(false);
-            toast.error("Payment failed or was cancelled");
-            return;
-          }
-        }
-        
-        // Continue polling
-        setTimeout(poll, 2000);
-      } catch (error) {
-        console.error("Status check error:", error);
-        // Continue polling even on error
-        setTimeout(poll, 2000);
-      }
-    };
-
-    poll();
-  };
-
-  const handleClose = () => {
+  function handleClose() {
     if (step === "processing") {
-      toast.warning("Payment is being processed, please wait");
+      toast.warning("Payment is in progress — please complete it in the opened window.");
       return;
     }
     onClose();
-    // Reset form
     setStep("form");
-    setEmail("");
-    setName("");
-    setPhone("");
-    setPayMethod("BankCard");
-    setPaymentUrl(null);
-    setLoading(false);
-  };
+    setEmail(""); setName(""); setPhone(""); setCheckoutUrl(null); setLoading(false); setTxRef("");
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
+
+        {/* ── Form step ── */}
         {step === "form" && (
           <>
             <DialogHeader>
-              <DialogTitle>Pay for Material</DialogTitle>
-              <DialogDescription>
-                {materialTitle} · {currency} {amount.toLocaleString()}
-              </DialogDescription>
+              <DialogTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-primary" /> Pay for Material
+              </DialogTitle>
+              <DialogDescription>{materialTitle}</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  required
-                />
+
+            {/* Fee breakdown */}
+            <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800/40 dark:bg-blue-900/20 p-3 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 font-semibold text-blue-800 dark:text-blue-300 mb-1">
+                <Info className="h-3.5 w-3.5" /> Payment breakdown
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="John Doe"
-                  required
-                />
+              <div className="flex justify-between text-blue-700 dark:text-blue-400">
+                <span>Material price</span><span>₦{fees.lecturerPrice.toLocaleString()}</span>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="080..."
-                  required
-                />
+              <div className="flex justify-between text-blue-700 dark:text-blue-400">
+                <span>Processing fee</span><span>₦{fees.platformFee.toLocaleString()}</span>
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>
-                  Cancel
-                </Button>
+              <div className="flex justify-between text-blue-700 dark:text-blue-400">
+                <span>Transfer fee</span><span>₦{fees.transferFee.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-blue-700 dark:text-blue-400">
+                <span>Payment gateway (1.2%)</span><span>₦{fees.squadFee.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between font-bold text-blue-900 dark:text-blue-200 border-t border-blue-200 dark:border-blue-700 pt-1.5">
+                <span>Total you pay</span><span>₦{fees.totalCharge.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div>
+                <Label htmlFor="sq-email">Email</Label>
+                <Input id="sq-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="mt-1" required />
+              </div>
+              <div>
+                <Label htmlFor="sq-name">Full Name</Label>
+                <Input id="sq-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" className="mt-1" required />
+              </div>
+              <div>
+                <Label htmlFor="sq-phone">Phone Number</Label>
+                <Input id="sq-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="08012345678" className="mt-1" required />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
                 <Button type="submit" className="flex-1" disabled={loading}>
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Pay {currency} {amount.toLocaleString()}
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Pay ₦{fees.totalCharge.toLocaleString()}
                 </Button>
               </div>
             </form>
           </>
         )}
 
+        {/* ── Processing step ── */}
         {step === "processing" && (
-          <div className="flex flex-col items-center py-8">
+          <div className="flex flex-col items-center py-8 gap-4 text-center">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <h3 className="mt-4 text-lg font-semibold">Processing Payment</h3>
-            <p className="mt-2 text-center text-sm text-muted-foreground">
-              Please complete the payment in the opened window. We're waiting for confirmation...
+            <h3 className="text-lg font-semibold">Waiting for payment…</h3>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              Complete the payment in the Squad checkout window. This page will update automatically.
             </p>
-            {paymentUrl && (
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-4"
-                onClick={() => window.open(paymentUrl, "_blank")}
-              >
-                Open Payment Window Again
+            {checkoutUrl && (
+              <Button variant="outline" size="sm" onClick={() => window.open(checkoutUrl, "_blank", "noopener,noreferrer")}>
+                <ExternalLink className="mr-2 h-4 w-4" /> Reopen checkout window
               </Button>
             )}
           </div>
         )}
 
+        {/* ── Success step ── */}
         {step === "success" && (
-          <div className="flex flex-col items-center py-8">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-              <CheckCircle2 className="h-8 w-8 text-green-600" />
+          <div className="flex flex-col items-center py-8 gap-3 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+              <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
             </div>
-            <h3 className="mt-4 text-lg font-semibold">Payment Successful!</h3>
-            <p className="mt-2 text-center text-sm text-muted-foreground">
-              You can now access the study material.
-            </p>
-            <Button className="mt-4" onClick={handleClose}>
-              Close
-            </Button>
+            <h3 className="text-lg font-semibold">Payment Successful!</h3>
+            <p className="text-sm text-muted-foreground">You now have access to <span className="font-medium">{materialTitle}</span>.</p>
+            <Button className="mt-2" onClick={handleClose}>Close</Button>
           </div>
         )}
 
+        {/* ── Failed step ── */}
         {step === "failed" && (
-          <div className="flex flex-col items-center py-8">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
-              <AlertCircle className="h-8 w-8 text-red-600" />
+          <div className="flex flex-col items-center py-8 gap-3 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+              <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
             </div>
-            <h3 className="mt-4 text-lg font-semibold">Payment Failed</h3>
-            <p className="mt-2 text-center text-sm text-muted-foreground">
-              The payment was not completed. Please try again.
-            </p>
-            <div className="mt-4 flex gap-3">
-              <Button variant="outline" onClick={handleClose}>
-                Close
-              </Button>
-              <Button onClick={() => setStep("form")}>
-                Try Again
-              </Button>
+            <h3 className="text-lg font-semibold">Payment Failed</h3>
+            <p className="text-sm text-muted-foreground">The payment was not completed. Please try again.</p>
+            <div className="flex gap-2 mt-2">
+              <Button variant="outline" onClick={handleClose}>Close</Button>
+              <Button onClick={() => { setStep("form"); setLoading(false); }}>Try Again</Button>
             </div>
           </div>
         )}
+
       </DialogContent>
     </Dialog>
   );

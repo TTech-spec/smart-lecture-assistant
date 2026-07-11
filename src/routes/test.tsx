@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -25,6 +25,9 @@ import {
   loadTestSubmissions,
   loadSettings,
   markClassCodeUsed,
+  validateStudentCode,
+  flagCodeFraud,
+  getStudentCode,
   type TestConfig,
   type TestSubmission,
 } from "@/lib/attendance-store";
@@ -130,6 +133,7 @@ function TestFlow({ test }: { test: TestConfig }) {
   }
 
   function handleClassCodeSubmit(code: string) {
+    // validateStudentCode already confirmed this code belongs to matricNumber
     markClassCodeUsed(matricNumber);
     setStage("taking");
   }
@@ -200,7 +204,7 @@ function TestFlow({ test }: { test: TestConfig }) {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.35 }}
             >
-              <ClassCodeForm settings={settings} onSubmit={handleClassCodeSubmit} />
+              <ClassCodeForm settings={settings} matricNumber={matricNumber} onSubmit={handleClassCodeSubmit} />
             </motion.div>
           )}
 
@@ -306,30 +310,88 @@ function TestFlow({ test }: { test: TestConfig }) {
 }
 
 // ── Class code form ─────────────────────────────────────────────────────────────
-function ClassCodeForm({ settings, onSubmit }: { settings: any; onSubmit: (code: string) => void }) {
+function ClassCodeForm({
+  settings,
+  matricNumber,
+  onSubmit,
+}: {
+  settings: any;
+  matricNumber: string;
+  onSubmit: (code: string) => void;
+}) {
   const [code, setCode] = useState("");
   const [checking, setChecking] = useState(false);
+  const [fraudBlocked, setFraudBlocked] = useState(false);
+  const [attemptsLeft, setAttemptsLeft] = useState(3);
 
-  function handleSubmit(e: React.FormEvent) {
+  // If this student has no code assigned yet (got code on a different device /
+  // storage was cleared), fall back to the global code check so they aren't
+  // permanently locked out.
+  const hasPersonalCode = !!getStudentCode(matricNumber);
+
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!code.trim()) {
+    const entered = code.trim();
+    if (!entered) {
       toast.error("Please enter the class code");
       return;
     }
-    
+
     setChecking(true);
-    
-    // Validate the class code
-    const inputCode = code.trim();
-    const expectedCode = settings.classCode.trim();
-    
-    if (inputCode !== expectedCode) {
-      setChecking(false);
-      toast.error("Invalid class code. Please check with your lecturer.");
-      return;
+
+    if (hasPersonalCode) {
+      // ── Personal-code validation ─────────────────────────────────────────
+      const valid = validateStudentCode(matricNumber, entered);
+
+      if (!valid) {
+        flagCodeFraud(matricNumber, entered);
+        const remaining = attemptsLeft - 1;
+        setAttemptsLeft(remaining);
+
+        if (remaining <= 0) {
+          setFraudBlocked(true);
+          setChecking(false);
+          toast.error("Too many incorrect attempts. You have been flagged for using someone else's code.");
+          return;
+        }
+
+        setChecking(false);
+        toast.error(
+          `Wrong code. That code doesn't match your matric number. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.`
+        );
+        setCode("");
+        return;
+      }
+    } else {
+      // ── Fallback: global code (student got their code on another device) ──
+      const expectedCode = settings.classCode.trim();
+      if (entered !== expectedCode) {
+        setChecking(false);
+        toast.error("Invalid class code. Please check with your lecturer.");
+        return;
+      }
     }
-    
-    onSubmit(inputCode);
+
+    setChecking(false);
+    onSubmit(entered);
+  }
+
+  // ── Fraud-blocked screen ────────────────────────────────────────────────────
+  if (fraudBlocked) {
+    return (
+      <div className="mx-auto max-w-md text-center">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-100 dark:bg-red-900/30">
+          <XCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+        </div>
+        <h2 className="text-2xl font-bold text-red-600 dark:text-red-400">Access Blocked</h2>
+        <p className="mt-2 text-muted-foreground">
+          You entered a code that doesn't belong to your matric number too many times. This incident has been reported to your lecturer.
+        </p>
+        <Button asChild className="mt-6" variant="outline">
+          <Link to="/">Back to home</Link>
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -338,24 +400,32 @@ function ClassCodeForm({ settings, onSubmit }: { settings: any; onSubmit: (code:
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
           <GraduationCap className="h-7 w-7" />
         </div>
-        <h1 className="text-2xl font-bold">Enter Class Code</h1>
+        <h1 className="text-2xl font-bold">Enter Your Class Code</h1>
         <p className="mt-1 text-muted-foreground">
-          Your lecturer has provided a class code for this test. Enter it below to proceed.
+          Enter the personal class code assigned to your matric number.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="rounded-2xl border bg-card p-6 shadow-soft space-y-4">
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800/40 dark:bg-blue-900/20 dark:text-blue-300">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
           <AlertTriangle className="mr-2 inline h-4 w-4" />
-          The class code is provided by your lecturer. Make sure you enter it correctly.
+          Each student has a <strong>unique</strong> code. Do not share yours — using someone else's code will flag you.
         </div>
+
+        {attemptsLeft < 3 && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800/40 dark:bg-red-900/20 dark:text-red-300">
+            <XCircle className="mr-2 inline h-4 w-4" />
+            {attemptsLeft} attempt{attemptsLeft !== 1 ? "s" : ""} remaining before you are blocked.
+          </div>
+        )}
+
         <div>
-          <Label htmlFor="classCode">Class Code</Label>
+          <Label htmlFor="classCode">Your Class Code</Label>
           <Input
             id="classCode"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="Enter the class code"
+            placeholder="Enter your personal class code"
             className="mt-1 text-center text-lg tracking-wider"
             autoFocus
           />

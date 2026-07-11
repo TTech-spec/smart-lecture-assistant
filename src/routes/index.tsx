@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
+import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
@@ -172,6 +172,7 @@ function Landing() {
   const [codeRevealed, setCodeRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [codeChecking, setCodeChecking] = useState(false);
+  const [studentCode, setStudentCode] = useState("");
 
   useEffect(() => {
     const syncTests = () => setActiveTest(getActiveTest());
@@ -187,7 +188,7 @@ function Landing() {
 
   function closeCodeModal() {
     setCodeOpen(false);
-    setCodeName(""); setCodeMatric(""); setCodeLevel(""); setCodeRevealed(false); setCopied(false);
+    setCodeName(""); setCodeMatric(""); setCodeLevel(""); setCodeRevealed(false); setCopied(false); setStudentCode("");
   }
 
   async function requestCode(e: { preventDefault(): void }) {
@@ -236,7 +237,15 @@ function Landing() {
       }
 
       if (hasUsedClassCode(codeMatric)) {
-        toast.error("You have already received your class code. You cannot generate a class code twice.");
+        // Already assigned — just show them their code again
+        const existing = getStudentCode(codeMatric);
+        if (existing) {
+          setStudentCode(existing);
+          setCodeRevealed(true);
+          toast.success("Here is your previously assigned class code.");
+        } else {
+          toast.error("You have already received your class code on another device. Contact your lecturer if you need it again.");
+        }
         return;
       }
 
@@ -245,18 +254,22 @@ function Landing() {
         return;
       }
 
-      // Update the student's attendance record with the class code
-      updateStudentClassCode(codeMatric, settings.classCode);
+      // Generate a unique code for this student based on the global code prefix
+      const uniqueCode = generateStudentClassCode(codeMatric, settings.classCode, settings.classCodeFormat);
+
+      // Update the student's attendance record with their unique code
+      updateStudentClassCode(codeMatric, uniqueCode);
       markClassCodeUsed(codeMatric);
+      setStudentCode(uniqueCode);
       setCodeRevealed(true);
-      toast.success("Class code assigned to your attendance record!");
+      toast.success("Your personal class code has been assigned!");
     } finally {
       setCodeChecking(false);
     }
   }
 
   function copyCode() {
-    navigator.clipboard.writeText(settings.classCode).then(() => {
+    navigator.clipboard.writeText(studentCode).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -449,9 +462,9 @@ function Landing() {
                       <p className="mt-0.5 text-sm text-muted-foreground">Your class code for today is:</p>
                     </div>
                     <div className="w-full rounded-2xl border-2 border-primary/30 bg-primary/5 py-5">
-                      <p className="font-mono text-3xl font-bold tracking-widest text-primary">{settings.classCode}</p>
+                      <p className="font-mono text-3xl font-bold tracking-widest text-primary">{studentCode}</p>
                       <p className="mt-1 text-xs text-muted-foreground uppercase tracking-wider">
-                        {settings.classCodeFormat === "numbers" ? "Numeric code" : "ID code"} · {codeLevel} Level
+                        Your personal code · {codeLevel} Level
                       </p>
                     </div>
                     <button onClick={copyCode} className="w-full rounded-xl border bg-secondary py-2 text-sm font-medium hover:bg-secondary/80 transition-colors">

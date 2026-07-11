@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Upload, BookOpen, Globe, Lock, FileText, Video, File,
   Plus, Trash2, ExternalLink, Sparkles, CheckCircle2,
-  X, ChevronDown, ChevronUp,
+  X, ChevronDown, ChevronUp, Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,6 +18,7 @@ import {
   loadMaterials, addMaterial, deleteMaterial, syncMaterialsFromSupabase,
   uploadMaterialFile, type Material, type MaterialFileType, type MaterialAccessType,
 } from "@/lib/materials-store";
+import { calcFees, NG_BANKS } from "@/lib/squad";
 
 export const Route = createFileRoute("/admin/materials")({
   head: () => ({ meta: [{ title: "Materials — Attendly" }] }),
@@ -43,11 +44,15 @@ type Draft = {
   courseCode: string;
   topic: string;
   file: File | null;
+  lecturerAccountNumber: string;
+  lecturerBankCode: string;
+  lecturerAccountName: string;
 };
 
 const emptyDraft: Draft = {
   title: "", description: "", fileType: "pdf", accessType: "free",
   price: "", currency: "NGN", url: "", courseCode: "", topic: "", file: null,
+  lecturerAccountNumber: "", lecturerBankCode: "", lecturerAccountName: "",
 };
 
 function useMaterials() {
@@ -91,20 +96,31 @@ function MaterialsAdmin() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.title.trim()) return toast.error("Please enter a material title.");
-    
+
     // Either file or URL must be provided
     if (!draft.file && !draft.url.trim()) {
       return toast.error("Please upload a file or enter a URL.");
     }
-    
-    if (draft.accessType === "paid" && (!draft.price || isNaN(Number(draft.price)))) {
-      return toast.error("Please enter a valid price for paid materials.");
+
+    if (draft.accessType === "paid") {
+      if (!draft.price || isNaN(Number(draft.price)) || Number(draft.price) <= 0) {
+        return toast.error("Please enter a valid price for paid materials.");
+      }
+      if (!draft.lecturerAccountNumber.trim()) {
+        return toast.error("Please enter your bank account number so students' payments can be sent to you.");
+      }
+      if (!draft.lecturerBankCode) {
+        return toast.error("Please select your bank.");
+      }
+      if (!draft.lecturerAccountName.trim()) {
+        return toast.error("Please enter your account name.");
+      }
     }
 
     setSaving(true);
     try {
       let finalUrl = draft.url.trim();
-      
+
       // If file is uploaded, store it in Supabase Storage
       if (draft.file) {
         const tempId = crypto.randomUUID();
@@ -123,6 +139,11 @@ function MaterialsAdmin() {
         courseCode: draft.courseCode.trim().toUpperCase(),
         topic: draft.topic.trim(),
         uploadedAt: new Date().toISOString(),
+        ...(draft.accessType === "paid" && {
+          lecturerAccountNumber: draft.lecturerAccountNumber.trim(),
+          lecturerBankCode: draft.lecturerBankCode,
+          lecturerAccountName: draft.lecturerAccountName.trim(),
+        }),
       });
       toast.success("Material uploaded and shared with students.");
       setDraft(emptyDraft);
@@ -146,6 +167,12 @@ function MaterialsAdmin() {
       setDeletingId(null);
     }
   }
+
+  const fees = useMemo(() => {
+    const p = Number(draft.price);
+    if (!draft.price || isNaN(p) || p <= 0) return null;
+    return calcFees(p);
+  }, [draft.price]);
 
   return (
     <main className="mx-auto max-w-4xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
@@ -386,46 +413,125 @@ function MaterialsAdmin() {
                 </Select>
               </div>
 
-              {/* Price (conditional) */}
+              {/* Price + bank details (conditional on paid) */}
               <AnimatePresence>
                 {draft.accessType === "paid" && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="sm:col-span-2 grid gap-4 sm:grid-cols-2"
+                    className="sm:col-span-2 space-y-4"
                   >
-                    <div>
-                      <Label htmlFor="mat-price">Price <span className="text-destructive">*</span></Label>
-                      <Input
-                        id="mat-price"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={draft.price}
-                        onChange={(e) => upd("price", e.target.value)}
-                        placeholder="0.00"
-                        className="mt-1.5"
-                      />
+                    {/* ── Price row ── */}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <Label htmlFor="mat-price">Your Price (what you receive) <span className="text-destructive">*</span></Label>
+                        <Input
+                          id="mat-price"
+                          type="number"
+                          min={1}
+                          step="1"
+                          value={draft.price}
+                          onChange={(e) => upd("price", e.target.value)}
+                          placeholder="e.g. 2000"
+                          className="mt-1.5"
+                        />
+                      </div>
+                      <div>
+                        <Label>Currency</Label>
+                        <Select value={draft.currency} onValueChange={(v) => upd("currency", v)}>
+                          <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NGN">NGN (₦)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div>
-                      <Label>Currency</Label>
-                      <Select value={draft.currency} onValueChange={(v) => upd("currency", v)}>
-                        <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="NGN">NGN (₦)</SelectItem>
-                          <SelectItem value="USD">USD ($)</SelectItem>
-                          <SelectItem value="GBP">GBP (£)</SelectItem>
-                          <SelectItem value="EUR">EUR (€)</SelectItem>
-                          <SelectItem value="GHS">GHS (₵)</SelectItem>
-                          <SelectItem value="KES">KES (KSh)</SelectItem>
-                        </SelectContent>
-                      </Select>
+
+                    {/* ── Live fee breakdown ── */}
+                    <AnimatePresence>
+                      {fees && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800/40 dark:bg-blue-900/20 p-4 space-y-2 text-sm"
+                        >
+                          <div className="flex items-center gap-2 font-semibold text-blue-800 dark:text-blue-300">
+                            <Info className="h-4 w-4 shrink-0" />
+                            What the student will be charged
+                          </div>
+                          <div className="space-y-1 text-blue-700 dark:text-blue-400 text-xs">
+                            <div className="flex justify-between">
+                              <span>Your price (you receive this)</span>
+                              <span>₦{fees.lecturerPrice.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Processing fee (platform)</span>
+                              <span>₦{fees.platformFee.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Transfer fee (bank payout)</span>
+                              <span>₦{fees.transferFee.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Squad payment gateway (1.2%, max ₦1,500)</span>
+                              <span>₦{fees.squadFee.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between font-bold text-blue-900 dark:text-blue-200 border-t border-blue-200 dark:border-blue-700 pt-1.5 mt-1">
+                              <span>Total student pays</span>
+                              <span>₦{fees.totalCharge.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* ── Lecturer bank details ── */}
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-900/20 p-4 space-y-3">
+                      <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                        <Lock className="h-4 w-4" /> Your payout bank details
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Payments go directly to your bank account after each purchase. ₦1,000 processing fee is retained by the platform.
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label htmlFor="mat-bank">Your Bank <span className="text-destructive">*</span></Label>
+                          <Select value={draft.lecturerBankCode} onValueChange={(v) => upd("lecturerBankCode", v)}>
+                            <SelectTrigger id="mat-bank" className="mt-1.5 bg-white dark:bg-background">
+                              <SelectValue placeholder="Select bank" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60">
+                              {NG_BANKS.map((b) => (
+                                <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="mat-acct">Account Number <span className="text-destructive">*</span></Label>
+                          <Input
+                            id="mat-acct"
+                            value={draft.lecturerAccountNumber}
+                            onChange={(e) => upd("lecturerAccountNumber", e.target.value.replace(/\D/g, "").slice(0, 10))}
+                            placeholder="0123456789"
+                            maxLength={10}
+                            className="mt-1.5 bg-white dark:bg-background font-mono tracking-wider"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label htmlFor="mat-acct-name">Account Name <span className="text-destructive">*</span></Label>
+                          <Input
+                            id="mat-acct-name"
+                            value={draft.lecturerAccountName}
+                            onChange={(e) => upd("lecturerAccountName", e.target.value)}
+                            placeholder="e.g. Dr. Adeola Okonkwo"
+                            className="mt-1.5 bg-white dark:bg-background"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <p className="sm:col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      <Lock className="inline h-3 w-3 mr-1" />
-                      Students will see the price displayed on the material card. You are responsible for payment collection outside this app.
-                    </p>
                   </motion.div>
                 )}
               </AnimatePresence>

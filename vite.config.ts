@@ -5,6 +5,7 @@
 //     error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
   tanstackStart: {
@@ -12,4 +13,44 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  plugins: [
+    VitePWA({
+      registerType: "autoUpdate",
+      includeAssets: ["icon-192.png", "icon-512.png"],
+      manifest: {
+        name: "Attendly — Smart Lecture Assistant",
+        short_name: "Attendly",
+        description: "GPS-verified class attendance and online tests for students and lecturers.",
+        start_url: "/",
+        display: "standalone",
+        orientation: "portrait",
+        background_color: "#ffffff",
+        theme_color: "#7c3aed",
+        icons: [
+          {
+            src: "/icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+          {
+            src: "/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+        ],
+      },
+      workbox: {
+        // Cache app shell and assets
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        // Don't cache Supabase API calls
+        navigateFallbackDenylist: [/^\/api/, /^\/rest/, /^\/auth/],
+      },
+      devOptions: {
+        // Enable PWA in dev so you can test the install prompt locally
+        enabled: true,
+      },
+    }),
+  ],
 });

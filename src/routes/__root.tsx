@@ -87,8 +87,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "Students sign in only when they are physically in class. Lecturers control the location, radius and time window.",
       },
+      // PWA
+      { name: "theme-color", content: "#7c3aed" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "apple-mobile-web-app-title", content: "Attendly" },
+      { name: "application-name", content: "Attendly" },
+      { name: "msapplication-TileColor", content: "#7c3aed" },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      // PWA
+      { rel: "manifest", href: "/manifest.json" },
+      { rel: "apple-touch-icon", href: "/icon-192.png" },
+      { rel: "icon", type: "image/png", sizes: "192x192", href: "/icon-192.png" },
+      { rel: "icon", type: "image/png", sizes: "512x512", href: "/icon-512.png" },
+    ],
   }),
   shellComponent: RootShell,
   component: RootComponent,

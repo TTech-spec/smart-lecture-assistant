@@ -15,6 +15,10 @@ export type Material = {
   courseCode: string;
   topic: string;
   uploadedAt: string;
+  // Lecturer payout details (required for paid materials)
+  lecturerAccountNumber?: string;
+  lecturerBankCode?: string;
+  lecturerAccountName?: string;
 };
 
 export type MaterialPurchase = {
@@ -47,6 +51,9 @@ function materialToDb(m: Material): Row {
     course_code: m.courseCode,
     topic: m.topic,
     uploaded_at: m.uploadedAt,
+    lecturer_account_number: m.lecturerAccountNumber || null,
+    lecturer_bank_code: m.lecturerBankCode || null,
+    lecturer_account_name: m.lecturerAccountName || null,
   };
 }
 
@@ -63,6 +70,9 @@ function materialFromDb(row: Row): Material {
     courseCode: row.course_code || "",
     topic: row.topic || "",
     uploadedAt: row.uploaded_at,
+    lecturerAccountNumber: row.lecturer_account_number || undefined,
+    lecturerBankCode: row.lecturer_bank_code || undefined,
+    lecturerAccountName: row.lecturer_account_name || undefined,
   };
 }
 
