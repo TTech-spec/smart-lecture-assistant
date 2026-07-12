@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2, XCircle, Loader2, ArrowLeft, MapPin, ChevronDown,
+  CheckCircle2, XCircle, Loader2, ArrowLeft, MapPin, ChevronDown, KeyRound, Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,20 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  addRecord, fetchLinkByToken, getDeviceId, hasMarkedAttendanceForCourseToday,
-  isLinkValid, loadSettings, todayKey,
-  type AttendanceLink, type Gender,
+  addRecord,
+  fetchLinkByToken,
+  getDeviceId,
+  hasMarkedAttendanceForCourseToday,
+  hasDeviceMarkedAttendanceToday,
+  hasDeviceMarkedAttendanceTodayRemote,
+  isLinkValid,
+  loadSettings,
+  todayKey,
+  generateStudentClassCode,
+  markClassCodeUsed,
+  updateStudentClassCode,
+  type AttendanceLink,
+  type Gender,
 } from "@/lib/attendance-store";
 import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition } from "@/lib/geo";
 
@@ -41,7 +52,7 @@ const empty: Form = {
   fullName: "", matricNumber: "", department: "", phone: "", level: "", gender: "",
 };
 
-// ── Status banner (reused from attendance.tsx style) ──────────────────────────
+// ── Status banner ─────────────────────────────────────────────────────────────
 function Banner({
   tone,
   title,
@@ -52,9 +63,9 @@ function Banner({
   children: React.ReactNode;
 }) {
   const colours = {
-    ok:   "border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/8 text-[color:var(--color-success)]",
-    warn: "border-amber-400/30 bg-amber-400/8 text-amber-700 dark:text-amber-400",
-    error:"border-destructive/30 bg-destructive/8 text-destructive",
+    ok:    "border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/8 text-[color:var(--color-success)]",
+    warn:  "border-amber-400/30 bg-amber-400/8 text-amber-700 dark:text-amber-400",
+    error: "border-destructive/30 bg-destructive/8 text-destructive",
   };
   const Icon = tone === "ok" ? CheckCircle2 : XCircle;
   return (
@@ -81,15 +92,17 @@ function Field({ label, className, children }: { label: string; className?: stri
 function AttendTokenPage() {
   const { token } = Route.useParams();
 
-  // Link state
-  const [link, setLink]           = useState<AttendanceLink | null | "loading">("loading");
-  const [form, setForm]           = useState<Form>(empty);
+  const [link, setLink]             = useState<AttendanceLink | null | "loading">("loading");
+  const [form, setForm]             = useState<Form>(empty);
   const [deptManual, setDeptManual] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [done, setDone]           = useState(false);
+  const [done, setDone]             = useState(false);
+  // The class code assigned to this student after successful submission
+  const [assignedCode, setAssignedCode] = useState<string | null>(null);
+  const [copied, setCopied]         = useState(false);
+  // Device-level block: set to true if this phone already submitted today
+  const [deviceBlocked, setDeviceBlocked] = useState(false);
 
-  // Poll the link every 10 s so if the lecturer disables it mid-session the
-  // student sees the form lock without needing to refresh.
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -111,20 +124,36 @@ function AttendTokenPage() {
   const settings = useMemo(() => loadSettings(), []);
   const deviceId = useMemo(() => getDeviceId(), []);
 
-  // Determine whether this student+device has already submitted for this course today
+  // ── Device-level duplicate check (runs once link is known) ─────────────────
+  useEffect(() => {
+    if (!link || link === "loading") return;
+    const today = todayKey();
+
+    // 1. Fast local check
+    if (hasDeviceMarkedAttendanceToday(deviceId, link.courseCode, today)) {
+      setDeviceBlocked(true);
+      return;
+    }
+    // 2. Authoritative remote check (in case localStorage was cleared)
+    hasDeviceMarkedAttendanceTodayRemote(deviceId, link.courseCode, today).then((blocked) => {
+      if (blocked) setDeviceBlocked(true);
+    });
+  }, [link, deviceId]);
+
+  // Matric-level duplicate check (live as user types)
   const alreadyMarked = useMemo(() => {
     if (!link || link === "loading") return false;
     const today = todayKey();
     return hasMarkedAttendanceForCourseToday(form.matricNumber.trim(), link.courseCode, today);
   }, [link, form.matricNumber]);
 
-  // Computed validity
-  const now = new Date();
+  const now    = new Date();
   const isValid = link && link !== "loading" && isLinkValid(link, now);
 
   const update = <K extends keyof Form>(k: K, v: Form[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  // ── Submit ─────────────────────────────────────────────────────────────────
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!link || link === "loading") return;
@@ -137,18 +166,31 @@ function AttendTokenPage() {
     if (!form.level)               return toast.error("Please select your level.");
     if (!form.gender)              return toast.error("Please select your gender.");
 
-    // Re-check duplicate at submit time (Option B: once per course per day)
     const today = todayKey();
+
+    // ── Device block (re-check at submit time) ──────────────────────────────
+    if (hasDeviceMarkedAttendanceToday(deviceId, link.courseCode, today)) {
+      setDeviceBlocked(true);
+      return toast.error("This phone has already been used to mark attendance for this course today.");
+    }
+    // Remote device check
+    const blockedRemote = await hasDeviceMarkedAttendanceTodayRemote(deviceId, link.courseCode, today);
+    if (blockedRemote) {
+      setDeviceBlocked(true);
+      return toast.error("This phone has already been used to mark attendance for this course today.");
+    }
+
+    // ── Matric duplicate check ──────────────────────────────────────────────
     if (hasMarkedAttendanceForCourseToday(form.matricNumber.trim(), link.courseCode, today)) {
       return toast.error(
         `You've already marked attendance for ${link.courseCode} today. Only one submission per course per day is allowed.`
       );
     }
 
-    // GPS check (same logic as the main attendance form)
+    // ── GPS check ───────────────────────────────────────────────────────────
     const locationSet = settings.classLat != null && settings.classLng != null;
-
     setSubmitting(true);
+
     try {
       let lat = 0, lng = 0, dist = 0;
 
@@ -185,6 +227,21 @@ function AttendTokenPage() {
         lng = pos.lng;
       }
 
+      // ── Auto-assign class code if link has it enabled ───────────────────
+      let classCode: string | undefined;
+      if (link.assignClassCode) {
+        const settings2 = loadSettings();
+        // Use the global classCode as the base prefix; fall back to courseCode
+        const base = settings2.classCode?.trim() || link.courseCode;
+        classCode = generateStudentClassCode(
+          form.matricNumber.trim(),
+          base,
+          settings2.classCodeFormat || "numbers"
+        );
+        // Mark as used so the home-page "Get code" button knows it's already assigned
+        markClassCodeUsed(form.matricNumber.trim());
+      }
+
       await addRecord({
         id: crypto.randomUUID(),
         fullName: form.fullName.trim(),
@@ -204,10 +261,17 @@ function AttendTokenPage() {
         sessionId: settings.activeSessionId || "",
         customFields: {},
         linkId: link.id,
+        assignedClassCode: classCode,
       });
 
+      // Persist the code on the attendance record in Supabase too
+      if (classCode) {
+        updateStudentClassCode(form.matricNumber.trim().toUpperCase(), classCode);
+        setAssignedCode(classCode);
+      }
+
       setDone(true);
-      toast.success("Attendance marked successfully.");
+      toast.success("Attendance marked successfully!");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not save attendance.";
       toast.error(`Error: ${msg}`);
@@ -216,7 +280,15 @@ function AttendTokenPage() {
     }
   }
 
-  // ── Loading state ──────────────────────────────────────────────────────────
+  function copyCode() {
+    if (!assignedCode) return;
+    navigator.clipboard.writeText(assignedCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (link === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-hero">
@@ -225,23 +297,88 @@ function AttendTokenPage() {
     );
   }
 
-  // ── Done / success state ───────────────────────────────────────────────────
-  if (done) {
+  // ── Device-blocked screen ──────────────────────────────────────────────────
+  if (deviceBlocked) {
     return (
       <div className="min-h-screen bg-gradient-hero">
         <div className="mx-auto max-w-md px-4 py-16 text-center sm:px-6 sm:py-24">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary text-primary-foreground shadow-glow">
-            <CheckCircle2 className="h-8 w-8" />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+            <XCircle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
           </div>
-          <h1 className="mt-6 text-2xl font-bold sm:text-3xl">You're checked in</h1>
-          <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-            Your attendance for{" "}
-            <span className="font-semibold text-foreground">{(link as AttendanceLink).courseCode}</span>{" "}
-            has been recorded via "{(link as AttendanceLink).title}".
+          <h1 className="mt-6 text-2xl font-bold sm:text-3xl">Already submitted</h1>
+          <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+            This phone has already been used to mark attendance for{" "}
+            <span className="font-semibold text-foreground">
+              {link ? (link as AttendanceLink).courseCode : "this course"}
+            </span>{" "}
+            today. Only one submission per device per course per day is allowed.
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            If you believe this is a mistake, contact your lecturer.
           </p>
           <Button asChild className="mt-8 w-full sm:w-auto" variant="outline">
             <Link to="/">Back to home</Link>
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Success / done screen ──────────────────────────────────────────────────
+  if (done) {
+    return (
+      <div className="min-h-screen bg-gradient-hero">
+        <div className="mx-auto max-w-md px-4 py-16 sm:px-6 sm:py-24">
+          <div className="text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary text-primary-foreground shadow-glow">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
+            <h1 className="mt-6 text-2xl font-bold sm:text-3xl">You're checked in!</h1>
+            <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+              Attendance for{" "}
+              <span className="font-semibold text-foreground">{(link as AttendanceLink).courseCode}</span>{" "}
+              has been recorded via "{(link as AttendanceLink).title}".
+            </p>
+          </div>
+
+          {/* Class code reveal — only shown if the link had assignClassCode=true */}
+          {assignedCode && (
+            <div className="mt-8 rounded-2xl border-2 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 p-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/40">
+                <KeyRound className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                Your personal class code
+              </p>
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                Attached to your name — do not share with anyone else
+              </p>
+
+              <div className="mt-4 rounded-xl border border-amber-300 bg-white dark:bg-background px-6 py-4 dark:border-amber-700">
+                <p className="font-mono text-3xl font-bold tracking-widest text-amber-700 dark:text-amber-300 select-all">
+                  {assignedCode}
+                </p>
+              </div>
+
+              <button
+                onClick={copyCode}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white dark:bg-background dark:border-amber-700 px-4 py-2 text-sm font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                {copied ? "Copied!" : "Copy code"}
+              </button>
+
+              <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+                You'll need this code to access the test. Screenshot or copy it now.
+              </p>
+            </div>
+          )}
+
+          <div className="mt-6 text-center">
+            <Button asChild variant="outline">
+              <Link to="/">Back to home</Link>
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -252,10 +389,7 @@ function AttendTokenPage() {
     if (!link) {
       return (
         <Banner tone="error" title="Link not found">
-          This attendance link doesn't exist in the database yet. If your lecturer just created it,
-          make sure the SQL migration has been run in Supabase first — see{" "}
-          <span className="font-semibold">attendance-links-migration.sql</span>. If you're a student,
-          ask your lecturer to share the link again.
+          This attendance link doesn't exist. Ask your lecturer to share the correct link.
         </Banner>
       );
     }
@@ -278,7 +412,6 @@ function AttendTokenPage() {
 
   const invalidBanner = renderInvalidState();
 
-  // Expiry countdown text
   const minsLeft = isValid
     ? Math.max(0, Math.ceil((new Date((link as AttendanceLink).expiresAt).getTime() - now.getTime()) / 60_000))
     : 0;
@@ -306,6 +439,11 @@ function AttendTokenPage() {
               {link.courseCode}
             </p>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{link.title}</h1>
+            {link.assignClassCode && (
+              <p className="mt-1 inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                <KeyRound className="h-3 w-3" /> You will receive a class code after submitting
+              </p>
+            )}
           </div>
         )}
         {!link && (
@@ -317,7 +455,7 @@ function AttendTokenPage() {
           {invalidBanner ?? (
             alreadyMarked && form.matricNumber.trim() ? (
               <Banner tone="warn" title="Already submitted">
-                You've already marked attendance for {(link as AttendanceLink).courseCode} today. Only one submission per course per day is allowed.
+                You've already marked attendance for {(link as AttendanceLink).courseCode} today.
               </Banner>
             ) : (
               <Banner tone="ok" title="Link is active">
@@ -327,7 +465,7 @@ function AttendTokenPage() {
           )}
         </div>
 
-        {/* Form — only shown if link is valid */}
+        {/* Form */}
         {isValid && (
           <form
             onSubmit={onSubmit}
@@ -447,7 +585,6 @@ function AttendTokenPage() {
           </form>
         )}
 
-        {/* If invalid, just show link-back */}
         {!isValid && (
           <div className="mt-6 text-center">
             <Button asChild variant="outline">

@@ -8,19 +8,27 @@
 -- Represents a shareable URL the lecturer generates for a class session.
 -- Distinct from attendance_sessions (which tracks form open/close events).
 CREATE TABLE IF NOT EXISTS attendance_links (
-  id          TEXT        PRIMARY KEY,
-  course_code TEXT        NOT NULL DEFAULT '',
-  title       TEXT        NOT NULL DEFAULT '',
-  token       TEXT        NOT NULL UNIQUE,
-  is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
-  created_by  TEXT        NOT NULL DEFAULT 'admin',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at  TIMESTAMPTZ NOT NULL
+  id                TEXT        PRIMARY KEY,
+  course_code       TEXT        NOT NULL DEFAULT '',
+  title             TEXT        NOT NULL DEFAULT '',
+  token             TEXT        NOT NULL UNIQUE,
+  is_active         BOOLEAN     NOT NULL DEFAULT TRUE,
+  created_by        TEXT        NOT NULL DEFAULT 'admin',
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at        TIMESTAMPTZ NOT NULL,
+  -- When TRUE, each student who submits via this link is auto-assigned
+  -- a unique personal class code shown on their success screen.
+  assign_class_code BOOLEAN     NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS idx_attendance_links_token      ON attendance_links (token);
 CREATE INDEX IF NOT EXISTS idx_attendance_links_course     ON attendance_links (course_code);
 CREATE INDEX IF NOT EXISTS idx_attendance_links_is_active  ON attendance_links (is_active);
+
+-- ── Add assign_class_code to existing attendance_links table (if table already exists) ──
+-- Safe to run even if the table was created before this migration.
+ALTER TABLE attendance_links
+  ADD COLUMN IF NOT EXISTS assign_class_code BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- ── Extend attendance_records: add link_id column ─────────────────────────────
 -- References which shareable link the student used to mark attendance.
@@ -29,6 +37,21 @@ ALTER TABLE attendance_records
   ADD COLUMN IF NOT EXISTS link_id TEXT DEFAULT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_attendance_records_link_id ON attendance_records (link_id);
+
+-- ── One phone per course per day enforcement ──────────────────────────────────
+-- device_id is already stored on each record. This index makes the remote
+-- duplicate-device check (hasDeviceMarkedAttendanceTodayRemote) fast even on
+-- large attendance tables.
+CREATE INDEX IF NOT EXISTS idx_attendance_records_device_course_day
+  ON attendance_records (device_id, course_code, day_key);
+
+-- Optional: enforce uniqueness at the database level so even a direct DB insert
+-- cannot bypass the one-device-per-course-per-day rule.
+-- Uncomment the lines below ONLY if you want the DB to hard-reject duplicates
+-- (the app already enforces this in code; the unique constraint is extra safety).
+--
+-- CREATE UNIQUE INDEX IF NOT EXISTS uq_attendance_device_course_day
+--   ON attendance_records (device_id, course_code, day_key);
 
 -- ── Row Level Security ─────────────────────────────────────────────────────────
 -- The existing tables all have RLS DISABLED (anon key has full access).
@@ -65,3 +88,13 @@ ALTER TABLE attendance_links DISABLE ROW LEVEL SECURITY;
 --         AND al.expires_at > NOW()
 --     )
 --   );
+
+-- ============================================================
+-- Materials table — lecturer payout columns
+-- Run this if you see "Could not find the 'lecturer_account_name' column"
+-- ============================================================
+
+ALTER TABLE materials
+  ADD COLUMN IF NOT EXISTS lecturer_account_number TEXT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS lecturer_bank_code      TEXT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS lecturer_account_name   TEXT DEFAULT NULL;

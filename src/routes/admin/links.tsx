@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Link2, Plus, X, Copy, Ban, ChevronDown, ChevronUp,
-  Clock, CheckCircle2, XCircle, Users, RefreshCw, QrCode, Trash2,
+  Clock, CheckCircle2, XCircle, Users, RefreshCw, QrCode, Trash2, KeyRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -109,6 +109,7 @@ function GenerateLinkForm({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [expiryMinutes, setExpiryMinutes] = useState(15);
   const [creating, setCreating] = useState(false);
+  const [assignClassCode, setAssignClassCode] = useState<boolean | null>(null); // null = not answered yet
 
   // Suggestions: courses that match what's been typed
   const suggestions = courses.filter(
@@ -119,6 +120,7 @@ function GenerateLinkForm({
     e.preventDefault();
     if (!title.trim()) return toast.error("Enter a title for this link.");
     if (!courseCode.trim()) return toast.error("Enter a course code.");
+    if (assignClassCode === null) return toast.error("Please answer the class code question above.");
     setCreating(true);
     try {
       const now = new Date();
@@ -132,11 +134,13 @@ function GenerateLinkForm({
         createdBy: "admin",
         createdAt: now.toISOString(),
         expiresAt,
+        assignClassCode: assignClassCode,
       };
       await addLink(link);
       toast.success(`Link "${link.title}" created and saved to database.`);
       setTitle("");
       setCourseCode("");
+      setAssignClassCode(null);
       onCreated(link);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -155,6 +159,54 @@ function GenerateLinkForm({
 
   return (
     <form onSubmit={handleCreate} className="space-y-4">
+      {/* ── Class code prompt ── */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-900/20 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <KeyRound className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+            Do you want students to receive a unique class code when they submit attendance?
+          </p>
+        </div>
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          If yes, each student will see their personal class code immediately after marking attendance. The code is tied to their name and matric number.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setAssignClassCode(true)}
+            className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+              assignClassCode === true
+                ? "border-amber-500 bg-amber-500 text-white shadow-sm"
+                : "border-amber-300 bg-white text-amber-700 hover:bg-amber-100 dark:bg-background dark:text-amber-400 dark:border-amber-700 dark:hover:bg-amber-900/30"
+            }`}
+          >
+            ✓ Yes, assign class codes
+          </button>
+          <button
+            type="button"
+            onClick={() => setAssignClassCode(false)}
+            className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+              assignClassCode === false
+                ? "border-muted-foreground bg-muted text-foreground shadow-sm"
+                : "border-border bg-white text-muted-foreground hover:bg-secondary dark:bg-background dark:border-border"
+            }`}
+          >
+            ✗ No, skip class codes
+          </button>
+        </div>
+        {assignClassCode === true && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+            ✓ Students will see their unique class code on the success screen after submitting.
+          </p>
+        )}
+        {assignClassCode === false && (
+          <p className="text-xs text-muted-foreground">
+            Students will see a standard success screen with no class code.
+          </p>
+        )}
+      </div>
+
+      {/* ── Link title ── */}
       <div>
         <Label className="text-sm">Link title</Label>
         <Input
@@ -219,7 +271,7 @@ function GenerateLinkForm({
         </div>
       </div>
 
-      <Button type="submit" className="w-full" disabled={creating}>
+      <Button type="submit" className="w-full" disabled={creating || assignClassCode === null}>
         <Plus className="mr-2 h-4 w-4" /> Generate link
       </Button>
     </form>
@@ -314,6 +366,11 @@ function LinkRow({
               {link.courseCode}
             </span>
             <StatusBadge link={link} />
+            {link.assignClassCode && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                <KeyRound className="h-2.5 w-2.5" /> Class code
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">

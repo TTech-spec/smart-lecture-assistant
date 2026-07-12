@@ -6,7 +6,7 @@ export const SQUAD_RATE        = 0.012;
 export const SQUAD_FEE_CAP     = 1500;   // ₦
 // Transfer payout fee (₦10–₦50 flat; we charge ₦50 to be safe)
 export const TRANSFER_FEE      = 50;     // ₦
-// Platform fee that goes to our account on every sale
+// Payment gateway processing fee charged to the student on every transaction
 export const PLATFORM_FEE      = 1000;   // ₦
 
 /**
@@ -113,11 +113,11 @@ export async function saveSquadPayment(record: SquadPaymentRecord): Promise<void
   }
 }
 
-export function hasUserPaidForMaterial(materialId: string, email: string): boolean {
+export function hasUserPaidForMaterial(materialId: string, matricNumber: string): boolean {
   return loadSquadPayments().some(
     (p) =>
       p.materialId === materialId &&
-      p.customerEmail.toLowerCase() === email.toLowerCase() &&
+      p.customerEmail.toLowerCase() === matricNumber.trim().toLowerCase() &&
       p.status === "successful"
   );
 }

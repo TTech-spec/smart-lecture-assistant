@@ -4,7 +4,7 @@ import {
   MapPin, Lock, Unlock, Users, Loader2,
   Plus, X, GraduationCap, ClipboardList, Activity,
   FileQuestion, Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp,
-  Upload, Hash, KeyRound, RefreshCw,
+  Upload, Hash, KeyRound, RefreshCw, Banknote, ArrowDownToLine, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -26,6 +26,8 @@ import { getStoredPass, PASS_KEY } from "@/routes/admin";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
 import { calculateTotalEarnings } from "@/lib/materials-store";
+import { payoutToLecturer } from "@/lib/squad-server";
+import { NG_BANKS, generateTransactionRef, loadSquadPayments } from "@/lib/squad";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminDashboard,
@@ -621,49 +623,297 @@ function StatsRow({ records, allRecords, settings }: { records: AttendanceRecord
 
 // ── Earnings Display ──────────────────────────────────────────────────────────
 function EarningsDisplay() {
-  const [earnings, setEarnings] = useState(() => calculateTotalEarnings());
+  const [earnings, setEarnings]         = useState(() => calculateTotalEarnings());
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [withdrawStep, setWithdrawStep] = useState<"form" | "processing" | "success" | "failed">("form");
+  const [acctNumber, setAcctNumber]     = useState("");
+  const [bankCode, setBankCode]         = useState("");
+  const [acctName, setAcctName]         = useState("");
+  const [amountInput, setAmountInput]   = useState("");
+  const [withdrawError, setWithdrawError] = useState("");
 
   useEffect(() => {
-    const handlePurchasesChange = () => {
-      setEarnings(calculateTotalEarnings());
-    };
-    window.addEventListener("att:purchases", handlePurchasesChange);
-    return () => window.removeEventListener("att:purchases", handlePurchasesChange);
+    const sync = () => setEarnings(calculateTotalEarnings());
+    window.addEventListener("att:purchases", sync);
+    return () => window.removeEventListener("att:purchases", sync);
   }, []);
 
   const { amount, currency, salesCount } = earnings;
 
+  // Total already withdrawn — sum of successful payout refs in squad payment records
+  const alreadyWithdrawn = useMemo(() => {
+    return loadSquadPayments()
+      .filter((p) => p.payoutStatus === "successful")
+      .reduce((sum, p) => sum + (p.lecturerAmount || 0), 0);
+  }, [earnings]);
+
+  const available = Math.max(0, amount - alreadyWithdrawn);
+
+  async function handleWithdraw(e: React.FormEvent) {
+    e.preventDefault();
+    setWithdrawError("");
+
+    const withdrawAmt = Number(amountInput);
+    if (!acctNumber.trim() || acctNumber.trim().length < 10) {
+      return setWithdrawError("Enter a valid 10-digit account number.");
+    }
+    if (!bankCode) return setWithdrawError("Select your bank.");
+    if (!acctName.trim()) return setWithdrawError("Enter the account name.");
+    if (!withdrawAmt || withdrawAmt <= 0) return setWithdrawError("Enter a valid amount.");
+    if (withdrawAmt > available) {
+      return setWithdrawError(`Amount exceeds available balance of ₦${available.toLocaleString()}.`);
+    }
+    if (withdrawAmt < 100) return setWithdrawError("Minimum withdrawal is ₦100.");
+
+    setWithdrawStep("processing");
+
+    try {
+      const ref = `WD-${generateTransactionRef()}`;
+      const res = await payoutToLecturer({
+        data: {
+          transferRef: ref,
+          amountNGN: withdrawAmt,
+          lecturerAccountNumber: acctNumber.trim(),
+          lecturerBankCode: bankCode,
+          lecturerAccountName: acctName.trim(),
+          narration: "Attendly earnings withdrawal",
+        },
+      });
+
+      if (res.success) {
+        setWithdrawStep("success");
+        toast.success(`₦${withdrawAmt.toLocaleString()} withdrawal initiated successfully.`);
+      } else {
+        throw new Error((res.message as string) || "Transfer failed.");
+      }
+    } catch (err) {
+      setWithdrawStep("failed");
+      setWithdrawError(err instanceof Error ? err.message : "Transfer failed. Try again.");
+    }
+  }
+
+  function resetWithdraw() {
+    setWithdrawStep("form");
+    setAcctNumber("");
+    setBankCode("");
+    setAcctName("");
+    setAmountInput("");
+    setWithdrawError("");
+  }
+
   return (
-    <div className="rounded-2xl border bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 p-6 shadow-soft">
-      <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg">
-          <span className="text-2xl font-bold">₦</span>
+    <>
+      <div className="rounded-2xl border bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 p-6 shadow-soft">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg">
+              <Banknote className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-green-900 dark:text-green-100">Total Earnings</h2>
+              <p className="text-sm text-green-700 dark:text-green-300">From material sales</p>
+            </div>
+          </div>
+          {salesCount > 0 && (
+            <Button
+              size="sm"
+              className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => { resetWithdraw(); setShowWithdraw(true); }}
+            >
+              <ArrowDownToLine className="h-3.5 w-3.5" /> Withdraw
+            </Button>
+          )}
         </div>
-        <div>
-          <h2 className="text-lg font-semibold text-green-900 dark:text-green-100">Total Earnings</h2>
-          <p className="text-sm text-green-700 dark:text-green-300">From material sales</p>
+
+        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="rounded-xl border border-green-200 dark:border-green-800 bg-white/50 dark:bg-black/20 p-4">
+            <p className="text-xs text-green-600 dark:text-green-400 uppercase tracking-wider font-medium">Total Revenue</p>
+            <p className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">
+              ₦{amount.toLocaleString()}
+            </p>
+          </div>
+          <div className="rounded-xl border border-green-200 dark:border-green-800 bg-white/50 dark:bg-black/20 p-4">
+            <p className="text-xs text-green-600 dark:text-green-400 uppercase tracking-wider font-medium">Available</p>
+            <p className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">
+              ₦{available.toLocaleString()}
+            </p>
+          </div>
+          <div className="rounded-xl border border-green-200 dark:border-green-800 bg-white/50 dark:bg-black/20 p-4">
+            <p className="text-xs text-green-600 dark:text-green-400 uppercase tracking-wider font-medium">Total Sales</p>
+            <p className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">
+              {salesCount}
+            </p>
+          </div>
         </div>
-      </div>
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <div className="rounded-xl border border-green-200 dark:border-green-800 bg-white/50 dark:bg-black/20 p-4">
-          <p className="text-xs text-green-600 dark:text-green-400 uppercase tracking-wider font-medium">Total Revenue</p>
-          <p className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">
-            {currency} {amount.toLocaleString()}
+
+        {salesCount === 0 && (
+          <p className="mt-4 text-sm text-green-700 dark:text-green-300 text-center">
+            No material sales yet. Upload paid materials to start earning.
           </p>
-        </div>
-        <div className="rounded-xl border border-green-200 dark:border-green-800 bg-white/50 dark:bg-black/20 p-4">
-          <p className="text-xs text-green-600 dark:text-green-400 uppercase tracking-wider font-medium">Total Sales</p>
-          <p className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">
-            {salesCount}
-          </p>
-        </div>
+        )}
       </div>
-      {salesCount === 0 && (
-        <p className="mt-4 text-sm text-green-700 dark:text-green-300 text-center">
-          No material sales yet. Upload paid materials to start earning.
-        </p>
-      )}
-    </div>
+
+      {/* ── Withdrawal modal ── */}
+      <AnimatePresence>
+        {showWithdraw && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={(e) => { if (e.target === e.currentTarget && withdrawStep !== "processing") { setShowWithdraw(false); } }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.93, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.93, y: 16 }} transition={{ duration: 0.22, ease: "circOut" }}
+              className="relative w-full max-w-md rounded-2xl border bg-card p-6 shadow-soft"
+            >
+              {withdrawStep !== "processing" && (
+                <button
+                  onClick={() => setShowWithdraw(false)}
+                  className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+
+              {/* ── Form ── */}
+              {withdrawStep === "form" && (
+                <>
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 dark:bg-green-900/30">
+                      <ArrowDownToLine className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold">Withdraw Earnings</h2>
+                      <p className="text-xs text-muted-foreground">Available: <span className="font-semibold text-green-600 dark:text-green-400">₦{available.toLocaleString()}</span></p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleWithdraw} className="space-y-3">
+                    {/* Amount */}
+                    <div>
+                      <Label htmlFor="wd-amount">Amount (₦)</Label>
+                      <Input
+                        id="wd-amount"
+                        type="number"
+                        min={100}
+                        max={available}
+                        step={1}
+                        value={amountInput}
+                        onChange={(e) => setAmountInput(e.target.value)}
+                        placeholder={`Max ₦${available.toLocaleString()}`}
+                        className="mt-1"
+                        required
+                      />
+                    </div>
+
+                    {/* Bank */}
+                    <div>
+                      <Label htmlFor="wd-bank">Bank</Label>
+                      <Select value={bankCode} onValueChange={setBankCode}>
+                        <SelectTrigger id="wd-bank" className="mt-1">
+                          <SelectValue placeholder="Select your bank" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {NG_BANKS.map((b) => (
+                            <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Account number */}
+                    <div>
+                      <Label htmlFor="wd-acct">Account Number</Label>
+                      <Input
+                        id="wd-acct"
+                        value={acctNumber}
+                        onChange={(e) => setAcctNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                        placeholder="0123456789"
+                        maxLength={10}
+                        className="mt-1 font-mono tracking-wider"
+                        required
+                      />
+                    </div>
+
+                    {/* Account name */}
+                    <div>
+                      <Label htmlFor="wd-name">Account Name</Label>
+                      <Input
+                        id="wd-name"
+                        value={acctName}
+                        onChange={(e) => setAcctName(e.target.value)}
+                        placeholder="As shown on your bank account"
+                        className="mt-1"
+                        required
+                      />
+                    </div>
+
+                    {withdrawError && (
+                      <p className="rounded-lg border border-destructive/30 bg-destructive/8 px-3 py-2 text-xs text-destructive">
+                        {withdrawError}
+                      </p>
+                    )}
+
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                      A ₦50 transfer fee applies. Funds arrive within minutes via Squad Transfer.
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <Button type="button" variant="outline" className="flex-1" onClick={() => setShowWithdraw(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+                        <ArrowDownToLine className="mr-2 h-4 w-4" />
+                        Withdraw ₦{Number(amountInput || 0).toLocaleString()}
+                      </Button>
+                    </div>
+                  </form>
+                </>
+              )}
+
+              {/* ── Processing ── */}
+              {withdrawStep === "processing" && (
+                <div className="flex flex-col items-center py-8 gap-4 text-center">
+                  <Loader2 className="h-12 w-12 animate-spin text-green-600" />
+                  <h3 className="text-lg font-semibold">Processing withdrawal…</h3>
+                  <p className="text-sm text-muted-foreground">Please wait while we transfer your funds.</p>
+                </div>
+              )}
+
+              {/* ── Success ── */}
+              {withdrawStep === "success" && (
+                <div className="flex flex-col items-center py-8 gap-4 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                    <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Withdrawal Initiated!</h3>
+                  <p className="text-sm text-muted-foreground">
+                    ₦{Number(amountInput).toLocaleString()} is being sent to <span className="font-medium">{acctName}</span> at {NG_BANKS.find(b => b.code === bankCode)?.name || bankCode}.
+                    <br />Funds typically arrive within minutes.
+                  </p>
+                  <Button onClick={() => setShowWithdraw(false)} className="mt-2">Done</Button>
+                </div>
+              )}
+
+              {/* ── Failed ── */}
+              {withdrawStep === "failed" && (
+                <div className="flex flex-col items-center py-8 gap-4 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                    <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Withdrawal Failed</h3>
+                  <p className="text-sm text-muted-foreground">{withdrawError || "Something went wrong. Please try again."}</p>
+                  <div className="flex gap-2 mt-2">
+                    <Button variant="outline" onClick={() => setShowWithdraw(false)}>Close</Button>
+                    <Button onClick={() => { setWithdrawStep("form"); setWithdrawError(""); }}>Try Again</Button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 

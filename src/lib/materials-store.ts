@@ -92,8 +92,32 @@ export function saveMaterials(materials: Material[]) {
 
 export async function addMaterial(m: Material): Promise<void> {
   if (supabase) {
-    const { error } = await supabase.from("materials").upsert(materialToDb(m));
-    if (error) throw new Error(error.message);
+    const row = materialToDb(m);
+    let { error } = await supabase.from("materials").upsert(row);
+
+    if (error) {
+      // If the new lecturer payout columns don't exist yet (migration not run),
+      // retry without them so the material still saves.
+      if (
+        error.message.includes("lecturer_account") ||
+        error.message.includes("schema cache")
+      ) {
+        const {
+          lecturer_account_number: _a,
+          lecturer_bank_code: _b,
+          lecturer_account_name: _c,
+          ...rowWithout
+        } = row as Record<string, unknown>;
+        const retry = await supabase.from("materials").upsert(rowWithout);
+        if (retry.error) throw new Error(retry.error.message);
+        console.warn(
+          "materials table is missing lecturer payout columns. " +
+          "Run the materials migration SQL in Supabase to enable automatic payouts."
+        );
+      } else {
+        throw new Error(error.message);
+      }
+    }
   }
   const all = loadMaterials();
   all.push(m);

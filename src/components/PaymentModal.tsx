@@ -44,9 +44,9 @@ export function PaymentModal({
   lecturerAccountNumber, lecturerBankCode, lecturerAccountName,
 }: PaymentModalProps) {
   const [step, setStep] = useState<Step>("form");
-  const [email, setEmail] = useState("");
+  const [matricConfirm, setMatricConfirm] = useState(studentMatricNumber || "");
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState(studentMatricNumber || "");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [txRef, setTxRef] = useState<string>("");
@@ -117,7 +117,7 @@ export function PaymentModal({
       squadFee: fees.squadFee,
       currency: "NGN",
       status: "successful",
-      customerEmail: email,
+      customerEmail: matricConfirm.trim().toUpperCase(), // matric stored in email field
       customerName: name,
       customerPhone: phone,
       lecturerAccountNumber,
@@ -133,7 +133,7 @@ export function PaymentModal({
       id: crypto.randomUUID(),
       materialId,
       studentName: name,
-      matricNumber: phone,
+      matricNumber: matricConfirm.trim().toUpperCase(),
       purchaseAmount: fees.lecturerPrice,
       currency: "NGN",
       purchasedAt: new Date().toISOString(),
@@ -165,8 +165,12 @@ export function PaymentModal({
   // ── Initiate payment ────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !name.trim() || !phone.trim()) {
+    if (!matricConfirm.trim() || !name.trim() || !phone.trim()) {
       return toast.error("Please fill in all fields.");
+    }
+    // Basic matric confirmation — must not be empty
+    if (matricConfirm.trim().length < 3) {
+      return toast.error("Please enter a valid matric number.");
     }
 
     setLoading(true);
@@ -175,7 +179,6 @@ export function PaymentModal({
       const ref = generateTransactionRef();
       setTxRef(ref);
 
-      // Save pending record
       const pending: SquadPaymentRecord = {
         id: crypto.randomUUID(),
         transactionRef: ref,
@@ -188,7 +191,7 @@ export function PaymentModal({
         squadFee: fees.squadFee,
         currency: "NGN",
         status: "pending",
-        customerEmail: email,
+        customerEmail: matricConfirm.trim().toUpperCase(),
         customerName: name,
         customerPhone: phone,
         lecturerAccountNumber,
@@ -204,11 +207,14 @@ export function PaymentModal({
           ? `${window.location.origin}/materials`
           : "https://attendly.app/materials";
 
+      // Squad requires a valid email — we generate one from the matric number
+      const squadEmail = `${matricConfirm.trim().toLowerCase().replace(/[^a-z0-9]/g, "")}@student.attendly.app`;
+
       const res = await initiateSquadPayment({
         data: {
           transactionRef: ref,
           amountNGN: fees.totalCharge,
-          email: email.trim(),
+          email: squadEmail,
           customerName: name.trim(),
           customerPhone: phone.trim(),
           materialTitle,
@@ -238,7 +244,7 @@ export function PaymentModal({
     }
     onClose();
     setStep("form");
-    setEmail(""); setName(""); setPhone(""); setCheckoutUrl(null); setLoading(false); setTxRef("");
+    setMatricConfirm(""); setName(""); setPhone(""); setCheckoutUrl(null); setLoading(false); setTxRef("");
   }
 
   return (
@@ -264,7 +270,7 @@ export function PaymentModal({
                 <span>Material price</span><span>₦{fees.lecturerPrice.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-blue-700 dark:text-blue-400">
-                <span>Processing fee</span><span>₦{fees.platformFee.toLocaleString()}</span>
+                <span>Processing fee (gateway)</span><span>₦{fees.platformFee.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-blue-700 dark:text-blue-400">
                 <span>Transfer fee</span><span>₦{fees.transferFee.toLocaleString()}</span>
@@ -279,8 +285,18 @@ export function PaymentModal({
 
             <form onSubmit={handleSubmit} className="space-y-3">
               <div>
-                <Label htmlFor="sq-email">Email</Label>
-                <Input id="sq-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="mt-1" required />
+                <Label htmlFor="sq-matric">Matric Number</Label>
+                <Input
+                  id="sq-matric"
+                  value={matricConfirm}
+                  onChange={(e) => setMatricConfirm(e.target.value)}
+                  placeholder="e.g. CSC/2021/001"
+                  className="mt-1"
+                  required
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Enter your matric number to confirm this purchase is tied to your identity.
+                </p>
               </div>
               <div>
                 <Label htmlFor="sq-name">Full Name</Label>

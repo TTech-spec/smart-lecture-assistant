@@ -76,6 +76,8 @@ export type AttendanceLink = {
   createdBy: string;
   createdAt: string;
   expiresAt: string;
+  /** When true, a unique class code is auto-generated and shown to the student on submission */
+  assignClassCode: boolean;
 };
 
 export type TestQuestion = {
@@ -420,6 +422,7 @@ function linkToDb(l: AttendanceLink): Row {
     created_by: l.createdBy,
     created_at: l.createdAt,
     expires_at: l.expiresAt,
+    assign_class_code: l.assignClassCode ?? false,
   };
 }
 
@@ -433,6 +436,7 @@ function linkFromDb(row: Row): AttendanceLink {
     createdBy: row.created_by || "admin",
     createdAt: row.created_at,
     expiresAt: row.expires_at,
+    assignClassCode: Boolean(row.assign_class_code),
   };
 }
 
@@ -457,9 +461,29 @@ export async function addLink(l: AttendanceLink): Promise<void> {
   saveLinks(all);
 
   if (supabase) {
-    const { error } = await supabase.from("attendance_links").upsert(linkToDb(l));
+    const row = linkToDb(l);
+    let { error } = await supabase.from("attendance_links").upsert(row);
+
     if (error) {
-      // Surface the error so the lecturer knows the DB write failed
+      // If the error is because assign_class_code column doesn't exist yet
+      // (migration not run), retry without that column so the link still saves.
+      if (
+        error.message.includes("assign_class_code") ||
+        error.message.includes("schema cache")
+      ) {
+        const { assign_class_code: _dropped, ...rowWithout } = row as Record<string, unknown>;
+        const retry = await supabase.from("attendance_links").upsert(rowWithout);
+        if (retry.error) {
+          throw new Error(retry.error.message);
+        }
+        // Warn the lecturer without blocking them
+        console.warn(
+          "attendance_links.assign_class_code column not found. " +
+          "Run attendance-links-migration.sql in Supabase to enable the class-code feature on links."
+        );
+        return;
+      }
+      // Any other error — surface it
       throw new Error(error.message);
     }
   }
@@ -551,6 +575,50 @@ export function hasMarkedAttendanceForCourseToday(
       r.courseCode.toUpperCase() === courseCode.toUpperCase() &&
       r.dayKey === dayKey
   );
+}
+
+/**
+ * Check if a device has already submitted attendance for a given course today.
+ * This is the phone-level lock — even if someone clears cookies, the Supabase
+ * check (below) is the authoritative source; this is the fast local check.
+ */
+export function hasDeviceMarkedAttendanceToday(
+  deviceId: string,
+  courseCode: string,
+  dayKey: string
+): boolean {
+  return loadRecords().some(
+    (r) =>
+      r.deviceId === deviceId &&
+      r.courseCode.toUpperCase() === courseCode.toUpperCase() &&
+      r.dayKey === dayKey
+  );
+}
+
+/**
+ * Server-side (Supabase) check: has this device already submitted for this
+ * course today? Returns false if Supabase is unavailable (fails open so
+ * students aren't blocked offline).
+ */
+export async function hasDeviceMarkedAttendanceTodayRemote(
+  deviceId: string,
+  courseCode: string,
+  dayKey: string
+): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { data } = await supabase
+      .from("attendance_records")
+      .select("id")
+      .eq("device_id", deviceId)
+      .eq("course_code", courseCode)
+      .eq("day_key", dayKey)
+      .limit(1)
+      .maybeSingle();
+    return !!data;
+  } catch {
+    return false; // fail open — don't block students if DB is unreachable
+  }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
