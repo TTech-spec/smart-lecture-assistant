@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
+import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, fetchActiveTestFromSupabase, pollActiveTest, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
@@ -180,9 +180,19 @@ function Landing() {
     window.addEventListener("att:tests", syncTests);
     window.addEventListener("att:settings", syncSettings);
     window.addEventListener("storage", () => { syncTests(); syncSettings(); });
+
+    // Fetch from Supabase immediately so students on any device see the live test state
+    fetchActiveTestFromSupabase().then((t) => { if (t !== undefined) setActiveTest(t); });
+
+    // Poll every 15 s so the button appears/disappears as the lecturer activates/deactivates
+    const pollInterval = setInterval(() => {
+      pollActiveTest().then((t) => setActiveTest(t));
+    }, 15_000);
+
     return () => {
       window.removeEventListener("att:tests", syncTests);
       window.removeEventListener("att:settings", syncSettings);
+      clearInterval(pollInterval);
     };
   }, []);
 

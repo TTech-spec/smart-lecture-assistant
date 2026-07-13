@@ -636,6 +636,77 @@ export function saveTests(tests: TestConfig[]) {
   window.dispatchEvent(new Event("att:tests"));
 }
 
+/**
+ * Fetch the currently active test directly from Supabase.
+ * This is what students call on page load so they always see the live state
+ * regardless of what's in their localStorage.
+ */
+export async function fetchActiveTestFromSupabase(): Promise<TestConfig | null> {
+  if (!supabase) return getActiveTest();
+  try {
+    const { data, error } = await supabase
+      .from("test_configs")
+      .select("*")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    const test = testFromDb(data);
+    // Sync into localStorage so getActiveTest() stays consistent
+    const all = loadTests();
+    const idx = all.findIndex((t) => t.id === test.id);
+    if (idx >= 0) all[idx] = test; else all.push(test);
+    // Deactivate any other tests locally
+    const synced = all.map((t) => ({ ...t, isActive: t.id === test.id }));
+    localStorage.setItem(TST_KEY, JSON.stringify(synced));
+    window.dispatchEvent(new Event("att:tests"));
+    return test;
+  } catch {
+    return getActiveTest(); // fall back to local
+  }
+}
+
+/**
+ * Poll Supabase for the active test state (called by the landing page on a timer).
+ * Also handles the case where the lecturer deactivates a test — clears it locally.
+ */
+export async function pollActiveTest(): Promise<TestConfig | null> {
+  if (!supabase) return getActiveTest();
+  try {
+    const { data } = await supabase
+      .from("test_configs")
+      .select("id, is_active, title, course_code, duration_minutes, created_at, questions, test_type")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (!data) {
+      // No active test in DB — make sure local state reflects that
+      const local = loadTests();
+      if (local.some((t) => t.isActive)) {
+        const cleared = local.map((t) => ({ ...t, isActive: false }));
+        localStorage.setItem(TST_KEY, JSON.stringify(cleared));
+        window.dispatchEvent(new Event("att:tests"));
+      }
+      return null;
+    }
+
+    const test = testFromDb(data);
+    const local = loadTests();
+    const needsUpdate = !local.some((t) => t.id === test.id && t.isActive);
+    if (needsUpdate) {
+      const merged = local.filter((t) => t.id !== test.id);
+      merged.push(test);
+      const synced = merged.map((t) => ({ ...t, isActive: t.id === test.id }));
+      localStorage.setItem(TST_KEY, JSON.stringify(synced));
+      window.dispatchEvent(new Event("att:tests"));
+    }
+    return test;
+  } catch {
+    return getActiveTest();
+  }
+}
+
 export function addTest(t: TestConfig) {
   const all = loadTests();
   all.push(t);

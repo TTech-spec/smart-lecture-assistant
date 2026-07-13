@@ -98,7 +98,10 @@ export const askAttendanceAi = createServerFn({ method: "POST" })
         return { text: "Groq rate limit reached. Try again later or check your Groq API plan.", table: null as AiTable };
       }
       if (msg.includes("401") || msg.includes("403") || msg.includes("invalid_api_key")) {
-        return { text: `Groq API key rejected (${msg.includes("401") ? "401" : "403"}). Make sure the key is copied correctly from console.groq.com.`, table: null as AiTable };
+        return { text: `Groq API key rejected. Make sure VITE_GROQ_API_KEY is copied correctly from console.groq.com and you have restarted the dev server.`, table: null as AiTable };
+      }
+      if (msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("networkerror") || msg.toLowerCase().includes("fetch")) {
+        return { text: "Could not reach the Groq API. Check your internet connection and make sure nothing is blocking outbound requests.", table: null as AiTable };
       }
       console.error("[Groq] Request failed:", err);
       return { text: `AI error: ${msg}`, table: null as AiTable };

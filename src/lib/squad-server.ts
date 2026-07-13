@@ -3,7 +3,12 @@ import { z } from "zod";
 
 // ── Environment helpers ───────────────────────────────────────────────────────
 function getEnv(key: string): string {
-  return process.env[key] || process.env[`VITE_${key}`] || "";
+  // Try all common patterns: plain key, VITE_ prefix, and import.meta.env (for SSR builds)
+  return (
+    process.env[key] ||
+    process.env[`VITE_${key}`] ||
+    ""
+  );
 }
 
 const IS_PROD = () => (getEnv("SQUAD_ENV") || "sandbox") === "production";
@@ -15,8 +20,15 @@ function baseUrl() {
 }
 
 function secretKey() {
-  const k = getEnv("SQUAD_SECRET_KEY");
-  if (!k) throw new Error("SQUAD_SECRET_KEY is not set in environment variables.");
+  const k =
+    process.env.SQUAD_SECRET_KEY ||
+    process.env.VITE_SQUAD_SECRET_KEY ||
+    "";
+  if (!k || k.includes("REPLACE_WITH")) {
+    throw new Error(
+      "Squad secret key not configured. Open your .env file and set SQUAD_SECRET_KEY to your real key from dashboard.squadco.com (Settings → API Keys)."
+    );
+  }
   return k;
 }
 

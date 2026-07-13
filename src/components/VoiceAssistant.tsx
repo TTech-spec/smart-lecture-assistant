@@ -350,8 +350,14 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
-      toast.error(msg.includes("402") ? "AI credits exhausted." : "AI request failed.");
-      setMessages((m) => [...m, { role: "assistant", content: "Sorry, I couldn't process that." }]);
+      if (msg.toLowerCase().includes("failed to fetch")) {
+        toast.error("Could not connect to the server. Make sure the dev server is running (npm run dev) and reload the page.");
+      } else if (msg.includes("402")) {
+        toast.error("AI credits exhausted.");
+      } else {
+        toast.error(`AI error: ${msg}`);
+      }
+      setMessages((m) => [...m, { role: "assistant", content: "Sorry, I couldn't process that. Please try again." }]);
       setVoiceState("idle");
       if (conversationModeRef.current) startListening();
     }

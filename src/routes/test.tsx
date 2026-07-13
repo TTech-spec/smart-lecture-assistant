@@ -28,6 +28,7 @@ import {
   validateStudentCode,
   flagCodeFraud,
   getStudentCode,
+  fetchActiveTestFromSupabase,
   type TestConfig,
   type TestSubmission,
 } from "@/lib/attendance-store";
@@ -62,6 +63,11 @@ function TestPage() {
     const sync = () => setTest(getActiveTest());
     window.addEventListener("att:tests", sync);
     window.addEventListener("storage", sync);
+
+    // Always fetch from Supabase on mount so students on any device
+    // see the test if the lecturer has activated it
+    fetchActiveTestFromSupabase().then((t) => setTest(t));
+
     return () => {
       window.removeEventListener("att:tests", sync);
       window.removeEventListener("storage", sync);
