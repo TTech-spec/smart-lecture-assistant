@@ -15,6 +15,7 @@ import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as TestTokenRouteImport } from './routes/test.$token'
 import { Route as AttendTokenRouteImport } from './routes/attend.$token'
 import { Route as AdminRecordsRouteImport } from './routes/admin/records'
 import { Route as AdminMaterialsRouteImport } from './routes/admin/materials'
@@ -50,6 +51,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const TestTokenRoute = TestTokenRouteImport.update({
+  id: '/$token',
+  path: '/$token',
+  getParentRoute: () => TestRoute,
+} as any)
 const AttendTokenRoute = AttendTokenRouteImport.update({
   id: '/attend/$token',
   path: '/attend/$token',
@@ -76,22 +82,24 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/attendance': typeof AttendanceRoute
   '/materials': typeof MaterialsRoute
-  '/test': typeof TestRoute
+  '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/records': typeof AdminRecordsRoute
   '/attend/$token': typeof AttendTokenRoute
+  '/test/$token': typeof TestTokenRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/attendance': typeof AttendanceRoute
   '/materials': typeof MaterialsRoute
-  '/test': typeof TestRoute
+  '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/records': typeof AdminRecordsRoute
   '/attend/$token': typeof AttendTokenRoute
+  '/test/$token': typeof TestTokenRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
@@ -100,11 +108,12 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/attendance': typeof AttendanceRoute
   '/materials': typeof MaterialsRoute
-  '/test': typeof TestRoute
+  '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/records': typeof AdminRecordsRoute
   '/attend/$token': typeof AttendTokenRoute
+  '/test/$token': typeof TestTokenRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
     | '/admin/materials'
     | '/admin/records'
     | '/attend/$token'
+    | '/test/$token'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/admin/materials'
     | '/admin/records'
     | '/attend/$token'
+    | '/test/$token'
     | '/admin'
   id:
     | '__root__'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/admin/materials'
     | '/admin/records'
     | '/attend/$token'
+    | '/test/$token'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -150,7 +162,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AttendanceRoute: typeof AttendanceRoute
   MaterialsRoute: typeof MaterialsRoute
-  TestRoute: typeof TestRoute
+  TestRoute: typeof TestRouteWithChildren
   AttendTokenRoute: typeof AttendTokenRoute
 }
 
@@ -197,6 +209,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/test/$token': {
+      id: '/test/$token'
+      path: '/$token'
+      fullPath: '/test/$token'
+      preLoaderRoute: typeof TestTokenRouteImport
+      parentRoute: typeof TestRoute
     }
     '/attend/$token': {
       id: '/attend/$token'
@@ -245,12 +264,22 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface TestRouteChildren {
+  TestTokenRoute: typeof TestTokenRoute
+}
+
+const TestRouteChildren: TestRouteChildren = {
+  TestTokenRoute: TestTokenRoute,
+}
+
+const TestRouteWithChildren = TestRoute._addFileChildren(TestRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   AttendanceRoute: AttendanceRoute,
   MaterialsRoute: MaterialsRoute,
-  TestRoute: TestRoute,
+  TestRoute: TestRouteWithChildren,
   AttendTokenRoute: AttendTokenRoute,
 }
 export const routeTree = rootRouteImport

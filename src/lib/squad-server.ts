@@ -24,10 +24,9 @@ function secretKey() {
     process.env.SQUAD_SECRET_KEY ||
     process.env.VITE_SQUAD_SECRET_KEY ||
     "";
-  if (!k || k.includes("REPLACE_WITH")) {
-    throw new Error(
-      "Squad secret key not configured. Open your .env file and set SQUAD_SECRET_KEY to your real key from dashboard.squadco.com (Settings → API Keys)."
-    );
+  if (!k || k.includes("REPLACE_WITH") || k.trim() === "") {
+    console.warn("Squad secret key not configured. Payment features will be disabled.");
+    return "";
   }
   return k;
 }
@@ -41,12 +40,17 @@ function platformAccount() {
 
 // ── Shared fetch helper ───────────────────────────────────────────────────────
 async function squadFetch(path: string, body: Record<string, unknown>) {
+  const key = secretKey();
+  if (!key) {
+    throw new Error("Squad secret key not configured. Please set SQUAD_SECRET_KEY in your .env file.");
+  }
+
   const url = `${baseUrl()}${path}`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${secretKey()}`,
+      Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify(body),
   });
@@ -117,10 +121,15 @@ const VerifySchema = z.object({ transactionRef: z.string() });
 export const verifySquadTransaction = createServerFn({ method: "POST" })
   .validator((d: unknown) => VerifySchema.parse(d))
   .handler(async ({ data }) => {
+    const key = secretKey();
+    if (!key) {
+      throw new Error("Squad secret key not configured. Please set SQUAD_SECRET_KEY in your .env file.");
+    }
+
     const url = `${baseUrl()}/transaction/verify/${data.transactionRef}`;
     const res = await fetch(url, {
       method: "GET",
-      headers: { Authorization: `Bearer ${secretKey()}` },
+      headers: { Authorization: `Bearer ${key}` },
     });
 
     const text = await res.text();
@@ -162,24 +171,35 @@ const PayoutSchema = z.object({
 export const payoutToLecturer = createServerFn({ method: "POST" })
   .validator((d: unknown) => PayoutSchema.parse(d))
   .handler(async ({ data }) => {
-    // Squad Transfer API: POST /transfer/initiate
-    const body: Record<string, unknown> = {
-      transaction_reference: data.transferRef,
-      amount:                Math.round(data.amountNGN * 100), // kobo
-      bank_code:             data.lecturerBankCode,
-      account_number:        data.lecturerAccountNumber,
-      account_name:          data.lecturerAccountName || "Lecturer",
-      currency_id:           "NGN",
-      remark:                data.narration || "Lecture material payout — Attendly",
-    };
+    try {
+      // Squad Transfer API: POST /transfer/initiate
+      const body: Record<string, unknown> = {
+        transaction_reference: data.transferRef,
+        amount:                Math.round(data.amountNGN * 100), // kobo
+        bank_code:             data.lecturerBankCode,
+        account_number:        data.lecturerAccountNumber,
+        account_name:          data.lecturerAccountName || "Lecturer",
+        currency_id:           "NGN",
+        remark:                data.narration || "Lecture material payout — Attendly",
+      };
 
-    const json = await squadFetch("/transfer/initiate", body);
-    return json as {
-      status: number;
-      success: boolean;
-      message: string;
-      data?: { transaction_reference?: string; amount?: number };
-    };
+      const json = await squadFetch("/transfer/initiate", body);
+      return json as {
+        status: number;
+        success: boolean;
+        message: string;
+        data?: { transaction_reference?: string; amount?: number };
+      };
+    } catch (err) {
+      console.error("Lecturer payout failed:", err);
+      // Return success false but don't throw to avoid blocking the main flow
+      return {
+        status: 500,
+        success: false,
+        message: err instanceof Error ? err.message : "Payout failed",
+        data: {},
+      };
+    }
   });
 
 // ── 4. Platform payout (₦1,000 → platform account) ───────────────────────────
@@ -198,21 +218,32 @@ export const payoutToPlatform = createServerFn({ method: "POST" })
       return { status: 200, success: true, message: "Platform account not configured — skipped", data: {} };
     }
 
-    const body: Record<string, unknown> = {
-      transaction_reference: data.transferRef,
-      amount:                Math.round(data.amountNGN * 100),
-      bank_code:             bankCode,
-      account_number:        accountNumber,
-      account_name:          "Attendly Platform",
-      currency_id:           "NGN",
-      remark:                data.narration || "Platform fee — Attendly",
-    };
+    try {
+      const body: Record<string, unknown> = {
+        transaction_reference: data.transferRef,
+        amount:                Math.round(data.amountNGN * 100),
+        bank_code:             bankCode,
+        account_number:        accountNumber,
+        account_name:          "Attendly Platform",
+        currency_id:           "NGN",
+        remark:                data.narration || "Platform fee — Attendly",
+      };
 
-    const json = await squadFetch("/transfer/initiate", body);
-    return json as {
-      status: number;
-      success: boolean;
-      message: string;
-      data?: { transaction_reference?: string };
-    };
+      const json = await squadFetch("/transfer/initiate", body);
+      return json as {
+        status: number;
+        success: boolean,
+        message: string,
+        data?: { transaction_reference?: string };
+      };
+    } catch (err) {
+      console.error("Platform payout failed:", err);
+      // Return success false but don't throw to avoid blocking the main flow
+      return {
+        status: 500,
+        success: false,
+        message: err instanceof Error ? err.message : "Platform payout failed",
+        data: {},
+      };
+    }
   });

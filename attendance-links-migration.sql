@@ -18,17 +18,16 @@ CREATE TABLE IF NOT EXISTS attendance_links (
   expires_at        TIMESTAMPTZ NOT NULL,
   -- When TRUE, each student who submits via this link is auto-assigned
   -- a unique personal class code shown on their success screen.
-  assign_class_code BOOLEAN     NOT NULL DEFAULT FALSE
+  assign_class_code BOOLEAN     NOT NULL DEFAULT FALSE,
+  -- Type of link: 'attendance' or 'test'
+  link_type         TEXT        NOT NULL DEFAULT 'attendance',
+  -- For test links, references the test_configs table
+  test_id           TEXT        DEFAULT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_attendance_links_token      ON attendance_links (token);
 CREATE INDEX IF NOT EXISTS idx_attendance_links_course     ON attendance_links (course_code);
 CREATE INDEX IF NOT EXISTS idx_attendance_links_is_active  ON attendance_links (is_active);
-
--- ── Add assign_class_code to existing attendance_links table (if table already exists) ──
--- Safe to run even if the table was created before this migration.
-ALTER TABLE attendance_links
-  ADD COLUMN IF NOT EXISTS assign_class_code BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- ── Extend attendance_records: add link_id column ─────────────────────────────
 -- References which shareable link the student used to mark attendance.

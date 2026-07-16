@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   RefreshCw, Trash2, Download, FileText, ClipboardList,
   Plus, Pencil, X, CheckCircle2, XCircle, Link2, KeyRound,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/attendance-store";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/admin/records")({
   head: () => ({ meta: [{ title: "Attendance records — Attendly" }] }),
@@ -332,7 +333,9 @@ function TestResultModal({ submission, onSave, onClose }: {
 
 // ── Main records page ─────────────────────────────────────────────────────────
 function RecordsPage() {
-  const { records, testSubmissions, settings, links } = useStore();
+  const { records, testSubmissions: storeSubmissions, settings, links } = useStore();
+  // Also keep a local copy that we refresh directly from Supabase on mount
+  const [localSubmissions, setLocalSubmissions] = useState<TestSubmission[]>(() => loadTestSubmissions());
   const [matric, setMatric] = useState("");
   const [dept, setDept] = useState("all");
   const [gender, setGender] = useState("all");
@@ -343,6 +346,48 @@ function RecordsPage() {
   const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null);
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [editingTestResult, setEditingTestResult] = useState<TestSubmission | null>(null);
+
+  // Pull test submissions directly from Supabase on mount so we always have
+  // the latest — even if the student submitted on a different device
+  useEffect(() => {
+    async function fetchSubmissions() {
+      if (!supabase) return;
+      try {
+        const { data } = await supabase.from("test_submissions").select("*");
+        if (data && data.length > 0) {
+          const mapped: TestSubmission[] = data.map((row) => ({
+            id: row.id,
+            testId: row.test_id,
+            studentName: row.student_name || "",
+            matricNumber: row.matric_number || "",
+            level: row.level || "",
+            answers: row.answers || [],
+            score: row.score || 0,
+            total: row.total || 0,
+            submittedAt: row.submitted_at,
+            cheated: Boolean(row.cheated),
+            testType: (row.test_type as TestType) || "C1",
+          }));
+          localStorage.setItem("att.test-submissions.v1", JSON.stringify(mapped));
+          window.dispatchEvent(new Event("att:test-submissions"));
+          setLocalSubmissions(mapped);
+        }
+      } catch {
+        // fall back to local
+      }
+    }
+    fetchSubmissions();
+  }, []);
+
+  // Merge store + local so whichever has more data wins
+  const testSubmissions = useMemo(() => {
+    const merged = new Map<string, TestSubmission>();
+    [...localSubmissions, ...storeSubmissions].forEach((s) => {
+      const existing = merged.get(s.id);
+      if (!existing) merged.set(s.id, s);
+    });
+    return Array.from(merged.values());
+  }, [storeSubmissions, localSubmissions]);
 
   const linkMap = useMemo(() => {
     const m = new Map<string, string>();

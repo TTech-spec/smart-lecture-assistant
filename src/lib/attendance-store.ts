@@ -78,6 +78,25 @@ export type AttendanceLink = {
   expiresAt: string;
   /** When true, a unique class code is auto-generated and shown to the student on submission */
   assignClassCode: boolean;
+  /** Type of link: 'attendance' or 'test' */
+  linkType?: "attendance" | "test";
+  /** For test links, the ID of the test to associate with */
+  testId?: string;
+};
+
+/**
+ * A shareable link that opens /test/{token} and lets the student take a
+ * specific test directly — without needing the test to be globally activated.
+ */
+export type TestLink = {
+  id: string;
+  testId: string;       // References test_configs.id
+  courseCode: string;
+  title: string;        // Human label, e.g. "PSY202 C1 — Group A"
+  token: string;        // URL-safe random token used in /test/{token}
+  isActive: boolean;
+  createdAt: string;
+  expiresAt: string;
 };
 
 export type TestQuestion = {
@@ -123,6 +142,7 @@ const TST_KEY      = "att.tests.v1";
 const TSUB_KEY     = "att.test-submissions.v1";
 const CODE_USED_KEY = "att.code.used.v1";
 const LINKS_KEY    = "att.links.v1";
+const TEST_LINKS_KEY = "att.test-links.v1";
 
 // ── DB row mappers ────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -221,6 +241,32 @@ function testFromDb(row: Row): TestConfig {
     createdAt: row.created_at,
     questions: (row.questions as TestQuestion[]) || [],
     testType: (row.test_type as TestType) || "C1",
+  };
+}
+
+function testLinkToDb(t: TestLink): Row {
+  return {
+    id: t.id,
+    test_id: t.testId,
+    course_code: t.courseCode,
+    title: t.title,
+    token: t.token,
+    is_active: t.isActive,
+    created_at: t.createdAt,
+    expires_at: t.expiresAt,
+  };
+}
+
+function testLinkFromDb(row: Row): TestLink {
+  return {
+    id: row.id,
+    testId: row.test_id,
+    courseCode: row.course_code || "",
+    title: row.title || "",
+    token: row.token,
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
   };
 }
 
@@ -423,6 +469,8 @@ function linkToDb(l: AttendanceLink): Row {
     created_at: l.createdAt,
     expires_at: l.expiresAt,
     assign_class_code: l.assignClassCode ?? false,
+    link_type: l.linkType ?? "attendance",
+    test_id: l.testId ?? null,
   };
 }
 
@@ -437,13 +485,30 @@ function linkFromDb(row: Row): AttendanceLink {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     assignClassCode: Boolean(row.assign_class_code),
+    linkType: (row.link_type as "attendance" | "test" | undefined) || undefined,
+    testId: row.test_id || undefined,
   };
+}
+
+// Ensure backward compatibility for links created before linkType was added
+function ensureLinkType(link: AttendanceLink): AttendanceLink {
+  if (!link.linkType) {
+    return { ...link, linkType: "attendance" as const };
+  }
+  return link;
+}
+
+// Ensure backward compatibility for test links
+function ensureTestLinkType(link: TestLink): TestLink {
+  // Test links don't have linkType field since they're inherently test links
+  return link;
 }
 
 export function loadLinks(): AttendanceLink[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(LINKS_KEY) || "[]") as AttendanceLink[];
+    const links = JSON.parse(localStorage.getItem(LINKS_KEY) || "[]") as AttendanceLink[];
+    return links.map(ensureLinkType);
   } catch {
     return [];
   }
@@ -465,21 +530,22 @@ export async function addLink(l: AttendanceLink): Promise<void> {
     let { error } = await supabase.from("attendance_links").upsert(row);
 
     if (error) {
-      // If the error is because assign_class_code column doesn't exist yet
-      // (migration not run), retry without that column so the link still saves.
+      // If the error is because assign_class_code or link_type column doesn't exist yet
+      // (migration not run), retry without those columns so the link still saves.
       if (
         error.message.includes("assign_class_code") ||
+        error.message.includes("link_type") ||
         error.message.includes("schema cache")
       ) {
-        const { assign_class_code: _dropped, ...rowWithout } = row as Record<string, unknown>;
+        const { assign_class_code: _dropped, link_type: _dropped2, ...rowWithout } = row as Record<string, unknown>;
         const retry = await supabase.from("attendance_links").upsert(rowWithout);
         if (retry.error) {
           throw new Error(retry.error.message);
         }
         // Warn the lecturer without blocking them
         console.warn(
-          "attendance_links.assign_class_code column not found. " +
-          "Run attendance-links-migration.sql in Supabase to enable the class-code feature on links."
+          "attendance_links.assign_class_code or link_type column not found. " +
+          "Run attendance-links-migration.sql in Supabase to enable the class-code and link-type features on links."
         );
         return;
       }
@@ -549,6 +615,33 @@ export async function fetchLinkByToken(token: string): Promise<AttendanceLink | 
   }
 }
 
+/**
+ * Fetch a test link by token (for test-specific links).
+ * Returns the test link, null if not found, or throws with message "db_error" if
+ * Supabase is reachable but the query failed.
+ */
+export async function fetchTestLinkByToken(token: string): Promise<TestLink | null> {
+  if (!supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("test_links")
+      .select("*")
+      .eq("token", token)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("fetchTestLinkByToken Supabase error:", error.message);
+      return null;
+    }
+
+    if (!data) return null; // Link genuinely not found in DB
+    return testLinkFromDb(data);
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch all links for a course directly from Supabase */
 export async function fetchLinksFromSupabase(): Promise<AttendanceLink[]> {
   if (!supabase) return loadLinks();
@@ -557,7 +650,7 @@ export async function fetchLinksFromSupabase(): Promise<AttendanceLink[]> {
     .select("*")
     .order("created_at", { ascending: false });
   if (error || !data) return loadLinks();
-  return data.map(linkFromDb);
+  return data.map(linkFromDb).map(ensureLinkType);
 }
 
 /**
@@ -876,6 +969,49 @@ export function getCodeFraudMap(): Record<string, { enteredCode: string; at: str
 export function clearStudentCodes() {
   localStorage.removeItem(STUDENT_CODES_KEY);
   localStorage.removeItem(CODE_FRAUD_KEY);
+}
+
+// ── Test links ───────────────────────────────────────────────────────────────────
+export function loadTestLinks(): TestLink[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const links = JSON.parse(localStorage.getItem(TEST_LINKS_KEY) || "[]") as TestLink[];
+    return links.map(ensureTestLinkType);
+  } catch {
+    return [];
+  }
+}
+
+export function saveTestLinks(links: TestLink[]) {
+  localStorage.setItem(TEST_LINKS_KEY, JSON.stringify(links));
+  window.dispatchEvent(new Event("att:test-links"));
+}
+
+export async function addTestLink(t: TestLink): Promise<void> {
+  // Save locally first so the lecturer sees it immediately
+  const all = loadTestLinks();
+  all.push(t);
+  saveTestLinks(all);
+
+  if (supabase) {
+    const row = testLinkToDb(t);
+    let { error } = await supabase.from("test_links").upsert(row);
+
+    if (error) {
+      // If the table doesn't exist yet (migration not run), still save locally
+      console.warn("test_links table may not exist. Run migration to enable cloud sync.");
+      return;
+    }
+  }
+}
+
+export function deleteTestLink(id: string) {
+  saveTestLinks(loadTestLinks().filter((t) => t.id !== id));
+  sync(supabase?.from("test_links").delete().eq("id", id));
+}
+
+export function getTestLinkByToken(token: string): TestLink | null {
+  return loadTestLinks().find((l) => l.token === token) || null;
 }
 
 // ── Window helpers ────────────────────────────────────────────────────────────

@@ -8,14 +8,14 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  calcFees, generateTransactionRef, saveSquadPayment,
+  calcFees, generateTransactionRef, saveSquadPayment, loadSquadPayments, hasUserPaidForMaterial,
   type SquadPaymentRecord,
 } from "@/lib/squad";
 import {
   initiateSquadPayment, verifySquadTransaction,
   payoutToLecturer, payoutToPlatform,
 } from "@/lib/squad-server";
-import { addPurchase } from "@/lib/materials-store";
+import { addPurchase, loadPurchases } from "@/lib/materials-store";
 
 interface PaymentModalProps {
   open: boolean;
@@ -50,9 +50,23 @@ export function PaymentModal({
   const [loading, setLoading] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [txRef, setTxRef] = useState<string>("");
+  const [alreadyPaid, setAlreadyPaid] = useState(false);
 
   // ── Fee breakdown ───────────────────────────────────────────────────────────
   const fees = useMemo(() => calcFees(amount), [amount]);
+
+  // ── Check if user has already paid for this material ───────────────────────
+  useEffect(() => {
+    if (open && matricConfirm) {
+      const hasPaid = hasUserPaidForMaterial(materialId, matricConfirm);
+      if (hasPaid) {
+        setAlreadyPaid(true);
+        setStep("success");
+        toast.success("You have already purchased this material!");
+        onSuccess();
+      }
+    }
+  }, [open, materialId, matricConfirm, onSuccess]);
 
   // ── Poll for payment verification once checkout opens ──────────────────────
   useEffect(() => {
@@ -72,8 +86,12 @@ export function PaymentModal({
       attempts++;
 
       try {
+        console.log(`[Payment Poll] Attempt ${attempts}/${MAX} for transaction ${txRef}`);
         const res = await verifySquadTransaction({ data: { transactionRef: txRef } });
+        console.log("[Payment Poll] Response:", res);
+        
         const status = ((res.data?.transaction_status as string) || "").toLowerCase();
+        console.log("[Payment Poll] Status:", status);
 
         if (status === "success") {
           await handlePaymentSuccess(txRef);
@@ -85,7 +103,8 @@ export function PaymentModal({
           toast.error("Payment was not completed.");
           return;
         }
-      } catch {
+      } catch (err) {
+        console.error("Payment verification error:", err);
         // network hiccup — keep polling
       }
 
@@ -232,7 +251,16 @@ export function PaymentModal({
       setStep("processing");
     } catch (err) {
       console.error("Payment initiation error:", err);
-      toast.error(err instanceof Error ? err.message : "Failed to start payment.");
+      const errorMessage = err instanceof Error ? err.message : "Failed to start payment.";
+      
+      // Provide more helpful error messages for common issues
+      if (errorMessage.includes("Squad secret key not configured")) {
+        toast.error("Payment system not configured. Please contact support.");
+      } else if (errorMessage.includes("Squad API error")) {
+        toast.error("Payment service temporarily unavailable. Please try again later.");
+      } else {
+        toast.error(errorMessage);
+      }
       setLoading(false);
     }
   }
@@ -331,6 +359,9 @@ export function PaymentModal({
                 <ExternalLink className="mr-2 h-4 w-4" /> Reopen checkout window
               </Button>
             )}
+            <Button variant="ghost" size="sm" onClick={() => setStep("failed")} className="text-xs text-muted-foreground">
+              Payment completed? Click here to verify
+            </Button>
           </div>
         )}
 

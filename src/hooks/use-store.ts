@@ -6,6 +6,7 @@ import {
   loadTests,
   loadTestSubmissions,
   loadLinks,
+  loadTestLinks,
   syncFromSupabase,
   type AdminSettings,
   type AttendanceRecord,
@@ -13,6 +14,7 @@ import {
   type AttendanceLink,
   type TestConfig,
   type TestSubmission,
+  type TestLink,
 } from "@/lib/attendance-store";
 import { loadMaterials, syncMaterialsFromSupabase, type Material } from "@/lib/materials-store";
 
@@ -24,6 +26,7 @@ export function useStore() {
   const [testSubmissions, setTestSubmissions] = useState<TestSubmission[]>(() => loadTestSubmissions());
   const [materials, setMaterials] = useState<Material[]>(() => loadMaterials());
   const [links, setLinks] = useState<AttendanceLink[]>(() => loadLinks());
+  const [testLinks, setTestLinks] = useState<TestLink[]>(() => loadTestLinks());
 
   // On mount, pull latest data from Supabase and populate localStorage + state
   useEffect(() => {
@@ -39,7 +42,8 @@ export function useStore() {
     const syncTS  = () => setTestSubmissions(loadTestSubmissions());
     const syncM   = () => setMaterials(loadMaterials());
     const syncL   = () => setLinks(loadLinks());
-    const syncAll = () => { syncS(); syncR(); syncSes(); syncT(); syncTS(); syncM(); syncL(); };
+    const syncTL  = () => setTestLinks(loadTestLinks());
+    const syncAll = () => { syncS(); syncR(); syncSes(); syncT(); syncTS(); syncM(); syncL(); syncTL(); };
 
     window.addEventListener("att:settings",         syncS);
     window.addEventListener("att:records",          syncR);
@@ -48,6 +52,7 @@ export function useStore() {
     window.addEventListener("att:test-submissions", syncTS);
     window.addEventListener("att:materials",        syncM);
     window.addEventListener("att:links",            syncL);
+    window.addEventListener("att:test-links",        syncTL);
     window.addEventListener("storage",              syncAll);
 
     return () => {
@@ -58,9 +63,10 @@ export function useStore() {
       window.removeEventListener("att:test-submissions", syncTS);
       window.removeEventListener("att:materials",        syncM);
       window.removeEventListener("att:links",            syncL);
+      window.removeEventListener("att:test-links",        syncTL);
       window.removeEventListener("storage",              syncAll);
     };
   }, []);
 
-  return { settings, setSettings, records, setRecords, sessions, tests, testSubmissions, materials, links };
+  return { settings, setSettings, records, setRecords, sessions, tests, testSubmissions, materials, links, testLinks };
 }

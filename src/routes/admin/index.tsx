@@ -1033,62 +1033,33 @@ type QuestionDraft = {
   text: string;
   options: [string, string, string, string];
   correctIndex: 0 | 1 | 2 | 3;
-  isHumanCheck?: boolean;
 };
 
 function emptyQuestion(): QuestionDraft {
   return { id: `q-${Date.now()}-${Math.random()}`, text: "", options: ["", "", "", ""], correctIndex: 0 };
 }
 
-// Questions designed to detect AI/proxy answering.
-// Q1: Self-identification — easy for honest students; catches auto-submit.
-// Q2: Classic trick question — lazy AI users often pick A; correct answer is C.
-// Q3: Meta-cheating trap — a student cheating via AI is tempted to pick A/C/D
-//     to avoid incriminating themselves, getting it WRONG. Honest student picks B.
-const HUMAN_CHECK_QUESTIONS: QuestionDraft[] = [
-  {
-    id: "hc-1",
-    isHumanCheck: true,
-    text: "[HUMAN VERIFICATION 1/3] This question confirms you are personally taking this test. Select the option that correctly describes your current situation.",
-    options: [
-      "An AI tool (ChatGPT, Gemini, etc.) is answering on my behalf",
-      "A classmate or friend is answering for me",
-      "I am personally taking this test myself as a student",
-      "I copied the questions elsewhere to get the answers",
-    ],
-    correctIndex: 2,
-  },
-  {
-    id: "hc-2",
-    isHumanCheck: true,
-    text: "[HUMAN VERIFICATION 2/3] Read this carefully before answering. What weighs more: a kilogram of iron or a kilogram of cotton?",
-    options: [
-      "A kilogram of iron — iron is much denser and heavier",
-      "A kilogram of cotton — it takes a lot of cotton to reach 1 kg",
-      "They weigh exactly the same — both are 1 kilogram",
-      "It depends on the volume of each material",
-    ],
-    correctIndex: 2,
-  },
-  {
-    id: "hc-3",
-    isHumanCheck: true,
-    text: "[HUMAN VERIFICATION 3/3] A student copies all the test questions and pastes them into an AI chatbot to get the answers, then submits those answers as their own. Which of the following BEST describes what this student did?",
-    options: [
-      "Smart studying — using all available learning tools",
-      "Academic dishonesty — using AI to cheat on a test",
-      "Normal research — looking up information like in a library",
-      "Collaborative learning — working together with technology",
-    ],
-    correctIndex: 1,
-  },
-];
+// AI-detection trap: looks like a normal question but AI tools consistently
+// pick option B (confident, sounds authoritative) while the correct answer is C.
+// A human reading it carefully picks C easily.
+const AI_TRAP_QUESTION: QuestionDraft = {
+  id: "ai-trap-1",
+  text: "A student submits an assignment and tells the lecturer: 'I wrote every word myself, but I used an AI tool to check my grammar.' Which of the following BEST describes this situation?",
+  options: [
+    "Academic dishonesty — AI tools must never be used in any part of an assignment",
+    "Fully acceptable — using AI for grammar checking is the same as using a spell-checker",
+    "It depends on the institution's policy on AI-assisted work",
+    "The student should be expelled for using technology",
+  ],
+  correctIndex: 2,
+};
 
 function TestManager({ tests }: { tests: TestConfig[] }) {
   const [creating, setCreating] = useState(false);
+  const [inputMode, setInputMode] = useState<"manual" | "pdf">("manual");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
-  const [includeHumanCheck, setIncludeHumanCheck] = useState(true);
+  const [includeAiTrap, setIncludeAiTrap] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState("");
@@ -1097,7 +1068,10 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
   const [testType, setTestType] = useState<TestType>("C1");
   const [questions, setQuestions] = useState<QuestionDraft[]>([emptyQuestion()]);
 
-  function resetForm() { setTitle(""); setCourseCode(""); setDuration(30); setTestType("C1"); setQuestions([emptyQuestion()]); setCreating(false); }
+  function resetForm() {
+    setTitle(""); setCourseCode(""); setDuration(30); setTestType("C1");
+    setQuestions([emptyQuestion()]); setCreating(false); setInputMode("manual");
+  }
 
   function updateQuestion(idx: number, patch: Partial<QuestionDraft>) {
     setQuestions((qs) => qs.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
@@ -1129,7 +1103,8 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
       if (!result.ok) { toast.error(result.error); return; }
       setQuestions(result.questions.map((q) => ({ ...q })));
       setCreating(true);
-      toast.success(`${result.questions.length} question${result.questions.length !== 1 ? "s" : ""} imported from PDF. Fill in the title and save.`);
+      setInputMode("pdf");
+      toast.success(`${result.questions.length} question${result.questions.length !== 1 ? "s" : ""} imported from PDF.`);
     } finally {
       setParsing(false);
       e.target.value = "";
@@ -1144,15 +1119,12 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
       if (!q.text.trim()) return toast.error(`Question ${i + 1} has no text.`);
       if (q.options.some((o) => !o.trim())) return toast.error(`Question ${i + 1} has empty options.`);
     }
-
-    const verificationQuestions = includeHumanCheck ? HUMAN_CHECK_QUESTIONS : [];
-    const allQuestions = [...verificationQuestions, ...questions].map((q) => ({
-      id: q.id,
-      text: q.text.trim(),
-      options: q.options.map((o) => o.trim()) as [string, string, string, string],
-      correctIndex: q.correctIndex,
-    }));
-
+    // Insert AI trap at a random middle position so it doesn't stand out
+    let allQuestions = [...questions];
+    if (includeAiTrap) {
+      const insertAt = Math.max(1, Math.floor(allQuestions.length / 2));
+      allQuestions = [...allQuestions.slice(0, insertAt), AI_TRAP_QUESTION, ...allQuestions.slice(insertAt)];
+    }
     const config: TestConfig = {
       id: `test-${Date.now()}`,
       title: title.trim(),
@@ -1160,21 +1132,28 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
       durationMinutes: duration,
       isActive: false,
       createdAt: new Date().toISOString(),
-      questions: allQuestions,
+      questions: allQuestions.map((q) => ({
+        id: q.id,
+        text: q.text.trim(),
+        options: q.options.map((o) => o.trim()) as [string, string, string, string],
+        correctIndex: q.correctIndex,
+      })),
       testType,
     };
-
     addTest(config);
-    toast.success(
-      includeHumanCheck
-        ? "Test saved with 3 human-verification questions prepended."
-        : "Test saved. Toggle it active to let students see it."
-    );
+    toast.success("Test saved. Toggle it active when ready for students.");
     resetForm();
   }
 
-  function toggleActive(t: TestConfig) { setTestActive(t.id, !t.isActive); toast.success(t.isActive ? "Test deactivated." : "Test is now live for students."); }
-  function handleDelete(t: TestConfig) { if (!confirm(`Delete "${t.title}"? This cannot be undone.`)) return; deleteTest(t.id); toast.success("Test deleted."); }
+  function toggleActive(t: TestConfig) {
+    setTestActive(t.id, !t.isActive);
+    toast.success(t.isActive ? "Test deactivated." : "Test is now live for students.");
+  }
+  function handleDelete(t: TestConfig) {
+    if (!confirm(`Delete "${t.title}"? This cannot be undone.`)) return;
+    deleteTest(t.id);
+    toast.success("Test deleted.");
+  }
 
   return (
     <div className="rounded-2xl border bg-card shadow-soft">
@@ -1183,7 +1162,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
           <h2 className="flex items-center gap-2 text-lg font-semibold">
             <FileQuestion className="h-5 w-5 text-[color:var(--color-primary)]" /> Tests &amp; quizzes
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">Upload questions, activate a test, and students see a "Take Test" button.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Type questions manually or upload a PDF, then activate for students.</p>
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" className="sr-only" onChange={handlePdfUpload} />
@@ -1192,7 +1171,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
             {parsing ? "Reading…" : "Upload PDF"}
           </Button>
           {!creating && (
-            <Button size="sm" onClick={() => setCreating(true)} className="flex-1 sm:flex-none">
+            <Button size="sm" onClick={() => { setInputMode("manual"); setCreating(true); }} className="flex-1 sm:flex-none">
               <Plus className="mr-2 h-3.5 w-3.5" /> New test
             </Button>
           )}
@@ -1203,7 +1182,22 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
         {creating && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }} className="overflow-hidden">
             <div className="border-b p-4 sm:p-5 space-y-4">
-              <h3 className="font-semibold">New test</h3>
+              {/* Header + mode tabs */}
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-semibold">New test</h3>
+                <div className="flex rounded-lg border overflow-hidden text-xs font-medium">
+                  <button type="button" onClick={() => setInputMode("manual")}
+                    className={`px-3 py-1.5 transition-colors ${inputMode === "manual" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-secondary"}`}>
+                    ✏️ Type manually
+                  </button>
+                  <button type="button" onClick={() => fileInputRef.current?.click()}
+                    className={`px-3 py-1.5 transition-colors border-l ${inputMode === "pdf" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-secondary"}`}>
+                    📄 Upload PDF
+                  </button>
+                </div>
+              </div>
+
+              {/* Metadata */}
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
                 <div className="sm:col-span-2">
                   <Label className="text-sm">Test title</Label>
@@ -1232,58 +1226,62 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                 </div>
               </div>
 
-              {/* Human verification toggle */}
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 p-4">
-                <input
-                  type="checkbox"
-                  checked={includeHumanCheck}
-                  onChange={(e) => setIncludeHumanCheck(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded accent-primary shrink-0"
-                />
+              {/* AI-detection trap toggle */}
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 p-4">
+                <input type="checkbox" checked={includeAiTrap} onChange={(e) => setIncludeAiTrap(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded accent-primary shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Include human verification questions (recommended)</p>
-                  <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
-                    Prepends 3 anti-AI trap questions to the start of the test. These detect students who copy questions into ChatGPT or use a proxy to answer on their behalf.
+                  <p className="text-sm font-semibold text-purple-800 dark:text-purple-300">Include AI-detection trap question (recommended)</p>
+                  <p className="mt-0.5 text-xs text-purple-700 dark:text-purple-400">
+                    Inserts one hidden trap question mid-test that looks like a normal question. AI tools almost always pick the wrong answer — honest students get it right easily.
                   </p>
-                  {includeHumanCheck && (
-                    <div className="mt-3 space-y-2">
-                      {HUMAN_CHECK_QUESTIONS.map((q) => (
-                        <div key={q.id} className="rounded-lg border border-amber-200 dark:border-amber-700 bg-white dark:bg-amber-900/30 px-3 py-2">
-                          <p className="text-xs font-medium text-amber-900 dark:text-amber-200">{q.text}</p>
-                          <ul className="mt-1.5 space-y-0.5">
-                            {q.options.map((opt, oi) => (
-                              <li key={oi} className={`text-xs px-1.5 py-0.5 rounded ${oi === q.correctIndex ? "font-semibold text-green-700 dark:text-green-400" : "text-muted-foreground"}`}>
-                                {String.fromCharCode(65 + oi)}. {opt}{oi === q.correctIndex ? " ✓" : ""}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
+                  {includeAiTrap && (
+                    <div className="mt-3 rounded-lg border border-purple-200 dark:border-purple-700 bg-white dark:bg-purple-900/30 px-3 py-2">
+                      <p className="text-xs font-medium text-purple-700 dark:text-purple-300 mb-1.5">Preview (students won't know which question is the trap):</p>
+                      <p className="text-xs font-semibold">{AI_TRAP_QUESTION.text}</p>
+                      <ul className="mt-1.5 space-y-0.5">
+                        {AI_TRAP_QUESTION.options.map((opt, oi) => (
+                          <li key={oi} className={`text-xs px-1.5 py-0.5 rounded ${oi === AI_TRAP_QUESTION.correctIndex ? "font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20" : "text-muted-foreground"}`}>
+                            {String.fromCharCode(65 + oi)}. {opt}{oi === AI_TRAP_QUESTION.correctIndex ? " ✓" : ""}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>
               </label>
 
+              {/* Questions list */}
               <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">{questions.length} Question{questions.length !== 1 ? "s" : ""}</p>
+                  {inputMode === "pdf" && <span className="text-xs text-muted-foreground bg-secondary px-2 py-1 rounded-full">Imported from PDF — edit as needed</span>}
+                </div>
                 {questions.map((q, qi) => (
                   <div key={q.id} className="rounded-xl border bg-secondary p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <Label className="text-sm font-semibold">Question {qi + 1}</Label>
-                      <button type="button" onClick={() => removeQuestion(qi)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => removeQuestion(qi)} className="text-muted-foreground hover:text-destructive transition-colors">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                     <Input value={q.text} onChange={(e) => updateQuestion(qi, { text: e.target.value })} placeholder="Enter question text…" className="text-sm h-9" />
                     <div className="grid gap-2 grid-cols-2">
                       {q.options.map((opt, oi) => (
                         <div key={oi} className="flex items-center gap-2">
-                          <input type="radio" name={`correct-${q.id}`} checked={q.correctIndex === oi} onChange={() => updateQuestion(qi, { correctIndex: oi as 0 | 1 | 2 | 3 })} className="shrink-0 accent-primary" title="Mark as correct answer" />
+                          <input type="radio" name={`correct-${q.id}`} checked={q.correctIndex === oi}
+                            onChange={() => updateQuestion(qi, { correctIndex: oi as 0 | 1 | 2 | 3 })}
+                            className="shrink-0 accent-primary" title="Mark as correct answer" />
                           <Input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + oi)}`} className="text-sm h-9" />
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground">Select the radio button next to the correct answer.</p>
+                    <p className="text-xs text-muted-foreground">Click the radio button next to the correct answer.</p>
                   </div>
                 ))}
-                <Button type="button" variant="outline" size="sm" onClick={addQuestion}><Plus className="mr-2 h-3.5 w-3.5" /> Add question</Button>
+                <Button type="button" variant="outline" size="sm" onClick={addQuestion}>
+                  <Plus className="mr-2 h-3.5 w-3.5" /> Add question
+                </Button>
               </div>
 
               <div className="flex gap-2 pt-2">
