@@ -367,6 +367,7 @@ function RecordsPage() {
             submittedAt: row.submitted_at,
             cheated: Boolean(row.cheated),
             testType: (row.test_type as TestType) || "C1",
+            deviceId: row.device_id || "",
           }));
           localStorage.setItem("att.test-submissions.v1", JSON.stringify(mapped));
           window.dispatchEvent(new Event("att:test-submissions"));

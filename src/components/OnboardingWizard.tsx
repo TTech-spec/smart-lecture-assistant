@@ -3,12 +3,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Palette, UserCog, BookOpen, Check, X, Download, Monitor,
-  ChevronLeft, ChevronRight, KeyRound, GraduationCap, ArrowRight,
+  ChevronLeft, ChevronRight, KeyRound, GraduationCap, ArrowRight, Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
-  DASHBOARD_THEMES, saveDashboardTheme, saveDeveloperAccess, markOnboardingDone,
-  type ThemeId,
+  DASHBOARD_THEMES, saveDashboardTheme, saveDeveloperAccess, submitDeveloperAccessEmail,
+  markOnboardingDone, type ThemeId,
 } from "@/lib/dashboard-preferences";
 import { getStoredPass, PASS_KEY } from "@/routes/admin";
 import { toast } from "sonner";
@@ -26,14 +27,20 @@ const STEPS = [
 interface OnboardingWizardProps {
   initialTheme: ThemeId;
   initialDevAccess: boolean;
+  initialDevAccessEmail: string | null;
   onClose: () => void;
 }
 
-export function OnboardingWizard({ initialTheme, initialDevAccess, onClose }: OnboardingWizardProps) {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function OnboardingWizard({ initialTheme, initialDevAccess, initialDevAccessEmail, onClose }: OnboardingWizardProps) {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [selectedTheme, setSelectedTheme] = useState<ThemeId>(initialTheme);
   const [devAccess, setDevAccess] = useState(initialDevAccess);
+  const [devAccessEmail, setDevAccessEmail] = useState(initialDevAccessEmail);
+  const [devEmailInput, setDevEmailInput] = useState(initialDevAccessEmail || "");
+  const [submittingDevEmail, setSubmittingDevEmail] = useState(false);
   const [materialsChoice, setMaterialsChoice] = useState<"yes" | "no" | null>(null);
   const [materialsAccessType, setMaterialsAccessType] = useState<MaterialAccessType>("free");
   const { canPromptInstall, isIOS, installed, promptInstall } = useInstallPrompt();
@@ -56,7 +63,25 @@ export function OnboardingWizard({ initialTheme, initialDevAccess, onClose }: On
     const next = !devAccess;
     setDevAccess(next);
     saveDeveloperAccess(next);
-    toast.success(next ? "Developer access granted." : "Developer access revoked.");
+    toast.success(next ? "Developer access enabled." : "Developer access disabled.");
+  }
+
+  async function submitDevEmail() {
+    const email = devEmailInput.trim();
+    if (!EMAIL_RE.test(email)) {
+      toast.error("Enter a valid email address.");
+      return;
+    }
+    setSubmittingDevEmail(true);
+    const ok = await submitDeveloperAccessEmail(email);
+    setSubmittingDevEmail(false);
+    if (ok) {
+      setDevAccessEmail(email);
+      setDevAccess(true);
+      toast.success(`Developer access granted to ${email}.`);
+    } else {
+      toast.error("Couldn't save — check your connection and try again.");
+    }
   }
 
   function changePassword() {
@@ -215,6 +240,49 @@ export function OnboardingWizard({ initialTheme, initialDevAccess, onClose }: On
                     />
                   </span>
                 </button>
+
+                <AnimatePresence>
+                  {devAccess && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-4 rounded-xl border p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                            <Mail className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">Developer's email address</p>
+                            <p className="text-xs text-muted-foreground">
+                              Ask your developer for the email address they'd like access with, then enter it below.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <Input
+                            type="email"
+                            value={devEmailInput}
+                            onChange={(e) => setDevEmailInput(e.target.value)}
+                            placeholder="developer@example.com"
+                            className="h-10"
+                          />
+                          <Button size="sm" className="h-10 shrink-0" onClick={submitDevEmail} disabled={submittingDevEmail}>
+                            {submittingDevEmail ? "Saving…" : "Grant access"}
+                          </Button>
+                        </div>
+                        {devAccessEmail && (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Access currently granted to <span className="font-medium text-foreground">{devAccessEmail}</span>.
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <div className="mt-4 flex items-center justify-between rounded-xl border p-4">
                   <div className="flex items-center gap-3">

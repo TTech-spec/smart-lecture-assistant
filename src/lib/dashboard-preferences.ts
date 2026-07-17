@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { supabase } from "@/lib/supabase";
 
 // ── Dashboard color theme ───────────────────────────────────────────────────
 
@@ -223,16 +224,24 @@ export const DASHBOARD_THEMES: DashboardTheme[] = [
   },
 ];
 
-const THEME_KEY = "att.admin.theme.v1";
-
-export function loadDashboardTheme(): ThemeId {
-  if (typeof window === "undefined") return "default";
-  return (localStorage.getItem(THEME_KEY) as ThemeId) || "default";
+// Dashboard preferences (theme + developer access) live in the Supabase
+// `dashboard_preferences` singleton row — not localStorage — so the same
+// values show on every device the lecturer signs into. `cached` is an
+// in-memory-only fallback for the instant we're waiting on the first fetch.
+interface DashboardPreferencesRow {
+  theme_id: ThemeId;
+  dev_access_enabled: boolean;
+  dev_access_email: string | null;
 }
 
-export function saveDashboardTheme(id: ThemeId) {
-  localStorage.setItem(THEME_KEY, id);
-  window.dispatchEvent(new Event("att:theme"));
+let cached: DashboardPreferencesRow = {
+  theme_id: "default",
+  dev_access_enabled: false,
+  dev_access_email: null,
+};
+
+export function loadDashboardTheme(): ThemeId {
+  return cached.theme_id;
 }
 
 export function getThemeVars(id: ThemeId): CSSProperties {
@@ -240,18 +249,78 @@ export function getThemeVars(id: ThemeId): CSSProperties {
   return (theme?.vars as CSSProperties) || {};
 }
 
-// ── Developer access ────────────────────────────────────────────────────────
-
-const DEV_ACCESS_KEY = "att.admin.devAccess.v1";
-
-export function loadDeveloperAccess(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(DEV_ACCESS_KEY) === "1";
+/** Pulls the latest theme/developer-access values from Supabase and updates the cache. Call on mount and poll periodically so other devices pick up changes. */
+export async function fetchDashboardPreferences(): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { data } = await supabase
+      .from("dashboard_preferences")
+      .select("theme_id, dev_access_enabled, dev_access_email")
+      .eq("id", "default")
+      .maybeSingle();
+    if (!data) return;
+    const next: DashboardPreferencesRow = {
+      theme_id: (data.theme_id as ThemeId) || "default",
+      dev_access_enabled: Boolean(data.dev_access_enabled),
+      dev_access_email: data.dev_access_email ?? null,
+    };
+    if (JSON.stringify(next) === JSON.stringify(cached)) return;
+    cached = next;
+    window.dispatchEvent(new Event("att:theme"));
+    window.dispatchEvent(new Event("att:devaccess"));
+  } catch {
+    // keep whatever's cached
+  }
 }
 
-export function saveDeveloperAccess(enabled: boolean) {
-  localStorage.setItem(DEV_ACCESS_KEY, enabled ? "1" : "0");
+export async function saveDashboardTheme(id: ThemeId): Promise<void> {
+  cached = { ...cached, theme_id: id };
+  window.dispatchEvent(new Event("att:theme"));
+  if (!supabase) return;
+  try {
+    await supabase.from("dashboard_preferences").upsert({ id: "default", theme_id: id });
+  } catch {
+    // best-effort; the theme still applies for this session
+  }
+}
+
+// ── Developer access ────────────────────────────────────────────────────────
+
+export function loadDeveloperAccess(): boolean {
+  return cached.dev_access_enabled;
+}
+
+export function loadDeveloperAccessEmail(): string | null {
+  return cached.dev_access_email;
+}
+
+export async function saveDeveloperAccess(enabled: boolean): Promise<void> {
+  cached = { ...cached, dev_access_enabled: enabled };
   window.dispatchEvent(new Event("att:devaccess"));
+  if (!supabase) return;
+  try {
+    await supabase.from("dashboard_preferences").upsert({ id: "default", dev_access_enabled: enabled });
+  } catch {
+    // best-effort
+  }
+}
+
+/** Lecturer submits the developer's email address to grant them access. Persists straight to Supabase. */
+export async function submitDeveloperAccessEmail(email: string): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { error } = await supabase.from("dashboard_preferences").upsert({
+      id: "default",
+      dev_access_enabled: true,
+      dev_access_email: email,
+    });
+    if (error) return false;
+    cached = { ...cached, dev_access_enabled: true, dev_access_email: email };
+    window.dispatchEvent(new Event("att:devaccess"));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Onboarding wizard completion ────────────────────────────────────────────

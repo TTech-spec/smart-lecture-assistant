@@ -131,6 +131,7 @@ export type TestSubmission = {
   submittedAt: string;
   cheated: boolean;
   testType: TestType;
+  deviceId: string;
 };
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
@@ -283,6 +284,7 @@ function submissionToDb(s: TestSubmission): Row {
     submitted_at: s.submittedAt,
     cheated: s.cheated,
     test_type: s.testType,
+    device_id: s.deviceId,
   };
 }
 
@@ -299,6 +301,7 @@ function submissionFromDb(row: Row): TestSubmission {
     submittedAt: row.submitted_at,
     cheated: Boolean(row.cheated),
     testType: (row.test_type as TestType) || "C1",
+    deviceId: row.device_id || "",
   };
 }
 
@@ -851,6 +854,40 @@ export function addTestSubmission(s: TestSubmission) {
 
 export function syncTestSubmission(s: TestSubmission) {
   sync(supabase?.from("test_submissions").upsert(submissionToDb(s)));
+}
+
+/**
+ * Fast local check: has this device already submitted this test?
+ * Same device-level lock used for attendance — checked independently of
+ * matric number so re-entering a different matric on the same phone doesn't
+ * unlock a second attempt.
+ */
+export function hasDeviceTakenTest(deviceId: string, testId: string): TestSubmission | null {
+  return loadTestSubmissions().find((s) => s.deviceId === deviceId && s.testId === testId) ?? null;
+}
+
+/**
+ * Server-side (Supabase) check: has this device already submitted this test?
+ * Returns null if Supabase is unavailable (fails open so students aren't
+ * blocked offline) or if the app was never synced from Supabase locally.
+ */
+export async function hasDeviceTakenTestRemote(
+  deviceId: string,
+  testId: string
+): Promise<TestSubmission | null> {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase
+      .from("test_submissions")
+      .select("*")
+      .eq("device_id", deviceId)
+      .eq("test_id", testId)
+      .limit(1)
+      .maybeSingle();
+    return data ? submissionFromDb(data) : null;
+  } catch {
+    return null; // fail open — don't block students if DB is unreachable
+  }
 }
 
 // ── Class code tracking ───────────────────────────────────────────────────────

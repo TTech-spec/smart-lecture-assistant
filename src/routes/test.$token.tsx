@@ -26,6 +26,9 @@ import {
   loadSettings,
   markClassCodeUsed,
   fetchTestLinkByToken,
+  getDeviceId,
+  hasDeviceTakenTest,
+  hasDeviceTakenTestRemote,
   type TestConfig,
   type TestSubmission,
   type TestLink,
@@ -51,7 +54,7 @@ function formatSeconds(s: number) {
 }
 
 // ── Stages ────────────────────────────────────────────────────────────────────
-type Stage = "loading" | "invalid" | "identity" | "class_code" | "taking" | "cheated" | "result" | "already_taken" | "not_signed";
+type Stage = "loading" | "invalid" | "identity" | "class_code" | "taking" | "cheated" | "result" | "already_taken" | "device_used" | "not_signed";
 
 function TestTokenPage() {
   const { token } = Route.useParams();
@@ -133,8 +136,10 @@ function TestTokenPage() {
 
   const settings = loadSettings();
 
-  function handleIdentitySubmit(name: string, matric: string, lvl: string) {
-    // Check if student has already taken this test
+  async function handleIdentitySubmit(name: string, matric: string, lvl: string) {
+    const deviceId = getDeviceId();
+
+    // Check if this matric number has already taken this test — show them their own result
     const existing = loadTestSubmissions().find(
       (s) => s.testId === test.id && s.matricNumber.toLowerCase() === matric.trim().toLowerCase(),
     );
@@ -146,17 +151,29 @@ function TestTokenPage() {
       setStage("already_taken");
       return;
     }
-    
+
+    // Device-level lock: this phone already submitted this test under any matric number
+    if (
+      hasDeviceTakenTest(deviceId, test.id) ||
+      (await hasDeviceTakenTestRemote(deviceId, test.id))
+    ) {
+      setStudentName(name);
+      setMatricNumber(matric);
+      setLevel(lvl);
+      setStage("device_used");
+      return;
+    }
+
     setStudentName(name);
     setMatricNumber(matric);
     setLevel(lvl);
-    
+
     // Check if class code is required (lecturer has generated one)
     if (settings.classCodeEnabled && settings.classCode) {
       setStage("class_code");
       return;
     }
-    
+
     setStage("taking");
   }
 
@@ -169,7 +186,19 @@ function TestTokenPage() {
     setStage("cheated");
   }
 
-  function handleSubmit(finalAnswers: (number | null)[], cheated = false) {
+  async function handleSubmit(finalAnswers: (number | null)[], cheated = false) {
+    const deviceId = getDeviceId();
+
+    // Re-check the device lock at submit time in case another tab/session on
+    // this same phone already submitted while this one was in progress.
+    const raced =
+      hasDeviceTakenTest(deviceId, test.id) ||
+      (await hasDeviceTakenTestRemote(deviceId, test.id));
+    if (raced) {
+      setStage("device_used");
+      return;
+    }
+
     const score = finalAnswers.reduce<number>((acc, ans, i) => {
       return acc + (ans === test.questions[i].correctIndex ? 1 : 0);
     }, 0);
@@ -186,6 +215,7 @@ function TestTokenPage() {
       submittedAt: new Date().toISOString(),
       cheated,
       testType: test.testType || "C1",
+      deviceId,
     };
 
     addTestSubmission(submission);
@@ -286,6 +316,31 @@ function TestTokenPage() {
               transition={{ duration: 0.35 }}
             >
               <AlreadyTakenScreen result={result} test={test} />
+            </motion.div>
+          )}
+
+          {stage === "device_used" && (
+            <motion.div
+              key="device_used"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.35 }}
+            >
+              <div className="rounded-2xl border bg-card p-6 shadow-soft text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/20">
+                  <AlertTriangle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+                </div>
+                <h2 className="mb-2 text-xl font-bold">This device already took this test</h2>
+                <p className="mb-6 text-sm text-muted-foreground">
+                  This phone has already been used to submit this test. Each test can only be taken once per device, regardless of the matric number entered.
+                </p>
+                <Button asChild className="w-full">
+                  <Link to="/">
+                    <MapPin className="mr-2 h-4 w-4" /> Back to home
+                  </Link>
+                </Button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

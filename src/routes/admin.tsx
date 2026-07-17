@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
-import { loadDashboardTheme, getThemeVars, loadDeveloperAccess, isOnboardingDone, type ThemeId } from "@/lib/dashboard-preferences";
+import {
+  loadDashboardTheme, getThemeVars, loadDeveloperAccess, loadDeveloperAccessEmail,
+  fetchDashboardPreferences, isOnboardingDone, type ThemeId,
+} from "@/lib/dashboard-preferences";
 import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { IOSInstallHelp } from "@/components/IOSInstallHelp";
 
@@ -114,10 +117,16 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
     if (!isOnboardingDone()) setWizardOpen(true);
     const syncTheme = () => setThemeId(loadDashboardTheme());
     window.addEventListener("att:theme", syncTheme);
-    window.addEventListener("storage", syncTheme);
+
+    // Poll Supabase so a theme (or dev access) change made on another device
+    // shows up here without needing a page refresh.
+    const poll = () => { fetchDashboardPreferences(); };
+    poll();
+    const timer = setInterval(poll, 15_000);
+
     return () => {
       window.removeEventListener("att:theme", syncTheme);
-      window.removeEventListener("storage", syncTheme);
+      clearInterval(timer);
     };
   }, []);
 
@@ -258,6 +267,7 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
         <OnboardingWizard
           initialTheme={themeId}
           initialDevAccess={loadDeveloperAccess()}
+          initialDevAccessEmail={loadDeveloperAccessEmail()}
           onClose={() => setWizardOpen(false)}
         />
       )}
