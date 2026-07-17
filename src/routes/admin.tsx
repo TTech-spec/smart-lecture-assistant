@@ -1,10 +1,15 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X, Link2 } from "lucide-react";
+import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X, Link2, Settings2, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InstallAppButton } from "@/components/InstallAppButton";
+import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { loadDashboardTheme, getThemeVars, loadDeveloperAccess, isOnboardingDone, type ThemeId } from "@/lib/dashboard-preferences";
+import { useInstallPrompt } from "@/hooks/use-install-prompt";
+import { IOSInstallHelp } from "@/components/IOSInstallHelp";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -87,9 +92,37 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
 
 function AdminShell({ onLogout }: { onLogout: () => void }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [themeId, setThemeId] = useState<ThemeId>(() => loadDashboardTheme());
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const { canPromptInstall, isIOS, installed, promptInstall } = useInstallPrompt();
+  const [showIOSHelp, setShowIOSHelp] = useState(false);
+
+  async function handleInstallClick() {
+    if (canPromptInstall) {
+      const outcome = await promptInstall();
+      if (outcome === "accepted") toast.success("Attendly installed!");
+      return;
+    }
+    if (isIOS) {
+      setShowIOSHelp(true);
+      return;
+    }
+    toast.info("Your browser doesn't support one-click install. Look for an \"Install app\" option in your browser's menu, or the install icon in the address bar.");
+  }
+
+  useEffect(() => {
+    if (!isOnboardingDone()) setWizardOpen(true);
+    const syncTheme = () => setThemeId(loadDashboardTheme());
+    window.addEventListener("att:theme", syncTheme);
+    window.addEventListener("storage", syncTheme);
+    return () => {
+      window.removeEventListener("att:theme", syncTheme);
+      window.removeEventListener("storage", syncTheme);
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-hero">
+    <div className="min-h-screen bg-gradient-hero" style={getThemeVars(themeId)}>
       <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur-md shadow-soft">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
@@ -131,10 +164,18 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {!installed && (
+              <Button size="sm" variant="outline" onClick={handleInstallClick} className="hidden sm:flex">
+                <Download className="mr-2 h-3.5 w-3.5" /> Install app
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setWizardOpen(true)} className="hidden sm:flex">
+              <Settings2 className="mr-2 h-3.5 w-3.5" /> Setup
+            </Button>
             <Button size="sm" variant="outline" onClick={onLogout} className="hidden sm:flex">
               <LogOut className="mr-2 h-3.5 w-3.5" /> Sign out
             </Button>
-            
+
             {/* Mobile Menu Button */}
             <Button
               size="sm"
@@ -180,6 +221,24 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
               >
                 <BookOpen className="h-4 w-4" /> Materials
               </Link>
+              {!installed && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { handleInstallClick(); setMobileMenuOpen(false); }}
+                  className="w-full justify-start"
+                >
+                  <Download className="mr-2 h-4 w-4" /> Install app
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setWizardOpen(true); setMobileMenuOpen(false); }}
+                className="w-full justify-start"
+              >
+                <Settings2 className="mr-2 h-4 w-4" /> Setup
+              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -193,6 +252,15 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
         )}
       </header>
       <Outlet />
+      <InstallAppButton />
+      <IOSInstallHelp open={showIOSHelp} onClose={() => setShowIOSHelp(false)} />
+      {wizardOpen && (
+        <OnboardingWizard
+          initialTheme={themeId}
+          initialDevAccess={loadDeveloperAccess()}
+          onClose={() => setWizardOpen(false)}
+        />
+      )}
     </div>
   );
 }

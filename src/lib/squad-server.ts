@@ -19,7 +19,7 @@ function baseUrl() {
     : "https://sandbox-api-d.squadco.com";
 }
 
-function secretKey() {
+export function secretKey() {
   const k =
     process.env.SQUAD_SECRET_KEY ||
     process.env.VITE_SQUAD_SECRET_KEY ||
@@ -168,39 +168,44 @@ const PayoutSchema = z.object({
   narration:             z.string().optional(),
 });
 
+type PayoutInput = z.infer<typeof PayoutSchema>;
+
+/** Plain (non-RPC) entry point — shared by the client-triggered server fn and the webhook. */
+export async function runPayoutToLecturer(data: PayoutInput) {
+  try {
+    // Squad Transfer API: POST /transfer/initiate
+    const body: Record<string, unknown> = {
+      transaction_reference: data.transferRef,
+      amount:                Math.round(data.amountNGN * 100), // kobo
+      bank_code:             data.lecturerBankCode,
+      account_number:        data.lecturerAccountNumber,
+      account_name:          data.lecturerAccountName || "Lecturer",
+      currency_id:           "NGN",
+      remark:                data.narration || "Lecture material payout — Attendly",
+    };
+
+    const json = await squadFetch("/transfer/initiate", body);
+    return json as {
+      status: number;
+      success: boolean;
+      message: string;
+      data?: { transaction_reference?: string; amount?: number };
+    };
+  } catch (err) {
+    console.error("Lecturer payout failed:", err);
+    // Return success false but don't throw to avoid blocking the main flow
+    return {
+      status: 500,
+      success: false,
+      message: err instanceof Error ? err.message : "Payout failed",
+      data: {},
+    };
+  }
+}
+
 export const payoutToLecturer = createServerFn({ method: "POST" })
   .validator((d: unknown) => PayoutSchema.parse(d))
-  .handler(async ({ data }) => {
-    try {
-      // Squad Transfer API: POST /transfer/initiate
-      const body: Record<string, unknown> = {
-        transaction_reference: data.transferRef,
-        amount:                Math.round(data.amountNGN * 100), // kobo
-        bank_code:             data.lecturerBankCode,
-        account_number:        data.lecturerAccountNumber,
-        account_name:          data.lecturerAccountName || "Lecturer",
-        currency_id:           "NGN",
-        remark:                data.narration || "Lecture material payout — Attendly",
-      };
-
-      const json = await squadFetch("/transfer/initiate", body);
-      return json as {
-        status: number;
-        success: boolean;
-        message: string;
-        data?: { transaction_reference?: string; amount?: number };
-      };
-    } catch (err) {
-      console.error("Lecturer payout failed:", err);
-      // Return success false but don't throw to avoid blocking the main flow
-      return {
-        status: 500,
-        success: false,
-        message: err instanceof Error ? err.message : "Payout failed",
-        data: {},
-      };
-    }
-  });
+  .handler(async ({ data }) => runPayoutToLecturer(data));
 
 // ── 4. Platform payout (₦1,000 → platform account) ───────────────────────────
 const PlatformPayoutSchema = z.object({
@@ -209,41 +214,46 @@ const PlatformPayoutSchema = z.object({
   narration:   z.string().optional(),
 });
 
+type PlatformPayoutInput = z.infer<typeof PlatformPayoutSchema>;
+
+/** Plain (non-RPC) entry point — shared by the client-triggered server fn and the webhook. */
+export async function runPayoutToPlatform(data: PlatformPayoutInput) {
+  const { accountNumber, bankCode } = platformAccount();
+  if (!accountNumber) {
+    // Platform account not configured — skip silently so lecturer payout isn't blocked
+    return { status: 200, success: true, message: "Platform account not configured — skipped", data: {} };
+  }
+
+  try {
+    const body: Record<string, unknown> = {
+      transaction_reference: data.transferRef,
+      amount:                Math.round(data.amountNGN * 100),
+      bank_code:             bankCode,
+      account_number:        accountNumber,
+      account_name:          "Attendly Platform",
+      currency_id:           "NGN",
+      remark:                data.narration || "Platform fee — Attendly",
+    };
+
+    const json = await squadFetch("/transfer/initiate", body);
+    return json as {
+      status: number;
+      success: boolean,
+      message: string,
+      data?: { transaction_reference?: string };
+    };
+  } catch (err) {
+    console.error("Platform payout failed:", err);
+    // Return success false but don't throw to avoid blocking the main flow
+    return {
+      status: 500,
+      success: false,
+      message: err instanceof Error ? err.message : "Platform payout failed",
+      data: {},
+    };
+  }
+}
+
 export const payoutToPlatform = createServerFn({ method: "POST" })
   .validator((d: unknown) => PlatformPayoutSchema.parse(d))
-  .handler(async ({ data }) => {
-    const { accountNumber, bankCode } = platformAccount();
-    if (!accountNumber) {
-      // Platform account not configured — skip silently so lecturer payout isn't blocked
-      return { status: 200, success: true, message: "Platform account not configured — skipped", data: {} };
-    }
-
-    try {
-      const body: Record<string, unknown> = {
-        transaction_reference: data.transferRef,
-        amount:                Math.round(data.amountNGN * 100),
-        bank_code:             bankCode,
-        account_number:        accountNumber,
-        account_name:          "Attendly Platform",
-        currency_id:           "NGN",
-        remark:                data.narration || "Platform fee — Attendly",
-      };
-
-      const json = await squadFetch("/transfer/initiate", body);
-      return json as {
-        status: number;
-        success: boolean,
-        message: string,
-        data?: { transaction_reference?: string };
-      };
-    } catch (err) {
-      console.error("Platform payout failed:", err);
-      // Return success false but don't throw to avoid blocking the main flow
-      return {
-        status: 500,
-        success: false,
-        message: err instanceof Error ? err.message : "Platform payout failed",
-        data: {},
-      };
-    }
-  });
+  .handler(async ({ data }) => runPayoutToPlatform(data));

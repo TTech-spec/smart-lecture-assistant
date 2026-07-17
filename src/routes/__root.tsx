@@ -133,6 +133,18 @@ function RootComponent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // vite-plugin-pwa normally auto-injects a registration script into
+    // index.html — this app has no index.html (TanStack Start renders the
+    // document itself), so the service worker is built but never registered
+    // unless we do it explicitly here. Without an active service worker the
+    // browser won't consider the app installable and beforeinstallprompt
+    // never fires.
+    import("virtual:pwa-register").then(({ registerSW }) => {
+      registerSW({ immediate: true });
+    });
+  }, []);
+
+  useEffect(() => {
     const start = Date.now();
     const minTimer = setTimeout(() => {
       /* will be cleared if Supabase finishes first */

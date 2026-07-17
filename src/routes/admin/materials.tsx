@@ -20,8 +20,15 @@ import {
 } from "@/lib/materials-store";
 import { calcFees, NG_BANKS } from "@/lib/squad";
 
+type MaterialsSearch = {
+  accessType?: MaterialAccessType;
+};
+
 export const Route = createFileRoute("/admin/materials")({
   head: () => ({ meta: [{ title: "Materials — Attendly" }] }),
+  validateSearch: (search: Record<string, unknown>): MaterialsSearch => ({
+    accessType: search.accessType === "paid" ? "paid" : search.accessType === "free" ? "free" : undefined,
+  }),
   component: MaterialsAdmin,
 });
 
@@ -71,6 +78,7 @@ function useMaterials() {
 }
 
 function MaterialsAdmin() {
+  const { accessType: intentAccessType } = Route.useSearch();
   const { materials, refresh } = useMaterials();
   // null = not yet answered, false = dismissed, true = open form
   const [promptAnswer, setPromptAnswer] = useState<null | boolean>(null);
@@ -82,6 +90,15 @@ function MaterialsAdmin() {
 
   // If materials already exist, skip the prompt
   const hasExisting = materials.length > 0;
+
+  // Arrived from the dashboard setup wizard with a free/paid intent — open the form pre-filled.
+  useEffect(() => {
+    if (!intentAccessType) return;
+    setDraft({ ...emptyDraft, accessType: intentAccessType });
+    setFormOpen(true);
+    setPromptAnswer(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function upd<K extends keyof Draft>(k: K, v: Draft[K]) {
     setDraft((d) => ({ ...d, [k]: v }));
