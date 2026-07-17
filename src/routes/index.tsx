@@ -173,6 +173,8 @@ function Landing() {
   const [copied, setCopied] = useState(false);
   const [codeChecking, setCodeChecking] = useState(false);
   const [studentCode, setStudentCode] = useState("");
+  const CODE_AUTO_CLOSE_SECONDS = 180;
+  const [codeSecondsLeft, setCodeSecondsLeft] = useState(CODE_AUTO_CLOSE_SECONDS);
 
   useEffect(() => {
     const syncTests = () => setActiveTest(getActiveTest());
@@ -195,6 +197,25 @@ function Landing() {
       clearInterval(pollInterval);
     };
   }, []);
+
+  // Give students a countdown window to copy/write down their class code before
+  // the modal auto-closes — otherwise the code could disappear before they're ready.
+  useEffect(() => {
+    if (!codeRevealed) return;
+    setCodeSecondsLeft(CODE_AUTO_CLOSE_SECONDS);
+    const tick = setInterval(() => {
+      setCodeSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(tick);
+          closeCodeModal();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codeRevealed]);
 
   function closeCodeModal() {
     setCodeOpen(false);
@@ -480,7 +501,13 @@ function Landing() {
                     <button onClick={copyCode} className="w-full rounded-xl border bg-secondary py-2 text-sm font-medium hover:bg-secondary/80 transition-colors">
                       {copied ? "✓ Copied!" : "Copy code"}
                     </button>
-                    <button onClick={closeCodeModal} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Close</button>
+                    <Button onClick={closeCodeModal} className="w-full">Continue</Button>
+                    <p className="text-xs text-muted-foreground">
+                      Make sure to copy or write down your code — this closes automatically in{" "}
+                      <span className="font-medium text-foreground">
+                        {Math.floor(codeSecondsLeft / 60)}:{String(codeSecondsLeft % 60).padStart(2, "0")}
+                      </span>
+                    </p>
                   </motion.div>
                 )}
               </AnimatePresence>

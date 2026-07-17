@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import {
   loadMaterials, addMaterial, deleteMaterial, syncMaterialsFromSupabase,
-  uploadMaterialFile, type Material, type MaterialFileType, type MaterialAccessType,
+  uploadMaterialFile, deleteMaterialFile, type Material, type MaterialFileType, type MaterialAccessType,
 } from "@/lib/materials-store";
 import { calcFees, NG_BANKS } from "@/lib/squad";
 
@@ -135,12 +135,14 @@ function MaterialsAdmin() {
     }
 
     setSaving(true);
+    let finalUrl = draft.url.trim();
+    let uploadedPath: string | null = null;
     try {
-      let finalUrl = draft.url.trim();
-
       // If file is uploaded, store it in Supabase Storage
       if (draft.file) {
         const tempId = crypto.randomUUID();
+        const ext = draft.file.name.split(".").pop() || "bin";
+        uploadedPath = `${tempId}.${ext}`;
         finalUrl = await uploadMaterialFile(draft.file, tempId);
       }
 
@@ -167,8 +169,11 @@ function MaterialsAdmin() {
       setFormOpen(false);
       refresh();
     } catch (err) {
+      // The file may have already landed in storage before this step failed —
+      // remove it so a failed save never leaves an orphaned file students can't see.
+      if (uploadedPath) await deleteMaterialFile(uploadedPath);
       const msg = err instanceof Error ? err.message : "Failed to save material";
-      toast.error(`Could not save: ${msg}`);
+      toast.error(`Upload failed and was not published — nothing was saved. Check your connection and try again. (${msg})`, { duration: 8000 });
     } finally {
       setSaving(false);
     }

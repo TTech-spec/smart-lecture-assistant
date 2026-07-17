@@ -1156,7 +1156,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
   }
 
   return (
-    <div className="rounded-2xl border bg-card shadow-soft">
+    <div id="tests-quizzes" className="rounded-2xl border bg-card shadow-soft scroll-mt-24">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b p-4 sm:p-5">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold">

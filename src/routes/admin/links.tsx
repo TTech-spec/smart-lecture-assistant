@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Link2, Plus, X, Copy, Ban, ChevronDown, ChevronUp,
@@ -306,9 +306,14 @@ function GenerateLinkForm({
             Choose which test students will take when they use this link.
           </p>
           {tests.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No tests available. Create a test in the dashboard first.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                No tests available yet. Upload your test questions in the dashboard first.
+              </p>
+              <Button asChild size="sm" type="button" className="w-full">
+                <Link to="/admin" hash="tests-quizzes">Click here to upload questions</Link>
+              </Button>
+            </div>
           ) : (
             <div className="space-y-2">
               {tests.map((test) => (

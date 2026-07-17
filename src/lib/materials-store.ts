@@ -224,3 +224,15 @@ export async function uploadMaterialFile(file: File, id: string): Promise<string
   const { data } = supabase.storage.from("materials").getPublicUrl(path);
   return data.publicUrl;
 }
+
+/** Removes a file uploaded via `uploadMaterialFile`. Used to roll back a
+ *  storage upload when the follow-up database write fails, so a failed
+ *  save never leaves an orphaned file with no matching material row. */
+export async function deleteMaterialFile(path: string): Promise<void> {
+  if (!supabase) return;
+  try {
+    await supabase.storage.from("materials").remove([path]);
+  } catch {
+    // best-effort cleanup — the original save error is what matters to the user
+  }
+}

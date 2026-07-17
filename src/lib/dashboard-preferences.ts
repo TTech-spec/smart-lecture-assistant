@@ -246,7 +246,18 @@ export function loadDashboardTheme(): ThemeId {
 
 export function getThemeVars(id: ThemeId): CSSProperties {
   const theme = DASHBOARD_THEMES.find((t) => t.id === id);
-  return (theme?.vars as CSSProperties) || {};
+  if (!theme?.vars) return {};
+  // Tailwind's utilities (bg-primary, text-foreground, …) read the `--color-*`
+  // custom properties declared in the @theme block, not the bare `--primary`/
+  // `--background` names. Those bare names only exist to feed `--color-*` via
+  // `var(--primary)` at :root — and CSS resolves that indirection using :root's
+  // OWN value, not a descendant override, so overriding the bare names here would
+  // silently do nothing. Override `--color-*` directly so it actually applies.
+  const prefixed: Record<string, string> = {};
+  for (const [key, value] of Object.entries(theme.vars)) {
+    prefixed[`--color-${key.slice(2)}`] = value;
+  }
+  return prefixed as CSSProperties;
 }
 
 /** Pulls the latest theme/developer-access values from Supabase and updates the cache. Call on mount and poll periodically so other devices pick up changes. */

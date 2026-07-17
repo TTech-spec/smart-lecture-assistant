@@ -562,10 +562,6 @@ function IdentityForm({ test, onSubmit }: { test: TestConfig; onSubmit: (name: s
       </div>
 
       <form onSubmit={submit} className="rounded-2xl border bg-card p-6 shadow-soft space-y-4">
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
-          <AlertTriangle className="mr-2 inline h-4 w-4" />
-          Do not switch tabs or minimize the window during the test. Doing so will flag you for cheating.
-        </div>
         <div>
           <Label htmlFor="matric">Matric number</Label>
           <Input
