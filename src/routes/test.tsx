@@ -32,6 +32,7 @@ import {
   getDeviceId,
   hasDeviceTakenTest,
   hasDeviceTakenTestRemote,
+  shuffledIndices,
   type TestConfig,
   type TestSubmission,
 } from "@/lib/attendance-store";
@@ -625,6 +626,7 @@ function TakingTest({
   onSubmit: (answers: (number | null)[]) => void;
 }) {
   const [current, setCurrent] = useState(0);
+  const [order] = useState(() => shuffledIndices(test.questions.length));
   const [secondsLeft, setSecondsLeft] = useState(test.durationMinutes * 60);
   const cheatedRef = useRef(false);
   const answersRef = useRef(answers);
@@ -662,13 +664,13 @@ function TakingTest({
     };
   }, [onCheated]);
 
-  const q = test.questions[current];
+  const q = test.questions[order[current]];
   const totalAnswered = answers.filter((a) => a !== null).length;
   const progress = (totalAnswered / test.questions.length) * 100;
   const timerDanger = secondsLeft <= 60;
 
   function selectAnswer(optionIndex: number) {
-    setAnswers((prev) => { const next = [...prev]; next[current] = optionIndex; return next; });
+    setAnswers((prev) => { const next = [...prev]; next[order[current]] = optionIndex; return next; });
   }
 
   function handleSubmitClick() {
@@ -700,7 +702,7 @@ function TakingTest({
           <p className="text-lg font-semibold leading-relaxed">{q.text}</p>
           <div className="space-y-3">
             {q.options.map((opt, i) => {
-              const selected = answers[current] === i;
+              const selected = answers[order[current]] === i;
               return (
                 <button key={i} type="button" onClick={() => selectAnswer(i)}
                   className={`w-full rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all duration-150 ${selected ? "border-primary bg-primary/10 text-primary shadow-soft" : "border-border bg-secondary/50 text-foreground hover:border-primary/40 hover:bg-secondary"}`}>
@@ -720,7 +722,7 @@ function TakingTest({
         <div className="flex flex-1 flex-wrap justify-center gap-1.5">
           {test.questions.map((_, i) => (
             <button key={i} type="button" onClick={() => setCurrent(i)}
-              className={`h-7 w-7 rounded-full text-xs font-medium transition-all ${i === current ? "bg-primary text-primary-foreground shadow-glow scale-110" : answers[i] !== null ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground hover:bg-secondary/80"}`}>
+              className={`h-7 w-7 rounded-full text-xs font-medium transition-all ${i === current ? "bg-primary text-primary-foreground shadow-glow scale-110" : answers[order[i]] !== null ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground hover:bg-secondary/80"}`}>
               {i + 1}
             </button>
           ))}

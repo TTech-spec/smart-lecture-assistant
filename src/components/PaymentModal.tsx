@@ -352,11 +352,11 @@ export function PaymentModal({
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <h3 className="text-lg font-semibold">Waiting for payment…</h3>
             <p className="text-sm text-muted-foreground max-w-xs">
-              Complete the payment in the Squad checkout window. This page will update automatically.
+              A Squad checkout window should have opened in a new tab. Don't see it, or accidentally closed it? Click the button below to reopen it and continue your payment.
             </p>
             {checkoutUrl && (
-              <Button variant="outline" size="sm" onClick={() => window.open(checkoutUrl, "_blank", "noopener,noreferrer")}>
-                <ExternalLink className="mr-2 h-4 w-4" /> Reopen checkout window
+              <Button size="sm" onClick={() => window.open(checkoutUrl, "_blank", "noopener,noreferrer")}>
+                <ExternalLink className="mr-2 h-4 w-4" /> Reopen checkout window to continue
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={() => setStep("failed")} className="text-xs text-muted-foreground">

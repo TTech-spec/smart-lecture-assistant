@@ -265,7 +265,7 @@ function Landing() {
       }
 
       // Generate a unique code for this student based on the global code prefix
-      const uniqueCode = generateStudentClassCode(codeMatric, settings.classCode, settings.classCodeFormat);
+      const uniqueCode = await generateStudentClassCode(codeMatric, settings.classCode, settings.classCodeFormat);
 
       // Update the student's attendance record with their unique code
       updateStudentClassCode(codeMatric, uniqueCode);

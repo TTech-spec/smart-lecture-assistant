@@ -108,6 +108,21 @@ export type TestQuestion = {
 
 export type TestType = "C1" | "C2" | "C3";
 
+/** Fisher–Yates shuffle of [0..n). Each student gets their own question order
+ *  (generated client-side, once per attempt) so question numbers don't match
+ *  between students — copying "the answer to Q4" or a screenshot of one
+ *  student's screen won't line up with anyone else's paper. Answers are still
+ *  stored against the original question index, so scoring is unaffected.
+ */
+export function shuffledIndices(n: number): number[] {
+  const arr = Array.from({ length: n }, (_, i) => i);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 export type TestConfig = {
   id: string;
   title: string;
@@ -391,7 +406,7 @@ export function updateStudentClassCode(matricNumber: string, classCode: string):
   if (supabase) {
     const student = updated.find(r => r.matricNumber === matricNumber);
     if (student) {
-      sync(supabase.from("attendance").update({ assigned_class_code: classCode }).eq("matric_number", matricNumber));
+      sync(supabase.from("attendance_records").update({ assigned_class_code: classCode }).eq("matric_number", matricNumber));
     }
   }
 }
@@ -930,27 +945,58 @@ function getStudentCodeMap(): Record<string, string> {
   }
 }
 
+function randomCodeSuffix(format: "numbers" | "id"): string {
+  return format === "numbers"
+    ? String(Math.floor(1000 + Math.random() * 9000))
+    : Math.random().toString(36).slice(2, 6).toUpperCase();
+}
+
+/** Checks whether a candidate class code is already assigned to anyone — locally
+ *  (this device) or in Supabase (any other student's device). Students each
+ *  generate their code on their own phone, so the local-only map alone can't
+ *  catch collisions between two different students; this closes that gap.
+ */
+async function isClassCodeTaken(code: string): Promise<boolean> {
+  if (Object.values(getStudentCodeMap()).includes(code)) return true;
+  if (!supabase) return false;
+  try {
+    const { data } = await supabase
+      .from("attendance_records")
+      .select("id")
+      .eq("assigned_class_code", code)
+      .limit(1)
+      .maybeSingle();
+    return Boolean(data);
+  } catch {
+    return false; // fail open — don't block a student if the DB is unreachable
+  }
+}
+
 /** Generate (or retrieve) a unique class code for a specific student.
  *  The code is derived from the global classCode prefix + a short unique suffix,
- *  so the lecturer's format preference is preserved.
+ *  so the lecturer's format preference is preserved. Retries against Supabase
+ *  until the suffix doesn't collide with any other student's code, since each
+ *  student generates theirs independently on their own device.
  */
-export function generateStudentClassCode(
+export async function generateStudentClassCode(
   matricNumber: string,
   globalCode: string,
   format: "numbers" | "id" = "numbers"
-): string {
+): Promise<string> {
   const map = getStudentCodeMap();
   const key = matricNumber.trim().toLowerCase();
 
   // Already assigned — return the same code every time
   if (map[key]) return map[key];
 
-  // Build a unique suffix that won't collide
-  const suffix = format === "numbers"
-    ? String(Math.floor(1000 + Math.random() * 9000))
-    : Math.random().toString(36).slice(2, 6).toUpperCase();
+  let code: string | null = null;
+  for (let attempt = 0; attempt < 15 && !code; attempt++) {
+    const candidate = `${globalCode}-${randomCodeSuffix(format)}`;
+    if (!(await isClassCodeTaken(candidate))) code = candidate;
+  }
+  // Astronomically unlikely fallback: a timestamp-derived suffix is unique by construction
+  if (!code) code = `${globalCode}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
 
-  const code = `${globalCode}-${suffix}`;
   map[key] = code;
   localStorage.setItem(STUDENT_CODES_KEY, JSON.stringify(map));
   return code;

@@ -233,7 +233,7 @@ function AttendTokenPage() {
         const settings2 = loadSettings();
         // Use the global classCode as the base prefix; fall back to courseCode
         const base = settings2.classCode?.trim() || link.courseCode;
-        classCode = generateStudentClassCode(
+        classCode = await generateStudentClassCode(
           form.matricNumber.trim(),
           base,
           settings2.classCodeFormat || "numbers"

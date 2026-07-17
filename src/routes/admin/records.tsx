@@ -380,12 +380,15 @@ function RecordsPage() {
     fetchSubmissions();
   }, []);
 
-  // Merge store + local so whichever has more data wins
+  // Merge store + local. storeSubmissions reflects every local write (including
+  // edits made on this page) via the "att:test-submissions" event, so it must
+  // win over localSubmissions — a one-time Supabase snapshot taken at mount
+  // that goes stale the moment a score is edited. localSubmissions only fills
+  // in submissions made on another device that haven't synced locally yet.
   const testSubmissions = useMemo(() => {
     const merged = new Map<string, TestSubmission>();
     [...localSubmissions, ...storeSubmissions].forEach((s) => {
-      const existing = merged.get(s.id);
-      if (!existing) merged.set(s.id, s);
+      merged.set(s.id, s);
     });
     return Array.from(merged.values());
   }, [storeSubmissions, localSubmissions]);

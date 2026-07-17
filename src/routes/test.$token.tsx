@@ -29,6 +29,7 @@ import {
   getDeviceId,
   hasDeviceTakenTest,
   hasDeviceTakenTestRemote,
+  shuffledIndices,
   type TestConfig,
   type TestSubmission,
   type TestLink,
@@ -475,6 +476,7 @@ function TakingTest({
   onSubmit: (answers: (number | null)[], cheated?: boolean) => void;
 }) {
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [order] = useState(() => shuffledIndices(test.questions.length));
   const [timeLeft, setTimeLeft] = useState(test.durationMinutes * 60);
   const [tabCount, setTabCount] = useState(0);
 
@@ -509,7 +511,7 @@ function TakingTest({
 
   function handleAnswerSelect(optionIndex: number) {
     const newAnswers = [...answers];
-    newAnswers[currentQuestion] = optionIndex;
+    newAnswers[order[currentQuestion]] = optionIndex;
     setAnswers(newAnswers);
   }
 
@@ -527,7 +529,7 @@ function TakingTest({
     }
   }
 
-  const question = test.questions[currentQuestion];
+  const question = test.questions[order[currentQuestion]];
   const progress = ((currentQuestion + 1) / test.questions.length) * 100;
 
   return (
@@ -564,7 +566,7 @@ function TakingTest({
               key={index}
               onClick={() => handleAnswerSelect(index)}
               className={`w-full rounded-lg border p-4 text-left transition-all ${
-                answers[currentQuestion] === index
+                answers[order[currentQuestion]] === index
                   ? "border-primary bg-primary/10"
                   : "border-border hover:bg-secondary"
               }`}
@@ -592,7 +594,7 @@ function TakingTest({
         </Button>
         <Button
           onClick={handleNext}
-          disabled={answers[currentQuestion] === null}
+          disabled={answers[order[currentQuestion]] === null}
         >
           {currentQuestion === test.questions.length - 1 ? "Submit" : "Next"}
           <ChevronRight className="ml-2 h-4 w-4" />
