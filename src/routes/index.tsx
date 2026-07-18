@@ -173,7 +173,7 @@ function Landing() {
   const [copied, setCopied] = useState(false);
   const [codeChecking, setCodeChecking] = useState(false);
   const [studentCode, setStudentCode] = useState("");
-  const CODE_AUTO_CLOSE_SECONDS = 180;
+  const CODE_AUTO_CLOSE_SECONDS = 600; // 10 minutes to see and copy the class code
   const [codeSecondsLeft, setCodeSecondsLeft] = useState(CODE_AUTO_CLOSE_SECONDS);
 
   useEffect(() => {

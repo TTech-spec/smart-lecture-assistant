@@ -52,6 +52,9 @@ const empty: Form = {
   fullName: "", matricNumber: "", department: "", phone: "", level: "", gender: "",
 };
 
+// How long the assigned class code stays on screen so the student can copy it
+const CODE_VIEW_SECONDS = 600; // 10 minutes
+
 // ── Status banner ─────────────────────────────────────────────────────────────
 function Banner({
   tone,
@@ -100,6 +103,9 @@ function AttendTokenPage() {
   // The class code assigned to this student after successful submission
   const [assignedCode, setAssignedCode] = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
+  // Countdown while the class code is visible; the reveal hides when it hits 0
+  const [codeSecondsLeft, setCodeSecondsLeft] = useState(CODE_VIEW_SECONDS);
+  const [codeDismissed, setCodeDismissed] = useState(false);
   // Device-level block: set to true if this phone already submitted today
   const [deviceBlocked, setDeviceBlocked] = useState(false);
 
@@ -280,6 +286,25 @@ function AttendTokenPage() {
     }
   }
 
+  // Give students a 10-minute window to copy/write down their class code before
+  // the reveal hides itself — long enough to see the code and copy it down.
+  useEffect(() => {
+    if (!done || !assignedCode || codeDismissed) return;
+    setCodeSecondsLeft(CODE_VIEW_SECONDS);
+    const tick = setInterval(() => {
+      setCodeSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(tick);
+          setCodeDismissed(true);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done, assignedCode]);
+
   function copyCode() {
     if (!assignedCode) return;
     navigator.clipboard.writeText(assignedCode).then(() => {
@@ -342,7 +367,7 @@ function AttendTokenPage() {
           </div>
 
           {/* Class code reveal — only shown if the link had assignClassCode=true */}
-          {assignedCode && (
+          {assignedCode && !codeDismissed && (
             <div className="mt-8 rounded-2xl border-2 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 p-6 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/40">
                 <KeyRound className="h-6 w-6 text-amber-600 dark:text-amber-400" />
@@ -370,6 +395,17 @@ function AttendTokenPage() {
 
               <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
                 You'll need this code to access the test. Screenshot or copy it now.
+              </p>
+
+              <Button onClick={() => setCodeDismissed(true)} className="mt-4 w-full">
+                Continue
+              </Button>
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                This code disappears in{" "}
+                <span className="font-semibold tabular-nums">
+                  {Math.floor(codeSecondsLeft / 60)}:{String(codeSecondsLeft % 60).padStart(2, "0")}
+                </span>{" "}
+                — make sure you've copied it before continuing.
               </p>
             </div>
           )}
