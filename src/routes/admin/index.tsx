@@ -550,17 +550,8 @@ function SettingsCard() {
                 </button>
               </div>
 
-              <div>
-                <p className="mb-1.5 text-xs font-medium text-muted-foreground">Target level</p>
-                <select value={draft.classCodeLevel || ""} onChange={(e) => { const n = { ...draft, classCodeLevel: e.target.value }; setDraft(n); saveSettings(n); }}
-                  className="w-full rounded-lg border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-primary)]">
-                  <option value="">All levels</option>
-                  {["100","200","300","400","500","600"].map((l) => <option key={l} value={l}>{l} Level</option>)}
-                </select>
-              </div>
               <p className="text-xs text-muted-foreground">
-                Students get a <strong>unique code</strong> tied to their matric number.
-                {draft.classCodeLevel && ` Only ${draft.classCodeLevel} Level students can receive it.`}
+                Students of <strong>any level</strong> get a <strong>unique code</strong> tied to their matric number.
               </p>
             </>
           )}

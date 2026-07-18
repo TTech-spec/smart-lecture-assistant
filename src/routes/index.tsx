@@ -294,11 +294,6 @@ function Landing() {
         return;
       }
 
-      if (settings.classCodeLevel && codeLevel !== settings.classCodeLevel) {
-        toast.error(`This class code is for ${settings.classCodeLevel} Level students only.`);
-        return;
-      }
-
       // Generate a unique code for this student based on the global code prefix
       const uniqueCode = await generateStudentClassCode(codeMatric, settings.classCode, settings.classCodeFormat);
 
