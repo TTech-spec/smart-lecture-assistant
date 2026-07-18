@@ -671,25 +671,29 @@ export async function fetchLinksFromSupabase(): Promise<AttendanceLink[]> {
   return data.map(linkFromDb).map(ensureLinkType);
 }
 
+/** How many times a student/device may mark attendance per course per day */
+export const MAX_ATTENDANCE_PER_DAY = 2;
+
 /**
- * Check if a student has already marked attendance for a given course today
- * across ALL links (Option B — once per course per day).
+ * Check if a student has already used up their daily submissions for a given
+ * course today across ALL links (up to MAX_ATTENDANCE_PER_DAY per course per day).
  */
 export function hasMarkedAttendanceForCourseToday(
   matricNumber: string,
   courseCode: string,
   dayKey: string
 ): boolean {
-  return loadRecords().some(
+  const count = loadRecords().filter(
     (r) =>
       r.matricNumber.toLowerCase() === matricNumber.toLowerCase() &&
       r.courseCode.toUpperCase() === courseCode.toUpperCase() &&
       r.dayKey === dayKey
-  );
+  ).length;
+  return count >= MAX_ATTENDANCE_PER_DAY;
 }
 
 /**
- * Check if a device has already submitted attendance for a given course today.
+ * Check if a device has used up its daily submissions for a given course today.
  * This is the phone-level lock — even if someone clears cookies, the Supabase
  * check (below) is the authoritative source; this is the fast local check.
  */
@@ -698,18 +702,19 @@ export function hasDeviceMarkedAttendanceToday(
   courseCode: string,
   dayKey: string
 ): boolean {
-  return loadRecords().some(
+  const count = loadRecords().filter(
     (r) =>
       r.deviceId === deviceId &&
       r.courseCode.toUpperCase() === courseCode.toUpperCase() &&
       r.dayKey === dayKey
-  );
+  ).length;
+  return count >= MAX_ATTENDANCE_PER_DAY;
 }
 
 /**
- * Server-side (Supabase) check: has this device already submitted for this
- * course today? Returns false if Supabase is unavailable (fails open so
- * students aren't blocked offline).
+ * Server-side (Supabase) check: has this device used up its daily submissions
+ * for this course today? Returns false if Supabase is unavailable (fails open
+ * so students aren't blocked offline).
  */
 export async function hasDeviceMarkedAttendanceTodayRemote(
   deviceId: string,
@@ -718,15 +723,13 @@ export async function hasDeviceMarkedAttendanceTodayRemote(
 ): Promise<boolean> {
   if (!supabase) return false;
   try {
-    const { data } = await supabase
+    const { count } = await supabase
       .from("attendance_records")
-      .select("id")
+      .select("id", { count: "exact", head: true })
       .eq("device_id", deviceId)
       .eq("course_code", courseCode)
-      .eq("day_key", dayKey)
-      .limit(1)
-      .maybeSingle();
-    return !!data;
+      .eq("day_key", dayKey);
+    return (count ?? 0) >= MAX_ATTENDANCE_PER_DAY;
   } catch {
     return false; // fail open — don't block students if DB is unreachable
   }

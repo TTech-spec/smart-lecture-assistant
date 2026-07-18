@@ -177,19 +177,19 @@ function AttendTokenPage() {
     // ── Device block (re-check at submit time) ──────────────────────────────
     if (hasDeviceMarkedAttendanceToday(deviceId, link.courseCode, today)) {
       setDeviceBlocked(true);
-      return toast.error("This phone has already been used to mark attendance for this course today.");
+      return toast.error("This phone has already marked attendance twice for this course today.");
     }
     // Remote device check
     const blockedRemote = await hasDeviceMarkedAttendanceTodayRemote(deviceId, link.courseCode, today);
     if (blockedRemote) {
       setDeviceBlocked(true);
-      return toast.error("This phone has already been used to mark attendance for this course today.");
+      return toast.error("This phone has already marked attendance twice for this course today.");
     }
 
     // ── Matric duplicate check ──────────────────────────────────────────────
     if (hasMarkedAttendanceForCourseToday(form.matricNumber.trim(), link.courseCode, today)) {
       return toast.error(
-        `You've already marked attendance for ${link.courseCode} today. Only one submission per course per day is allowed.`
+        `You've already marked attendance for ${link.courseCode} twice today. Only two submissions per course per day are allowed.`
       );
     }
 
@@ -332,11 +332,11 @@ function AttendTokenPage() {
           </div>
           <h1 className="mt-6 text-2xl font-bold sm:text-3xl">Already submitted</h1>
           <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-            This phone has already been used to mark attendance for{" "}
+            This phone has already marked attendance twice for{" "}
             <span className="font-semibold text-foreground">
               {link ? (link as AttendanceLink).courseCode : "this course"}
             </span>{" "}
-            today. Only one submission per device per course per day is allowed.
+            today. Only two submissions per device per course per day are allowed.
           </p>
           <p className="mt-2 text-xs text-muted-foreground">
             If you believe this is a mistake, contact your lecturer.
@@ -490,8 +490,8 @@ function AttendTokenPage() {
         <div className="mt-4 rounded-2xl border bg-card p-3 shadow-soft">
           {invalidBanner ?? (
             alreadyMarked && form.matricNumber.trim() ? (
-              <Banner tone="warn" title="Already submitted">
-                You've already marked attendance for {(link as AttendanceLink).courseCode} today.
+              <Banner tone="warn" title="Daily limit reached">
+                You've already marked attendance for {(link as AttendanceLink).courseCode} twice today.
               </Banner>
             ) : (
               <Banner tone="ok" title="Link is active">
