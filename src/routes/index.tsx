@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, fetchActiveTestFromSupabase, pollActiveTest, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
+import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, fetchActiveTestFromSupabase, fetchSettingsFromSupabase, pollActiveTest, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
@@ -186,9 +186,23 @@ function Landing() {
     // Fetch from Supabase immediately so students on any device see the live test state
     fetchActiveTestFromSupabase().then((t) => { if (t !== undefined) setActiveTest(t); });
 
-    // Poll every 15 s so the button appears/disappears as the lecturer activates/deactivates
+    // Poll settings so the "Get class code" button appears/disappears as the
+    // lecturer activates/deactivates the class code on their own device.
+    const pollSettings = async () => {
+      const remote = await fetchSettingsFromSupabase();
+      if (remote) {
+        setSettings((current) => {
+          const remoteStr = JSON.stringify(remote);
+          return JSON.stringify(current) === remoteStr ? current : remote;
+        });
+      }
+    };
+    pollSettings();
+
+    // Poll every 15 s so the buttons appear/disappear as the lecturer activates/deactivates
     const pollInterval = setInterval(() => {
       pollActiveTest().then((t) => setActiveTest(t));
+      pollSettings();
     }, 15_000);
 
     return () => {
