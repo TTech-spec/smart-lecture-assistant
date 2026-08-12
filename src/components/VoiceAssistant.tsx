@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
-import { Mic, Send, Volume2, VolumeX, Sparkles, Repeat } from "lucide-react";
+import { Mic, Send, Volume2, VolumeX, Sparkles, Repeat, Download } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { askAttendanceAi } from "@/lib/attendance-ai.functions";
+import { askAttendanceAiLocal } from "@/lib/attendance-ai.local";
+import { isWebGPUSupported, type LoadProgress } from "@/lib/local-llm";
 import {
   loadRecords,
   loadTestSubmissions,
@@ -200,18 +200,20 @@ function VoiceOrb({ state, onToggle, supportsSTT, busy, conversationMode }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
-  const ask = useServerFn(askAttendanceAi);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [speakReplies, setSpeakReplies] = useState(true);
   const [conversationMode, setConversationMode] = useState(false);
+  const [modelProgress, setModelProgress] = useState<LoadProgress | null>(null);
   const conversationModeRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const supportsSTT = typeof window !== "undefined" && !!getSpeechRecognitionCtor();
   const supportsTTS = typeof window !== "undefined" && "speechSynthesis" in window;
+  const supportsLocalAi = typeof window !== "undefined" && isWebGPUSupported();
   const busy = voiceState === "thinking";
+  const modelLoading = modelProgress !== null && modelProgress.stage === "loading";
 
   useEffect(() => {
     conversationModeRef.current = conversationMode;
@@ -295,6 +297,10 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
   async function submit(question: string) {
     const q = question.trim();
     if (!q || busy) return;
+    if (!supportsLocalAi) {
+      toast.error("This browser can't run the local AI (needs WebGPU — try Chrome or Edge on desktop).");
+      return;
+    }
     setInput("");
     const history = messages.slice(-10);
     setMessages((m) => [...m, { role: "user", content: q }]);
@@ -340,7 +346,8 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
           cheatedOnTest: c1?.cheated || c2?.cheated || c3?.cheated,
         };
       });
-      const res = await ask({ data: { question: q, records: payloadRecords, history } });
+      const res = await askAttendanceAiLocal(q, payloadRecords, history, setModelProgress);
+      setModelProgress((p) => (p ? { ...p, stage: "ready" } : p));
       setMessages((m) => [...m, { role: "assistant", content: res.text, table: res.table ?? undefined }]);
       if (speakReplies && supportsTTS) {
         speak(res.text);
@@ -350,12 +357,10 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
-      if (msg.toLowerCase().includes("failed to fetch")) {
-        toast.error("Could not connect to the server. Make sure the dev server is running (npm run dev) and reload the page.");
-      } else if (msg.includes("402")) {
-        toast.error("AI credits exhausted.");
+      if (msg === "WEBGPU_UNSUPPORTED") {
+        toast.error("This browser can't run the local AI (needs WebGPU — try Chrome or Edge on desktop).");
       } else {
-        toast.error(`AI error: ${msg}`);
+        toast.error(`Local AI error: ${msg}`);
       }
       setMessages((m) => [...m, { role: "assistant", content: "Sorry, I couldn't process that. Please try again." }]);
       setVoiceState("idle");
@@ -403,6 +408,9 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
         <h2 className="flex items-center gap-2 text-base font-semibold">
           <Sparkles className="h-4 w-4 text-[color:var(--color-primary)]" />
           AI attendance assistant
+          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+            Runs on-device · no API key
+          </span>
           {conversationMode && (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
               Conversation mode
@@ -431,13 +439,36 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
         </div>
       </div>
 
+      {!supportsLocalAi && (
+        <div className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-300">
+          This browser can't run the local AI model (needs WebGPU). Try Chrome or Edge on a desktop.
+        </div>
+      )}
+
+      {modelLoading && (
+        <div className="mx-4 mt-4 rounded-xl border bg-secondary/50 px-3 py-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Download className="h-3.5 w-3.5 animate-pulse" />
+            {modelProgress?.text || "Downloading local AI model (one-time, ~2GB)…"}
+          </div>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <motion.div
+              className="h-full rounded-full bg-primary"
+              animate={{ width: `${Math.round((modelProgress?.progress ?? 0) * 100)}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+        </div>
+      )}
+
       <div
         className="flex flex-col items-center py-8 px-5"
         style={{ background: "radial-gradient(ellipse at 50% 0%, hsl(var(--primary)/0.07) 0%, transparent 70%)" }}
       >
-        <VoiceOrb state={voiceState} onToggle={toggleListening} supportsSTT={supportsSTT} busy={busy} conversationMode={conversationMode} />
+        <VoiceOrb state={voiceState} onToggle={toggleListening} supportsSTT={supportsSTT && supportsLocalAi} busy={busy} conversationMode={conversationMode} />
         <p className="mt-10 text-center text-xs text-muted-foreground max-w-xs">
           Ask things like <em>"Who from Computer Science signed in?"</em> or <em>"How many female students?"</em>
+          {" "}The first question downloads the model once, then it's instant.
         </p>
       </div>
 
@@ -492,7 +523,7 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
           disabled={busy}
           className="flex-1 rounded-xl bg-secondary border-0 focus-visible:ring-1"
         />
-        <Button type="submit" size="icon" disabled={busy || !input.trim()} className="shrink-0 rounded-xl">
+        <Button type="submit" size="icon" disabled={busy || !input.trim() || !supportsLocalAi} className="shrink-0 rounded-xl">
           <Send className="h-4 w-4" />
         </Button>
       </form>
