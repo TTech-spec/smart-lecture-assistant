@@ -455,7 +455,7 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
         <div className="mx-4 mt-4 rounded-xl border bg-secondary/50 px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <Download className="h-3.5 w-3.5 animate-pulse" />
-            {modelProgress?.text || "Downloading local AI model (one-time, ~2GB)…"}
+            {modelProgress?.text || "Downloading local AI model (one-time, ~1GB)…"}
           </div>
           <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <motion.div

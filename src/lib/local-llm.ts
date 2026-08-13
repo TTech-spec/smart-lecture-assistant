@@ -9,8 +9,16 @@
 // big JSON dump. To keep answers trustworthy we compute counts/aggregates in
 // plain JS (see computeAggregates in attendance-ai.local.ts) and only ask the
 // model to translate/summarize in natural language.
+//
+// A smaller model (~1GB) is used deliberately, rather than a bigger/better
+// one — on flaky connections a multi-minute, multi-gigabyte download is much
+// more likely to get cut off partway through, and every byte spent on model
+// size is a byte that has to survive the transfer.
 
-export const LOCAL_MODEL_ID = "Llama-3.2-3B-Instruct-q4f16_1-MLC";
+export const LOCAL_MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
+
+const MAX_LOAD_ATTEMPTS = 4;
+const RETRY_DELAYS_MS = [1500, 3000, 6000];
 
 export type LoadStage = "idle" | "loading" | "ready" | "error";
 export type LoadProgress = { stage: LoadStage; text: string; progress: number };
@@ -25,9 +33,20 @@ export function isWebGPUSupported(): boolean {
   return "gpu" in navigator;
 }
 
+function isRetryableLoadError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return msg.includes("cache.add") || msg.includes("network error") || msg.includes("failed to fetch") || msg.includes("networkerror");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Lazily creates (or returns the existing) WebLLM engine, downloading and
  * compiling the model on first call. Safe to call repeatedly — subsequent
- * calls reuse the same in-flight/finished engine. */
+ * calls reuse the same in-flight/finished engine. Automatically retries a
+ * few times on network/cache errors (already-cached shards from a previous
+ * attempt are skipped, so a retry resumes rather than starting over). */
 export async function getLocalEngine(onProgress?: (p: LoadProgress) => void): Promise<Engine> {
   if (!isWebGPUSupported()) {
     throw new Error("WEBGPU_UNSUPPORTED");
@@ -35,14 +54,28 @@ export async function getLocalEngine(onProgress?: (p: LoadProgress) => void): Pr
   if (!enginePromise) {
     enginePromise = (async () => {
       const webllm = await import("@mlc-ai/web-llm");
-      onProgress?.({ stage: "loading", text: "Starting local AI model…", progress: 0 });
-      const engine = await webllm.CreateMLCEngine(LOCAL_MODEL_ID, {
-        initProgressCallback: (p: { text: string; progress: number }) => {
-          onProgress?.({ stage: "loading", text: p.text, progress: p.progress });
-        },
-      });
-      onProgress?.({ stage: "ready", text: "Local AI model ready.", progress: 1 });
-      return engine;
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= MAX_LOAD_ATTEMPTS; attempt++) {
+        try {
+          onProgress?.({
+            stage: "loading",
+            text: attempt === 1 ? "Starting local AI model…" : `Network hiccup — resuming download (attempt ${attempt} of ${MAX_LOAD_ATTEMPTS})…`,
+            progress: 0,
+          });
+          const engine = await webllm.CreateMLCEngine(LOCAL_MODEL_ID, {
+            initProgressCallback: (p: { text: string; progress: number }) => {
+              onProgress?.({ stage: "loading", text: p.text, progress: p.progress });
+            },
+          });
+          onProgress?.({ stage: "ready", text: "Local AI model ready.", progress: 1 });
+          return engine;
+        } catch (err) {
+          lastErr = err;
+          if (!isRetryableLoadError(err) || attempt === MAX_LOAD_ATTEMPTS) throw err;
+          await sleep(RETRY_DELAYS_MS[attempt - 1] ?? 6000);
+        }
+      }
+      throw lastErr;
     })().catch((err) => {
       // Let the next call retry instead of caching a broken promise forever.
       enginePromise = null;
