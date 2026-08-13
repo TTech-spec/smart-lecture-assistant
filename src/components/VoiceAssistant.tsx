@@ -357,12 +357,18 @@ export function VoiceAssistant({ records }: { records: AttendanceRecord[] }) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
+      const lower = msg.toLowerCase();
       if (msg === "WEBGPU_UNSUPPORTED") {
         toast.error("This browser can't run the local AI (needs WebGPU — try Chrome or Edge on desktop).");
+      } else if (lower.includes("cache.add") || lower.includes("network error") || lower.includes("failed to fetch") || lower.includes("networkerror")) {
+        toast.error("The AI model download was interrupted by a network hiccup. Check your connection and try again — it'll resume rather than start over.");
+      } else if (lower.includes("quota") || lower.includes("storage")) {
+        toast.error("Not enough free disk space to store the local AI model. Free up some space and try again.");
       } else {
         toast.error(`Local AI error: ${msg}`);
       }
       setMessages((m) => [...m, { role: "assistant", content: "Sorry, I couldn't process that. Please try again." }]);
+      setModelProgress(null);
       setVoiceState("idle");
       if (conversationModeRef.current) startListening();
     }
