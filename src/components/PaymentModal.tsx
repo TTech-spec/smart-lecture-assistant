@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Loader2, CreditCard, AlertCircle, CheckCircle2, Info, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,9 +51,14 @@ export function PaymentModal({
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [txRef, setTxRef] = useState<string>("");
   const [alreadyPaid, setAlreadyPaid] = useState(false);
+  const [manualVerifying, setManualVerifying] = useState(false);
 
   // ── Fee breakdown ───────────────────────────────────────────────────────────
   const fees = useMemo(() => calcFees(amount), [amount]);
+
+  // Stable ref for onSuccess to avoid re-triggering the effect
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
 
   // ── Check if user has already paid for this material ───────────────────────
   useEffect(() => {
@@ -63,10 +68,10 @@ export function PaymentModal({
         setAlreadyPaid(true);
         setStep("success");
         toast.success("You have already purchased this material!");
-        onSuccess();
+        onSuccessRef.current();
       }
     }
-  }, [open, materialId, matricConfirm, onSuccess]);
+  }, [open, materialId, matricConfirm]);
 
   // ── Poll for payment verification once checkout opens ──────────────────────
   useEffect(() => {
@@ -359,8 +364,36 @@ export function PaymentModal({
                 <ExternalLink className="mr-2 h-4 w-4" /> Reopen checkout window to continue
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={() => setStep("failed")} className="text-xs text-muted-foreground">
-              Payment completed? Click here to verify
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              disabled={manualVerifying}
+              onClick={async () => {
+                if (!txRef) return;
+                setManualVerifying(true);
+                try {
+                  const res = await verifySquadTransaction({ data: { transactionRef: txRef } });
+                  const status = ((res.data?.transaction_status as string) || "").toLowerCase();
+                  if (status === "success") {
+                    await handlePaymentSuccess(txRef);
+                  } else if (status === "failed" || status === "cancelled") {
+                    setStep("failed");
+                    toast.error("Payment was not completed.");
+                  } else {
+                    toast.info("Payment is still processing. Please wait a moment and try again.");
+                  }
+                } catch {
+                  toast.error("Could not verify payment. Please wait and try again.");
+                } finally {
+                  setManualVerifying(false);
+                }
+              }}
+            >
+              {manualVerifying
+                ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Verifying…</>
+                : "Payment completed? Click here to verify"
+              }
             </Button>
           </div>
         )}
