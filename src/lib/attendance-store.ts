@@ -1097,6 +1097,80 @@ export function getTestLinkByToken(token: string): TestLink | null {
   return loadTestLinks().find((l) => l.token === token) || null;
 }
 
+// ── Update existing record ───────────────────────────────────────────────────
+export async function updateRecord(r: AttendanceRecord): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.from("attendance_records").upsert(recordToDb(r));
+    if (error) throw new Error(error.message);
+  }
+  const all = loadRecords();
+  const idx = all.findIndex((x) => x.id === r.id);
+  if (idx >= 0) all[idx] = r; else all.push(r);
+  saveRecords(all);
+}
+
+/**
+ * Find the attendance record this device submitted for a given course today.
+ * Checks locally first, then falls back to Supabase.
+ */
+export async function fetchDeviceSubmission(
+  deviceId: string,
+  courseCode: string,
+  dayKey: string
+): Promise<AttendanceRecord | null> {
+  // Local first
+  const local = loadRecords().find(
+    (r) =>
+      r.deviceId === deviceId &&
+      r.courseCode.toUpperCase() === courseCode.toUpperCase() &&
+      r.dayKey === dayKey
+  );
+  if (local) return local;
+
+  // Remote fallback
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase
+      .from("attendance_records")
+      .select("*")
+      .eq("device_id", deviceId)
+      .eq("course_code", courseCode)
+      .eq("day_key", dayKey)
+      .limit(1)
+      .maybeSingle();
+    return data ? recordFromDb(data) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find attendance record by device + session (for direct attendance page).
+ */
+export async function fetchDeviceSubmissionBySession(
+  deviceId: string,
+  sessionId: string
+): Promise<AttendanceRecord | null> {
+  const local = loadRecords().find(
+    (r) => r.deviceId === deviceId && r.sessionId === sessionId
+  );
+  if (local) return local;
+
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase
+      .from("attendance_records")
+      .select("*")
+      .eq("device_id", deviceId)
+      .eq("session_id", sessionId)
+      .limit(1)
+      .maybeSingle();
+    return data ? recordFromDb(data) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Window helpers ────────────────────────────────────────────────────────────
 export function isWindowOpen(s: AdminSettings, now = new Date()): boolean {
   if (!s.windowOpenedAt) return false;

@@ -12,7 +12,9 @@ import {
 } from "@/components/ui/select";
 import {
   addRecord,
+  updateRecord,
   fetchLinkByToken,
+  fetchDeviceSubmission,
   getDeviceId,
   hasMarkedAttendanceForCourseToday,
   hasDeviceMarkedAttendanceToday,
@@ -24,6 +26,7 @@ import {
   markClassCodeUsed,
   updateStudentClassCode,
   type AttendanceLink,
+  type AttendanceRecord,
   type Gender,
 } from "@/lib/attendance-store";
 import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition } from "@/lib/geo";
@@ -97,11 +100,14 @@ function AttendTokenPage() {
   const [deptManual, setDeptManual] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone]             = useState(false);
-  // The class code assigned to this student after successful submission
   const [assignedCode, setAssignedCode] = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
-  // Device-level block: set to true if this phone already submitted today
   const [deviceBlocked, setDeviceBlocked] = useState(false);
+  // Previous submission for review/resubmit
+  const [previousSubmission, setPreviousSubmission] = useState<AttendanceRecord | null>(null);
+  const [reviewing, setReviewing]   = useState(false);
+  // Tracks whether user is editing to resubmit
+  const [editing, setEditing]       = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -127,17 +133,21 @@ function AttendTokenPage() {
   // ── Device-level duplicate check (runs once link is known) ─────────────────
   useEffect(() => {
     if (!link || link === "loading") return;
+    const currentLink = link;
     const today = todayKey();
 
-    // 1. Fast local check
-    if (hasDeviceMarkedAttendanceToday(deviceId, link.courseCode, today)) {
-      setDeviceBlocked(true);
-      return;
+    async function check() {
+      const localBlocked = hasDeviceMarkedAttendanceToday(deviceId, currentLink.courseCode, today);
+      const remoteBlocked = await hasDeviceMarkedAttendanceTodayRemote(deviceId, currentLink.courseCode, today);
+
+      if (localBlocked || remoteBlocked) {
+        setDeviceBlocked(true);
+        const prev = await fetchDeviceSubmission(deviceId, currentLink.courseCode, today);
+        if (prev) setPreviousSubmission(prev);
+      }
     }
-    // 2. Authoritative remote check (in case localStorage was cleared)
-    hasDeviceMarkedAttendanceTodayRemote(deviceId, link.courseCode, today).then((blocked) => {
-      if (blocked) setDeviceBlocked(true);
-    });
+
+    check();
   }, [link, deviceId]);
 
   // Matric-level duplicate check (live as user types)
@@ -168,23 +178,22 @@ function AttendTokenPage() {
 
     const today = todayKey();
 
-    // ── Device block (re-check at submit time) ──────────────────────────────
-    if (hasDeviceMarkedAttendanceToday(deviceId, link.courseCode, today)) {
-      setDeviceBlocked(true);
-      return toast.error("This phone has already been used to mark attendance for this course today.");
-    }
-    // Remote device check
-    const blockedRemote = await hasDeviceMarkedAttendanceTodayRemote(deviceId, link.courseCode, today);
-    if (blockedRemote) {
-      setDeviceBlocked(true);
-      return toast.error("This phone has already been used to mark attendance for this course today.");
-    }
-
-    // ── Matric duplicate check ──────────────────────────────────────────────
-    if (hasMarkedAttendanceForCourseToday(form.matricNumber.trim(), link.courseCode, today)) {
-      return toast.error(
-        `You've already marked attendance for ${link.courseCode} today. Only one submission per course per day is allowed.`
-      );
+    // Skip duplicate checks when editing a previous submission
+    if (!editing) {
+      if (hasDeviceMarkedAttendanceToday(deviceId, link.courseCode, today)) {
+        setDeviceBlocked(true);
+        return toast.error("This phone has already been used to mark attendance for this course today.");
+      }
+      const blockedRemote = await hasDeviceMarkedAttendanceTodayRemote(deviceId, link.courseCode, today);
+      if (blockedRemote) {
+        setDeviceBlocked(true);
+        return toast.error("This phone has already been used to mark attendance for this course today.");
+      }
+      if (hasMarkedAttendanceForCourseToday(form.matricNumber.trim(), link.courseCode, today)) {
+        return toast.error(
+          `You've already marked attendance for ${link.courseCode} today. Only one submission per course per day is allowed.`
+        );
+      }
     }
 
     // ── GPS check ───────────────────────────────────────────────────────────
@@ -242,8 +251,8 @@ function AttendTokenPage() {
         markClassCodeUsed(form.matricNumber.trim());
       }
 
-      await addRecord({
-        id: crypto.randomUUID(),
+      const record: AttendanceRecord = {
+        id: (editing && previousSubmission) ? previousSubmission.id : crypto.randomUUID(),
         fullName: form.fullName.trim(),
         matricNumber: form.matricNumber.trim().toUpperCase(),
         department: form.department.trim(),
@@ -262,16 +271,23 @@ function AttendTokenPage() {
         customFields: {},
         linkId: link.id,
         assignedClassCode: classCode,
-      });
+      };
 
-      // Persist the code on the attendance record in Supabase too
+      if (editing && previousSubmission) {
+        await updateRecord(record);
+      } else {
+        await addRecord(record);
+      }
+
       if (classCode) {
         updateStudentClassCode(form.matricNumber.trim().toUpperCase(), classCode);
         setAssignedCode(classCode);
       }
 
+      setPreviousSubmission(record);
+      setEditing(false);
       setDone(true);
-      toast.success("Attendance marked successfully!");
+      toast.success(editing ? "Attendance updated successfully!" : "Attendance marked successfully!");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not save attendance.";
       toast.error(`Error: ${msg}`);
@@ -297,35 +313,88 @@ function AttendTokenPage() {
     );
   }
 
-  // ── Device-blocked screen ──────────────────────────────────────────────────
-  if (deviceBlocked) {
+  // ── Device-blocked screen with review option ────────────────────────────────
+  if (deviceBlocked && !editing) {
     return (
       <div className="min-h-screen bg-gradient-hero">
-        <div className="mx-auto max-w-md px-4 py-16 text-center sm:px-6 sm:py-24">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-            <XCircle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+        <div className="mx-auto max-w-md px-4 py-16 sm:px-6 sm:py-24">
+          <div className="text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+              <XCircle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+            </div>
+            <h1 className="mt-6 text-2xl font-bold sm:text-3xl">Already submitted</h1>
+            <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+              This device has already been used to mark attendance for{" "}
+              <span className="font-semibold text-foreground">
+                {link ? (link as AttendanceLink).courseCode : "this course"}
+              </span>{" "}
+              today.
+            </p>
           </div>
-          <h1 className="mt-6 text-2xl font-bold sm:text-3xl">Already submitted</h1>
-          <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-            This phone has already been used to mark attendance for{" "}
-            <span className="font-semibold text-foreground">
-              {link ? (link as AttendanceLink).courseCode : "this course"}
-            </span>{" "}
-            today. Only one submission per device per course per day is allowed.
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            If you believe this is a mistake, contact your lecturer.
-          </p>
-          <Button asChild className="mt-8 w-full sm:w-auto" variant="outline">
-            <Link to="/">Back to home</Link>
-          </Button>
+
+          {previousSubmission && !reviewing && (
+            <div className="mt-6 text-center">
+              <p className="text-sm text-muted-foreground">Would you like to review your submission?</p>
+              <Button className="mt-3" variant="outline" onClick={() => setReviewing(true)}>
+                Review my data
+              </Button>
+            </div>
+          )}
+
+          {previousSubmission && reviewing && (
+            <div className="mt-6 rounded-2xl border bg-card p-4 shadow-soft sm:p-6">
+              <h2 className="text-lg font-semibold mb-4">Your submission</h2>
+              <dl className="grid gap-3 text-sm">
+                <ReviewRow label="Full name" value={previousSubmission.fullName} />
+                <ReviewRow label="Matric number" value={previousSubmission.matricNumber} />
+                <ReviewRow label="Department" value={previousSubmission.department} />
+                <ReviewRow label="Phone" value={previousSubmission.phone} />
+                <ReviewRow label="Level" value={previousSubmission.level ? `${previousSubmission.level} Level` : ""} />
+                <ReviewRow label="Gender" value={previousSubmission.gender} />
+                <ReviewRow label="Submitted at" value={new Date(previousSubmission.submittedAt).toLocaleString()} />
+              </dl>
+              <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    setForm({
+                      fullName: previousSubmission.fullName,
+                      matricNumber: previousSubmission.matricNumber,
+                      department: previousSubmission.department,
+                      phone: previousSubmission.phone,
+                      level: previousSubmission.level,
+                      gender: previousSubmission.gender as Gender | "",
+                    });
+                    setEditing(true);
+                    setDeviceBlocked(false);
+                  }}
+                >
+                  Edit &amp; resubmit
+                </Button>
+                <Button variant="outline" className="flex-1" asChild>
+                  <Link to="/">Looks correct</Link>
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!previousSubmission && (
+            <div className="mt-4 text-center">
+              <p className="text-xs text-muted-foreground">
+                If you believe this is a mistake, contact your lecturer.
+              </p>
+              <Button asChild className="mt-4 w-full sm:w-auto" variant="outline">
+                <Link to="/">Back to home</Link>
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // ── Success / done screen ──────────────────────────────────────────────────
-  if (done) {
+  // ── Success / done screen with review ───────────────────────────────────────
+  if (done && previousSubmission) {
     return (
       <div className="min-h-screen bg-gradient-hero">
         <div className="mx-auto max-w-md px-4 py-16 sm:px-6 sm:py-24">
@@ -341,7 +410,6 @@ function AttendTokenPage() {
             </p>
           </div>
 
-          {/* Class code reveal — only shown if the link had assignClassCode=true */}
           {assignedCode && (
             <div className="mt-8 rounded-2xl border-2 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 p-6 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/40">
@@ -353,13 +421,11 @@ function AttendTokenPage() {
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                 Attached to your name — do not share with anyone else
               </p>
-
               <div className="mt-4 rounded-xl border border-amber-300 bg-white dark:bg-background px-6 py-4 dark:border-amber-700">
                 <p className="font-mono text-3xl font-bold tracking-widest text-amber-700 dark:text-amber-300 select-all">
                   {assignedCode}
                 </p>
               </div>
-
               <button
                 onClick={copyCode}
                 className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white dark:bg-background dark:border-amber-700 px-4 py-2 text-sm font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
@@ -367,17 +433,50 @@ function AttendTokenPage() {
                 <Copy className="h-3.5 w-3.5" />
                 {copied ? "Copied!" : "Copy code"}
               </button>
-
               <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
                 You'll need this code to access the test. Screenshot or copy it now.
               </p>
             </div>
           )}
 
-          <div className="mt-6 text-center">
-            <Button asChild variant="outline">
-              <Link to="/">Back to home</Link>
-            </Button>
+          {/* Review submitted data */}
+          <div className="mt-6 rounded-2xl border bg-card p-4 shadow-soft sm:p-6">
+            <h2 className="text-sm font-semibold text-muted-foreground mb-3">Review your submission</h2>
+            <dl className="grid gap-3 text-sm">
+              <ReviewRow label="Full name" value={previousSubmission.fullName} />
+              <ReviewRow label="Matric number" value={previousSubmission.matricNumber} />
+              <ReviewRow label="Department" value={previousSubmission.department} />
+              <ReviewRow label="Phone" value={previousSubmission.phone} />
+              <ReviewRow label="Level" value={previousSubmission.level ? `${previousSubmission.level} Level` : ""} />
+              <ReviewRow label="Gender" value={previousSubmission.gender} />
+            </dl>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Made a mistake? You can edit and resubmit your attendance.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setForm({
+                    fullName: previousSubmission.fullName,
+                    matricNumber: previousSubmission.matricNumber,
+                    department: previousSubmission.department,
+                    phone: previousSubmission.phone,
+                    level: previousSubmission.level,
+                    gender: previousSubmission.gender as Gender | "",
+                  });
+                  setEditing(true);
+                  setDone(false);
+                  setDeviceBlocked(false);
+                }}
+              >
+                Edit &amp; resubmit
+              </Button>
+              <Button asChild variant="outline" className="flex-1">
+                <Link to="/">Looks good</Link>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -569,11 +668,13 @@ function AttendTokenPage() {
               <Button
                 type="submit"
                 className="w-full h-11 text-base"
-                disabled={submitting || (alreadyMarked && !!form.matricNumber.trim())}
+                disabled={submitting || (!editing && alreadyMarked && !!form.matricNumber.trim())}
               >
                 {submitting
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
-                  : <><CheckCircle2 className="mr-2 h-4 w-4" /> Mark my attendance</>
+                  : editing
+                    ? <><CheckCircle2 className="mr-2 h-4 w-4" /> Update my attendance</>
+                    : <><CheckCircle2 className="mr-2 h-4 w-4" /> Mark my attendance</>
                 }
               </Button>
               {settings.classLat == null && (
@@ -593,6 +694,15 @@ function AttendTokenPage() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4 border-b border-border/50 pb-2 last:border-0 last:pb-0">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-medium text-right">{value || "—"}</dd>
     </div>
   );
 }

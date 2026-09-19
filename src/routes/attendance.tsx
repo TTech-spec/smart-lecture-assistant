@@ -9,9 +9,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  addRecord, fetchSettingsFromSupabase, getDeviceId, isWindowOpen,
+  addRecord, updateRecord, fetchSettingsFromSupabase, fetchDeviceSubmissionBySession,
+  getDeviceId, isWindowOpen,
   loadRecords, loadSettings, minutesRemaining, todayKey,
-  type AdminSettings, type Gender,
+  type AdminSettings, type AttendanceRecord, type Gender,
 } from "@/lib/attendance-store";
 import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition } from "@/lib/geo";
 
@@ -89,6 +90,9 @@ function AttendancePage() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [previousSubmission, setPreviousSubmission] = useState<AttendanceRecord | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<"idle" | "checking" | "ok" | "far" | "error">("idle");
   const [gpsDistance, setGpsDistance] = useState<number | null>(null);
   const [levelManual, setLevelManual] = useState(false);
@@ -128,6 +132,14 @@ function AttendancePage() {
         (!settings.courseCode || r.courseCode.toLowerCase() === settings.courseCode.toLowerCase());
     });
   }, [deviceId, settings.courseCode, settings.activeSessionId, done]);
+
+  // Load previous submission when device is already submitted
+  useEffect(() => {
+    if (!alreadySubmitted || !settings.activeSessionId) return;
+    fetchDeviceSubmissionBySession(deviceId, settings.activeSessionId).then((prev) => {
+      if (prev) setPreviousSubmission(prev);
+    });
+  }, [alreadySubmitted, deviceId, settings.activeSessionId]);
 
   const locationSet = settings.classLat != null && settings.classLng != null;
   const windowOpen = isWindowOpen(settings, now);
@@ -172,7 +184,7 @@ function AttendancePage() {
     e.preventDefault();
     if (!locationSet) return toast.error("Lecturer hasn't set the class location yet.");
     if (!windowOpen) return toast.error("Attendance form is locked. Ask the lecturer to reopen.");
-    if (alreadySubmitted) return toast.error("You've already signed attendance for this session.");
+    if (!editing && alreadySubmitted) return toast.error("You've already signed attendance for this session.");
 
     if (!form.fullName.trim())      return toast.error("Please fill full name.");
     if (!form.matricNumber.trim())  return toast.error("Please fill matric number.");
@@ -215,8 +227,8 @@ function AttendancePage() {
       }
 
       try {
-        await addRecord({
-          id: crypto.randomUUID(),
+        const record: AttendanceRecord = {
+          id: (editing && previousSubmission) ? previousSubmission.id : crypto.randomUUID(),
           fullName: form.fullName.trim(),
           matricNumber: form.matricNumber.trim().toUpperCase(),
           department: form.department.trim(),
@@ -233,7 +245,15 @@ function AttendancePage() {
           lng: pos.lng,
           sessionId: settings.activeSessionId || "",
           customFields: customFieldValues,
-        });
+        };
+
+        if (editing && previousSubmission) {
+          await updateRecord(record);
+        } else {
+          await addRecord(record);
+        }
+        setPreviousSubmission(record);
+        setEditing(false);
       } catch (dbErr) {
         const msg = dbErr instanceof Error ? dbErr.message : "Database error";
         toast.error(`Could not save to database: ${msg}`);
@@ -244,7 +264,7 @@ function AttendancePage() {
       setGpsStatus("ok");
       setGpsDistance(Math.round(dist));
       setDone(true);
-      toast.success("Attendance recorded and saved.");
+      toast.success(editing ? "Attendance updated and saved." : "Attendance recorded and saved.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not read GPS.";
       setGpsStatus("error");
@@ -261,17 +281,68 @@ function AttendancePage() {
   if (done) {
     return (
       <div className="min-h-screen bg-gradient-hero">
-        <div className="mx-auto max-w-md px-4 py-12 text-center sm:px-6 sm:py-20">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary text-primary-foreground shadow-glow">
-            <CheckCircle2 className="h-8 w-8" />
+        <div className="mx-auto max-w-md px-4 py-12 sm:px-6 sm:py-20">
+          <div className="text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-primary text-primary-foreground shadow-glow">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
+            <h1 className="mt-6 text-2xl font-bold sm:text-3xl">You're checked in</h1>
+            <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+              Your attendance was verified by GPS and logged for today.
+            </p>
           </div>
-          <h1 className="mt-6 text-2xl font-bold sm:text-3xl">You're checked in</h1>
-          <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-            Your attendance was verified by GPS and logged for today.
-          </p>
-          <Button asChild className="mt-8 w-full sm:w-auto" variant="outline">
-            <Link to="/">Back to home</Link>
-          </Button>
+
+          {previousSubmission && (
+            <div className="mt-6 rounded-2xl border bg-card p-4 shadow-soft sm:p-6">
+              <h2 className="text-sm font-semibold text-muted-foreground mb-3">Review your submission</h2>
+              <dl className="grid gap-3 text-sm">
+                <ReviewRow label="Full name" value={previousSubmission.fullName} />
+                <ReviewRow label="Matric number" value={previousSubmission.matricNumber} />
+                <ReviewRow label="Department" value={previousSubmission.department} />
+                <ReviewRow label="Phone" value={previousSubmission.phone} />
+                <ReviewRow label="Course code" value={previousSubmission.courseCode} />
+                <ReviewRow label="Topic" value={previousSubmission.topic} />
+                <ReviewRow label="Level" value={previousSubmission.level ? `${previousSubmission.level} Level` : ""} />
+                <ReviewRow label="Gender" value={previousSubmission.gender} />
+              </dl>
+              <p className="mt-4 text-xs text-muted-foreground">
+                Made a mistake? You can edit and resubmit your attendance.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setForm({
+                      fullName: previousSubmission.fullName,
+                      matricNumber: previousSubmission.matricNumber,
+                      department: previousSubmission.department,
+                      phone: previousSubmission.phone,
+                      courseCode: previousSubmission.courseCode,
+                      topic: previousSubmission.topic,
+                      level: previousSubmission.level,
+                      gender: previousSubmission.gender as Gender | "",
+                    });
+                    setEditing(true);
+                    setDone(false);
+                  }}
+                >
+                  Edit &amp; resubmit
+                </Button>
+                <Button asChild variant="outline" className="flex-1">
+                  <Link to="/">Looks good</Link>
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!previousSubmission && (
+            <div className="mt-8 text-center">
+              <Button asChild className="w-full sm:w-auto" variant="outline">
+                <Link to="/">Back to home</Link>
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -305,10 +376,55 @@ function AttendancePage() {
             <Banner tone="warn" title="Form locked">
               The attendance window is closed. Wait for the lecturer to reopen it.
             </Banner>
-          ) : alreadySubmitted ? (
-            <Banner tone="warn" title="Already submitted">
-              You've already signed attendance for this session on this device.
-            </Banner>
+          ) : (alreadySubmitted && !editing) ? (
+            <div>
+              <Banner tone="warn" title="Already submitted">
+                You've already signed attendance for this session on this device.
+              </Banner>
+              {previousSubmission && (
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setReviewing((r) => !r)}
+                  >
+                    {reviewing ? "Hide" : "Review my data"}
+                  </Button>
+                  {reviewing && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setForm({
+                          fullName: previousSubmission.fullName,
+                          matricNumber: previousSubmission.matricNumber,
+                          department: previousSubmission.department,
+                          phone: previousSubmission.phone,
+                          courseCode: previousSubmission.courseCode,
+                          topic: previousSubmission.topic,
+                          level: previousSubmission.level,
+                          gender: previousSubmission.gender as Gender | "",
+                        });
+                        setEditing(true);
+                      }}
+                    >
+                      Edit &amp; resubmit
+                    </Button>
+                  )}
+                </div>
+              )}
+              {reviewing && previousSubmission && (
+                <dl className="mt-3 grid gap-2 text-sm rounded-xl border bg-secondary/50 p-3">
+                  <ReviewRow label="Full name" value={previousSubmission.fullName} />
+                  <ReviewRow label="Matric number" value={previousSubmission.matricNumber} />
+                  <ReviewRow label="Department" value={previousSubmission.department} />
+                  <ReviewRow label="Phone" value={previousSubmission.phone} />
+                  <ReviewRow label="Course code" value={previousSubmission.courseCode} />
+                  <ReviewRow label="Level" value={previousSubmission.level ? `${previousSubmission.level} Level` : ""} />
+                  <ReviewRow label="Gender" value={previousSubmission.gender} />
+                </dl>
+              )}
+            </div>
           ) : (
             <Banner tone="ok" title="Form open">
               {minsLeft === Infinity
@@ -450,10 +566,12 @@ function AttendancePage() {
 
           <div className="sm:col-span-2">
             <Button type="submit" className="w-full" size="lg"
-              disabled={submitting || !locationSet || !windowOpen || alreadySubmitted}>
+              disabled={submitting || !locationSet || !windowOpen || (!editing && alreadySubmitted)}>
               {submitting
                 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying location…</>
-                : <><MapPin className="mr-2 h-4 w-4" /> Verify &amp; submit</>}
+                : editing
+                  ? <><MapPin className="mr-2 h-4 w-4" /> Verify &amp; update</>
+                  : <><MapPin className="mr-2 h-4 w-4" /> Verify &amp; submit</>}
             </Button>
             <p className="mt-3 text-center text-xs text-muted-foreground">
               Your GPS is read once at submission to confirm you're physically in class.
@@ -470,6 +588,15 @@ function Field({ label, children, className }: { label: string; children: React.
     <div className={className}>
       <Label className="mb-1.5 block text-sm">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4 border-b border-border/50 pb-2 last:border-0 last:pb-0">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-medium text-right">{value || "—"}</dd>
     </div>
   );
 }
