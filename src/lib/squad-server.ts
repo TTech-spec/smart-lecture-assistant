@@ -2,21 +2,23 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 // ── Environment helpers ───────────────────────────────────────────────────────
-// Nitro on Cloudflare doesn't always populate process.env the same way as Node.
-// Try every access pattern the runtime might use: process.env, import.meta.env,
-// and both prefixed / unprefixed variants.
+// Lovable deploys on Nitro/Cloudflare — env vars set in Lovable with the VITE_
+// prefix are injected via import.meta.env at build time. Non-VITE vars may only
+// be available through process.env on some runtimes. Try every access pattern.
 function getEnv(key: string): string {
+  // import.meta.env is the most reliable on Lovable/Vite builds
+  const viteKey = `VITE_${key}`;
   try {
-    // 1. Plain process.env (Node, Nitro polyfill on CF)
-    if (typeof process !== "undefined" && process.env?.[key]) return process.env[key]!;
-    if (typeof process !== "undefined" && process.env?.[`VITE_${key}`]) return process.env[`VITE_${key}`]!;
-  } catch { /* process may not exist */ }
-  try {
-    // 2. import.meta.env (Vite SSR, Nitro builds)
-    const meta = (import.meta as Record<string, Record<string, string> | undefined>).env;
+    const meta = import.meta.env;
+    if (meta?.[viteKey]) return meta[viteKey];
     if (meta?.[key]) return meta[key];
-    if (meta?.[`VITE_${key}`]) return meta[`VITE_${key}`];
   } catch { /* import.meta.env may not exist */ }
+  try {
+    if (typeof process !== "undefined" && process.env) {
+      if (process.env[key]) return process.env[key]!;
+      if (process.env[viteKey]) return process.env[viteKey]!;
+    }
+  } catch { /* process may not exist */ }
   return "";
 }
 
