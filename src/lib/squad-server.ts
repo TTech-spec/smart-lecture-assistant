@@ -2,13 +2,22 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 // ── Environment helpers ───────────────────────────────────────────────────────
+// Nitro on Cloudflare doesn't always populate process.env the same way as Node.
+// Try every access pattern the runtime might use: process.env, import.meta.env,
+// and both prefixed / unprefixed variants.
 function getEnv(key: string): string {
-  // Try all common patterns: plain key, VITE_ prefix, and import.meta.env (for SSR builds)
-  return (
-    process.env[key] ||
-    process.env[`VITE_${key}`] ||
-    ""
-  );
+  try {
+    // 1. Plain process.env (Node, Nitro polyfill on CF)
+    if (typeof process !== "undefined" && process.env?.[key]) return process.env[key]!;
+    if (typeof process !== "undefined" && process.env?.[`VITE_${key}`]) return process.env[`VITE_${key}`]!;
+  } catch { /* process may not exist */ }
+  try {
+    // 2. import.meta.env (Vite SSR, Nitro builds)
+    const meta = (import.meta as Record<string, Record<string, string> | undefined>).env;
+    if (meta?.[key]) return meta[key];
+    if (meta?.[`VITE_${key}`]) return meta[`VITE_${key}`];
+  } catch { /* import.meta.env may not exist */ }
+  return "";
 }
 
 const IS_PROD = () => (getEnv("SQUAD_ENV") || "sandbox") === "production";
@@ -20,10 +29,7 @@ function baseUrl() {
 }
 
 export function secretKey() {
-  const k =
-    process.env.SQUAD_SECRET_KEY ||
-    process.env.VITE_SQUAD_SECRET_KEY ||
-    "";
+  const k = getEnv("SQUAD_SECRET_KEY");
   if (!k || k.includes("REPLACE_WITH") || k.trim() === "") {
     console.warn("Squad secret key not configured. Payment features will be disabled.");
     return "";
