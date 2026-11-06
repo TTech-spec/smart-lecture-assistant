@@ -327,6 +327,31 @@ function SettingsCard() {
           <p className="mt-1.5 text-xs text-muted-foreground">
             Paste coordinates from Google Maps, then click <strong>Save settings</strong>.
           </p>
+          {typeof draft.classLat === "number" && typeof draft.classLng === "number" &&
+          Math.abs(draft.classLat) <= 90 && Math.abs(draft.classLng) <= 180 ? (
+            <div className="mt-3 overflow-hidden rounded-lg border">
+              <iframe
+                title="Class location map"
+                src={`https://maps.google.com/maps?q=${draft.classLat},${draft.classLng}&z=17&output=embed`}
+                className="h-56 w-full border-0"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                allowFullScreen
+              />
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${draft.classLat},${draft.classLng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block bg-background px-3 py-2 text-xs font-medium text-[color:var(--color-primary)] hover:underline"
+              >
+                Open in Google Maps ↗
+              </a>
+            </div>
+          ) : (
+            <div className="mt-3 flex h-24 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+              Enter coordinates or auto-detect to see the map
+            </div>
+          )}
           <Button onClick={pinHere} disabled={pinning} className="mt-3 w-full" variant="outline">
             {pinning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reading GPS…</> : <><MapPin className="mr-2 h-4 w-4" /> Auto-detect my location</>}
           </Button>
