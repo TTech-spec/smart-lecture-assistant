@@ -29,6 +29,10 @@ import { calculateTotalEarnings } from "@/lib/materials-store";
 import { payoutToLecturer } from "@/lib/squad-server";
 import { NG_BANKS, generateTransactionRef, loadSquadPayments } from "@/lib/squad";
 
+declare const __GOOGLE_MAPS_KEY__: string;
+const GOOGLE_MAPS_KEY: string =
+  typeof __GOOGLE_MAPS_KEY__ !== "undefined" ? __GOOGLE_MAPS_KEY__ : "";
+
 export const Route = createFileRoute("/admin/")({
   component: AdminDashboard,
 });
@@ -332,7 +336,11 @@ function SettingsCard() {
             <div className="mt-3 overflow-hidden rounded-lg border">
               <iframe
                 title="Class location map"
-                src={`https://maps.google.com/maps?q=${draft.classLat},${draft.classLng}&z=17&output=embed`}
+                src={
+                  GOOGLE_MAPS_KEY
+                    ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&q=${draft.classLat},${draft.classLng}&zoom=17`
+                    : `https://maps.google.com/maps?q=${draft.classLat},${draft.classLng}&z=17&output=embed`
+                }
                 className="h-56 w-full border-0"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
