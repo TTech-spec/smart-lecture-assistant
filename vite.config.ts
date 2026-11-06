@@ -8,12 +8,6 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  vite: {
-    define: {
-      // Google Maps API key from the Vercel env var named "Google" (read at build time)
-      __GOOGLE_MAPS_KEY__: JSON.stringify(process.env.Google ?? process.env.GOOGLE ?? ""),
-    },
-  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
