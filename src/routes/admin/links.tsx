@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import {
   Link2, Plus, X, Copy, Ban, ChevronDown, ChevronUp,
   Clock, CheckCircle2, XCircle, Users, RefreshCw, QrCode, Trash2, KeyRound, FileQuestion,
-  MapPin, Loader2,
+  MapPin, Loader2, MonitorPlay,
 } from "lucide-react";
 import { getPrecisePosition, type Coords } from "@/lib/geo";
 import { toast } from "sonner";
@@ -602,6 +602,13 @@ function LinkRow({
           <Button size="sm" variant="outline" onClick={() => onShowQr(link)} className="gap-1.5 text-xs">
             <QrCode className="h-3.5 w-3.5" /> QR
           </Button>
+          {isActive && (
+            <Button asChild size="sm" className="gap-1.5 text-xs">
+              <Link to="/admin/projector" search={{ link: link.id }}>
+                <MonitorPlay className="h-3.5 w-3.5" /> Projector
+              </Link>
+            </Button>
+          )}
           {isActive && (
             <Button
               size="sm" variant="outline"

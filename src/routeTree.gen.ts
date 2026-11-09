@@ -9,31 +9,22 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TestRouteImport } from './routes/test'
-import { Route as MaterialsRouteImport } from './routes/materials'
-import { Route as AttendanceRouteImport } from './routes/attendance'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AttendanceRouteImport } from './routes/attendance'
+import { Route as MaterialsRouteImport } from './routes/materials'
+import { Route as TestRouteImport } from './routes/test'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
-import { Route as TestTokenRouteImport } from './routes/test.$token'
-import { Route as AttendTokenRouteImport } from './routes/attend.$token'
-import { Route as AdminRecordsRouteImport } from './routes/admin/records'
-import { Route as AdminMaterialsRouteImport } from './routes/admin/materials'
 import { Route as AdminLinksRouteImport } from './routes/admin/links'
+import { Route as AdminMaterialsRouteImport } from './routes/admin/materials'
+import { Route as AdminProjectorRouteImport } from './routes/admin/projector'
+import { Route as AdminRecordsRouteImport } from './routes/admin/records'
+import { Route as AttendTokenRouteImport } from './routes/attend.$token'
+import { Route as TestTokenRouteImport } from './routes/test.$token'
 
-const TestRoute = TestRouteImport.update({
-  id: '/test',
-  path: '/test',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MaterialsRoute = MaterialsRouteImport.update({
-  id: '/materials',
-  path: '/materials',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AttendanceRoute = AttendanceRouteImport.update({
-  id: '/attendance',
-  path: '/attendance',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -41,9 +32,19 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AttendanceRoute = AttendanceRouteImport.update({
+  id: '/attendance',
+  path: '/attendance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MaterialsRoute = MaterialsRouteImport.update({
+  id: '/materials',
+  path: '/materials',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestRoute = TestRouteImport.update({
+  id: '/test',
+  path: '/test',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -51,19 +52,9 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
-const TestTokenRoute = TestTokenRouteImport.update({
-  id: '/$token',
-  path: '/$token',
-  getParentRoute: () => TestRoute,
-} as any)
-const AttendTokenRoute = AttendTokenRouteImport.update({
-  id: '/attend/$token',
-  path: '/attend/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRecordsRoute = AdminRecordsRouteImport.update({
-  id: '/records',
-  path: '/records',
+const AdminLinksRoute = AdminLinksRouteImport.update({
+  id: '/links',
+  path: '/links',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminMaterialsRoute = AdminMaterialsRouteImport.update({
@@ -71,10 +62,25 @@ const AdminMaterialsRoute = AdminMaterialsRouteImport.update({
   path: '/materials',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminLinksRoute = AdminLinksRouteImport.update({
-  id: '/links',
-  path: '/links',
+const AdminProjectorRoute = AdminProjectorRouteImport.update({
+  id: '/projector',
+  path: '/projector',
   getParentRoute: () => AdminRoute,
+} as any)
+const AdminRecordsRoute = AdminRecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AttendTokenRoute = AttendTokenRouteImport.update({
+  id: '/attend/$token',
+  path: '/attend/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestTokenRoute = TestTokenRouteImport.update({
+  id: '/$token',
+  path: '/$token',
+  getParentRoute: () => TestRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -85,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/materials': typeof AdminMaterialsRoute
+  '/admin/projector': typeof AdminProjectorRoute
   '/admin/records': typeof AdminRecordsRoute
   '/attend/$token': typeof AttendTokenRoute
   '/test/$token': typeof TestTokenRoute
@@ -97,6 +104,7 @@ export interface FileRoutesByTo {
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/materials': typeof AdminMaterialsRoute
+  '/admin/projector': typeof AdminProjectorRoute
   '/admin/records': typeof AdminRecordsRoute
   '/attend/$token': typeof AttendTokenRoute
   '/test/$token': typeof TestTokenRoute
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/materials': typeof AdminMaterialsRoute
+  '/admin/projector': typeof AdminProjectorRoute
   '/admin/records': typeof AdminRecordsRoute
   '/attend/$token': typeof AttendTokenRoute
   '/test/$token': typeof TestTokenRoute
@@ -126,6 +135,7 @@ export interface FileRouteTypes {
     | '/test'
     | '/admin/links'
     | '/admin/materials'
+    | '/admin/projector'
     | '/admin/records'
     | '/attend/$token'
     | '/test/$token'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/test'
     | '/admin/links'
     | '/admin/materials'
+    | '/admin/projector'
     | '/admin/records'
     | '/attend/$token'
     | '/test/$token'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/test'
     | '/admin/links'
     | '/admin/materials'
+    | '/admin/projector'
     | '/admin/records'
     | '/attend/$token'
     | '/test/$token'
@@ -168,25 +180,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/test': {
-      id: '/test'
-      path: '/test'
-      fullPath: '/test'
-      preLoaderRoute: typeof TestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/materials': {
-      id: '/materials'
-      path: '/materials'
-      fullPath: '/materials'
-      preLoaderRoute: typeof MaterialsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/attendance': {
-      id: '/attendance'
-      path: '/attendance'
-      fullPath: '/attendance'
-      preLoaderRoute: typeof AttendanceRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -196,11 +194,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/attendance': {
+      id: '/attendance'
+      path: '/attendance'
+      fullPath: '/attendance'
+      preLoaderRoute: typeof AttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/materials': {
+      id: '/materials'
+      path: '/materials'
+      fullPath: '/materials'
+      preLoaderRoute: typeof MaterialsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test': {
+      id: '/test'
+      path: '/test'
+      fullPath: '/test'
+      preLoaderRoute: typeof TestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -210,25 +222,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/test/$token': {
-      id: '/test/$token'
-      path: '/$token'
-      fullPath: '/test/$token'
-      preLoaderRoute: typeof TestTokenRouteImport
-      parentRoute: typeof TestRoute
-    }
-    '/attend/$token': {
-      id: '/attend/$token'
-      path: '/attend/$token'
-      fullPath: '/attend/$token'
-      preLoaderRoute: typeof AttendTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/records': {
-      id: '/admin/records'
-      path: '/records'
-      fullPath: '/admin/records'
-      preLoaderRoute: typeof AdminRecordsRouteImport
+    '/admin/links': {
+      id: '/admin/links'
+      path: '/links'
+      fullPath: '/admin/links'
+      preLoaderRoute: typeof AdminLinksRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/materials': {
@@ -238,12 +236,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMaterialsRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/links': {
-      id: '/admin/links'
-      path: '/links'
-      fullPath: '/admin/links'
-      preLoaderRoute: typeof AdminLinksRouteImport
+    '/admin/projector': {
+      id: '/admin/projector'
+      path: '/projector'
+      fullPath: '/admin/projector'
+      preLoaderRoute: typeof AdminProjectorRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/admin/records': {
+      id: '/admin/records'
+      path: '/records'
+      fullPath: '/admin/records'
+      preLoaderRoute: typeof AdminRecordsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/attend/$token': {
+      id: '/attend/$token'
+      path: '/attend/$token'
+      fullPath: '/attend/$token'
+      preLoaderRoute: typeof AttendTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test/$token': {
+      id: '/test/$token'
+      path: '/$token'
+      fullPath: '/test/$token'
+      preLoaderRoute: typeof TestTokenRouteImport
+      parentRoute: typeof TestRoute
     }
   }
 }
@@ -251,6 +270,7 @@ declare module '@tanstack/react-router' {
 interface AdminRouteChildren {
   AdminLinksRoute: typeof AdminLinksRoute
   AdminMaterialsRoute: typeof AdminMaterialsRoute
+  AdminProjectorRoute: typeof AdminProjectorRoute
   AdminRecordsRoute: typeof AdminRecordsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -258,6 +278,7 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminLinksRoute: AdminLinksRoute,
   AdminMaterialsRoute: AdminMaterialsRoute,
+  AdminProjectorRoute: AdminProjectorRoute,
   AdminRecordsRoute: AdminRecordsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
