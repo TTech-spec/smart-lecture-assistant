@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   MapPin, ShieldCheck, Clock, Sparkles,
-  GraduationCap, FileQuestion, KeyRound, X, BookOpen, UserPlus } from "lucide-react";
+  GraduationCap, FileQuestion, KeyRound, X, BookOpen, UserPlus, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
@@ -372,6 +372,10 @@ function Landing() {
 
               <Button asChild size="lg" variant="outline">
                 <Link to="/register"><UserPlus className="mr-2 h-4 w-4" /> Register (once)</Link>
+              </Button>
+
+              <Button asChild size="lg" variant="outline">
+                <Link to="/me"><ClipboardCheck className="mr-2 h-4 w-4" /> My attendance</Link>
               </Button>
 
               <Button asChild size="lg" variant="outline">

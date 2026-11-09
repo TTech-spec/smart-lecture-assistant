@@ -1482,3 +1482,61 @@ export function setLinkExpiry(id: string, expiresAt: string) {
   saveLinks(loadLinks().map((l) => (l.id === id ? { ...l, expiresAt } : l)));
   sync(supabase?.from("attendance_links").update({ expires_at: expiresAt }).eq("id", id));
 }
+
+// ── Student: view and correct own check-ins (student-edits.sql) ─────────────
+
+export type MyCheckIn = {
+  id: string;
+  courseCode: string;
+  submittedAt: string;
+  fullName: string;
+  matricNumber: string;
+  department: string;
+  distanceMeters: number | null;
+  photo: string | null;
+  flags: string;
+  reviewed: string | null;
+  edited: boolean;
+};
+
+export type MyAttendance = {
+  profile: { matricNumber: string; fullName: string; department: string; level: string; photo: string | null } | null;
+  records: MyCheckIn[];
+};
+
+/** Check-ins submitted from this phone (and its registered profile). */
+export async function fetchMyAttendance(matric: string): Promise<MyAttendance> {
+  if (!supabase) return { profile: null, records: [] };
+  const { data, error } = await supabase.rpc("get_my_attendance", { p_device: getDeviceId(), p_matric: matric.trim() });
+  if (error) {
+    if (/does not exist|schema cache|Could not find/i.test(error.message)) throw new Error("not_configured");
+    throw new Error(error.message);
+  }
+  const d = (data ?? {}) as MyAttendance;
+  return { profile: d.profile ?? null, records: d.records ?? [] };
+}
+
+export type EditErrorCode = "invalid" | "not_owner" | "matric_taken" | "matric_conflict" | "too_many_edits" | "not_configured" | "unknown";
+
+export class EditError extends Error {
+  code: EditErrorCode;
+  constructor(code: EditErrorCode, message: string) { super(message); this.code = code; }
+}
+
+/** Correct name / matric / department on this phone's check-ins (and profile). */
+export async function updateMyDetails(input: { matricNumber: string; newMatricNumber: string; fullName: string; department: string }) {
+  if (!supabase) throw new EditError("not_configured", "Database not configured.");
+  const { data, error } = await supabase.rpc("update_my_details", { p: { deviceId: getDeviceId(), ...input } });
+  if (error) {
+    const m = error.message.match(/(invalid|not_owner|matric_taken|matric_conflict|too_many_edits)/);
+    if (m) throw new EditError(m[1] as EditErrorCode, error.message);
+    if (/does not exist|schema cache|Could not find/i.test(error.message)) throw new EditError("not_configured", "Editing isn't set up yet. Ask your lecturer to run student-edits.sql.");
+    throw new EditError("unknown", error.message);
+  }
+  const r = data as { matricNumber: string };
+  // Keep this phone's remembered matric in step with the change
+  try {
+    if (localStorage.getItem("att.student.matric")) localStorage.setItem("att.student.matric", r.matricNumber);
+  } catch { /* ignore */ }
+  return r;
+}

@@ -106,7 +106,10 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
     { label: "Phone", ok: !flags.includes("different_phone"), value: flags.includes("different_phone") ? "Different phone" : "Registered phone" },
     { label: "Face", ok: !flags.includes("face_mismatch") && !flags.includes("no_face_check"), value: flags.includes("no_face_check") ? "Not checked" : matchPct != null ? `${matchPct}% match` : "—" },
   ];
-  const hint = flags.includes("face_mismatch") && !flags.includes("different_phone")
+  const edits = (Array.isArray(cf.edits) ? cf.edits : []) as { at: string; from: Record<string, string>; to: Record<string, string> }[];
+  const hint = flags.includes("matric_changed")
+    ? "The student changed the matric number on this check-in after submitting. Make sure the person in the selfie is the student with the new matric number — a swap to an absent friend's number would show here."
+    : flags.includes("face_mismatch") && !flags.includes("different_phone")
     ? "The class code, location and phone all check out. A low face match is usually bad lighting — if the two photos are clearly the same person, approve it."
     : flags.includes("different_phone")
       ? "This student used a phone other than the one they registered. Check the selfie, then approve if it's them."
@@ -133,6 +136,22 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
           </div>
         ))}
       </div>
+
+      {edits.length > 0 && (
+        <div className="rounded-xl border border-[rgba(27,36,57,0.08)] p-4">
+          <p className="text-xs font-semibold text-muted-foreground">Changed by the student</p>
+          <ul className="mt-2 space-y-1.5 text-[13px]">
+            {edits.map((e, i) => (
+              <li key={i} className="flex flex-wrap gap-x-2">
+                <span className="text-muted-foreground">{new Date(e.at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                {(["fullName", "matricNumber", "department"] as const).filter((k) => e.from?.[k] !== e.to?.[k]).map((k) => (
+                  <span key={k}><span className="line-through opacity-60">{e.from?.[k] || "—"}</span> → <strong>{e.to?.[k]}</strong></span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <p className="text-[13px] leading-relaxed text-muted-foreground">{hint}</p>
 

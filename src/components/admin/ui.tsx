@@ -61,11 +61,15 @@ export function Avatar({ src, name, size = 32 }: { src?: string | null; name: st
 export function checkStatus(customFields: Record<string, unknown> | undefined): { label: string; tone: "green" | "amber" | "grey" } {
   const f = String(customFields?.flags ?? "");
   if (customFields?.reviewed === "approved") return { label: "Approved", tone: "green" };
+  if (f.includes("matric_changed")) return { label: "Matric changed", tone: "amber" };
   if (f.includes("face_mismatch")) return { label: "Face mismatch", tone: "amber" };
   if (f.includes("different_phone")) return { label: "Different phone", tone: "amber" };
   if (f.includes("no_face_check")) return { label: "No face check", tone: "amber" };
   if (f.includes("not_registered")) return { label: "Not registered", tone: "grey" };
-  if (customFields?.serverChecked) return { label: "Verified", tone: "green" };
+  if (customFields?.serverChecked) {
+    const edited = Array.isArray(customFields?.edits) && (customFields.edits as unknown[]).length > 0;
+    return { label: edited ? "Verified · edited" : "Verified", tone: "green" };
+  }
   return { label: "Unverified", tone: "grey" };
 }
 

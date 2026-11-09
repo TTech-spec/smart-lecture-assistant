@@ -397,8 +397,11 @@ function AttendTokenPage() {
             </div>
           )}
 
-          <div className="mt-6 text-center">
+          <div className="mt-6 flex flex-col items-center gap-2">
             <Button asChild variant="outline">
+              <Link to="/me">Review or correct my details</Link>
+            </Button>
+            <Button asChild variant="ghost">
               <Link to="/">Back to home</Link>
             </Button>
           </div>
