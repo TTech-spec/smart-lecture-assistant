@@ -1,0 +1,76 @@
+import { supabase } from "@/lib/supabase";
+
+/**
+ * Lecturer authentication.
+ *
+ * With Supabase configured, lecturers sign in with the email + password of a
+ * user created in Supabase → Authentication → Users. The database rules in
+ * security-hardening.sql only let signed-in users read records or manage
+ * links, so a password checked in the browser would not be enough.
+ *
+ * Without Supabase (local demo), a local password is used instead.
+ */
+
+const LOCAL_AUTH_KEY = "att.admin.auth.v1";
+const LOCAL_PASS_KEY = "att.admin.pass.v1";
+const LOCAL_DEFAULT_PASS = "lecturer123";
+
+export const usesSupabaseAuth = Boolean(supabase);
+
+export async function isLecturerSignedIn(): Promise<boolean> {
+  if (supabase) {
+    const { data } = await supabase.auth.getSession();
+    return Boolean(data.session);
+  }
+  return typeof window !== "undefined" && sessionStorage.getItem(LOCAL_AUTH_KEY) === "1";
+}
+
+export async function signInLecturer(email: string, password: string): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) {
+      throw new Error(
+        /invalid login/i.test(error.message)
+          ? "Wrong email or password."
+          : /email not confirmed/i.test(error.message)
+            ? "This account's email is not confirmed yet. Confirm it in Supabase → Authentication → Users."
+            : error.message,
+      );
+    }
+    return;
+  }
+  // Local fallback
+  const stored = localStorage.getItem(LOCAL_PASS_KEY) || LOCAL_DEFAULT_PASS;
+  if (password !== stored) throw new Error("Wrong password.");
+  sessionStorage.setItem(LOCAL_AUTH_KEY, "1");
+}
+
+export async function signOutLecturer(): Promise<void> {
+  if (supabase) await supabase.auth.signOut();
+  if (typeof window !== "undefined") sessionStorage.removeItem(LOCAL_AUTH_KEY);
+}
+
+/** Change the lecturer password; verifies the current one first. */
+export async function changeLecturerPassword(current: string, next: string): Promise<void> {
+  if (next.length < 8) throw new Error("Use at least 8 characters.");
+  if (supabase) {
+    const { data } = await supabase.auth.getUser();
+    const email = data.user?.email;
+    if (!email) throw new Error("You are not signed in.");
+    const check = await supabase.auth.signInWithPassword({ email, password: current });
+    if (check.error) throw new Error("Wrong current password.");
+    const { error } = await supabase.auth.updateUser({ password: next });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const stored = localStorage.getItem(LOCAL_PASS_KEY) || LOCAL_DEFAULT_PASS;
+  if (current !== stored) throw new Error("Wrong current password.");
+  localStorage.setItem(LOCAL_PASS_KEY, next);
+}
+
+/** Subscribe to sign-in / sign-out changes (Supabase only). */
+export function onLecturerAuthChange(cb: (signedIn: boolean) => void): () => void {
+  if (!supabase) return () => {};
+  const { data } = supabase.auth.onAuthStateChange((_e, session) => cb(Boolean(session)));
+  return () => data.subscription.unsubscribe();
+}

@@ -13,6 +13,7 @@ import {
 } from "@/lib/dashboard-preferences";
 import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { IOSInstallHelp } from "@/components/IOSInstallHelp";
+import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth } from "@/lib/lecturer-auth";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -24,38 +25,44 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-const AUTH_KEY = "att.admin.auth.v1";
+// Password handling lives in src/lib/lecturer-auth.ts (Supabase Auth when
+// configured, local password otherwise). Kept for older imports:
 export const PASS_KEY = "att.admin.pass.v1";
-const DEFAULT_PASS = "lecturer123";
-
 export function getStoredPass(): string {
-  if (typeof window === "undefined") return DEFAULT_PASS;
-  return localStorage.getItem(PASS_KEY) || DEFAULT_PASS;
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(PASS_KEY) || "";
 }
 
 function AdminPage() {
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setAuthed(sessionStorage.getItem(AUTH_KEY) === "1");
+    isLecturerSignedIn().then(setAuthed);
+    return onLecturerAuthChange(setAuthed);
   }, []);
 
+  if (authed === null) return null;
   if (!authed) return <AdminLogin onSuccess={() => setAuthed(true)} />;
-  return <AdminShell onLogout={() => { sessionStorage.removeItem(AUTH_KEY); setAuthed(false); }} />;
+  return <AdminShell onLogout={() => { signOutLecturer().then(() => setAuthed(false)); }} />;
 }
 
 function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
+  const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
-  const [showHint, setShowHint] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (pass === getStoredPass()) {
-      sessionStorage.setItem(AUTH_KEY, "1");
+    if (usesSupabaseAuth && !email.trim()) return toast.error("Enter your email.");
+    setBusy(true);
+    try {
+      await signInLecturer(email, pass);
       toast.success("Welcome back, lecturer.");
       onSuccess();
-    } else {
-      toast.error("Wrong password.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not sign in.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -70,23 +77,37 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
           <ShieldCheck className="h-6 w-6" />
         </div>
-        <h1 className="mt-5 text-2xl sm:text-3xl font-bold tracking-tight text-center">Lecturer access only</h1>
+        <h1 className="mt-5 text-2xl sm:text-3xl font-bold tracking-tight text-center">Lecturer sign in</h1>
         <p className="mt-2 text-center text-sm sm:text-base text-muted-foreground">
-          Enter the admin password to open the dashboard. Students don't have access to this area.
+          {usesSupabaseAuth
+            ? "Sign in with your lecturer account. Students don't have access to this area."
+            : "Enter the admin password to open the dashboard."}
         </p>
-        <form onSubmit={submit} className="mt-8 w-full rounded-2xl border bg-card p-4 sm:p-6 shadow-soft">
-          <Label htmlFor="pass">Admin password</Label>
-          <Input
-            id="pass" type="password" value={pass} onChange={(e) => setPass(e.target.value)}
-            placeholder="Enter password" className="mt-2 h-10" autoFocus
-          />
-          <Button type="submit" className="mt-4 w-full h-10">Unlock dashboard</Button>
-          <button
-            type="button" onClick={() => setShowHint((s) => !s)}
-            className="mt-3 block w-full text-center text-xs text-muted-foreground hover:text-foreground"
-          >
-            {showHint ? `Default password: ${DEFAULT_PASS}` : "Forgot password?"}
-          </button>
+        <form onSubmit={submit} className="mt-8 w-full rounded-2xl border bg-card p-4 sm:p-6 shadow-soft space-y-4">
+          {usesSupabaseAuth && (
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email" type="email" autoComplete="username" value={email}
+                onChange={(e) => setEmail(e.target.value)} placeholder="you@university.edu.ng" className="mt-2 h-10" autoFocus
+              />
+            </div>
+          )}
+          <div>
+            <Label htmlFor="pass">Password</Label>
+            <Input
+              id="pass" type="password" autoComplete="current-password" value={pass}
+              onChange={(e) => setPass(e.target.value)} placeholder="Enter password" className="mt-2 h-10" autoFocus={!usesSupabaseAuth}
+            />
+          </div>
+          <Button type="submit" className="w-full h-10" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
+          </Button>
+          {usesSupabaseAuth && (
+            <p className="text-center text-xs text-muted-foreground">
+              Forgot your password? Reset it in Supabase → Authentication → Users.
+            </p>
+          )}
         </form>
       </main>
     </div>

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { getActiveTest, loadSettings, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, fetchActiveTestFromSupabase, fetchSettingsFromSupabase, pollActiveTest, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
+import { getActiveTest, loadSettings, lookupStudentRemote, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, fetchActiveTestFromSupabase, fetchSettingsFromSupabase, pollActiveTest, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
@@ -248,20 +248,19 @@ function Landing() {
       let student = findStudentByMatric(codeMatric);
 
       // If not found locally, fall back to Supabase (different device or cleared storage)
-      if (!student && supabase) {
-        const { data } = await supabase
-          .from("attendance_records")
-          .select("full_name, level, matric_number")
-          .ilike("matric_number", codeMatric.trim())
-          .limit(1)
-          .maybeSingle();
-        if (data) {
-          student = {
-            id: "", fullName: data.full_name, matricNumber: data.matric_number,
-            department: "", phone: "", courseCode: "", topic: "", level: data.level || "",
-            gender: "other", submittedAt: "", dayKey: "", deviceId: "",
-            distanceMeters: 0, lat: 0, lng: 0, sessionId: "", customFields: {},
-          };
+      let serverCode: string | null = null;
+      if (supabase) {
+        const remote = await lookupStudentRemote(codeMatric);
+        if (remote) {
+          serverCode = remote.classCode;
+          if (!student) {
+            student = {
+              id: "", fullName: remote.fullName, matricNumber: remote.matricNumber,
+              department: "", phone: "", courseCode: "", topic: "", level: remote.level,
+              gender: "other", submittedAt: "", dayKey: "", deviceId: "",
+              distanceMeters: 0, lat: 0, lng: 0, sessionId: "", customFields: {},
+            };
+          }
         }
       }
 
@@ -278,6 +277,15 @@ function Landing() {
 
       if (student.level !== codeLevel) {
         toast.error("The level you entered doesn't match your attendance record. Please use the same level you used to sign attendance.");
+        return;
+      }
+
+      if (serverCode) {
+        // The server assigned this code at check-in — always show that one
+        markClassCodeUsed(codeMatric);
+        setStudentCode(serverCode);
+        setCodeRevealed(true);
+        toast.success("Here is your class code.");
         return;
       }
 

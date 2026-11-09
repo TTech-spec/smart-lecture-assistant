@@ -22,7 +22,7 @@ import {
 } from "@/lib/attendance-store";
 import { parsePdfQuestions } from "@/lib/pdf-parser";
 import { getCurrentPosition } from "@/lib/geo";
-import { getStoredPass, PASS_KEY } from "@/routes/admin";
+import { changeLecturerPassword } from "@/lib/lecturer-auth";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
 import { calculateTotalEarnings } from "@/lib/materials-store";
@@ -229,14 +229,17 @@ function SettingsCard() {
     toast.success("Attendance form locked.");
   }
 
-  function changePassword() {
-    const current = prompt("Enter current admin password:");
+  async function changePassword() {
+    const current = prompt("Enter current password:");
     if (current == null) return;
-    if (current !== getStoredPass()) { toast.error("Wrong current password."); return; }
-    const next = prompt("Enter a new admin password (min 4 chars):");
-    if (!next || next.length < 4) { toast.error("Password too short."); return; }
-    localStorage.setItem(PASS_KEY, next);
-    toast.success("Admin password updated.");
+    const next = prompt("Enter a new password (min 8 characters):");
+    if (next == null) return;
+    try {
+      await changeLecturerPassword(current, next);
+      toast.success("Password updated.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not change password.");
+    }
   }
 
   function addCourse() {

@@ -745,15 +745,9 @@ export async function hasDeviceMarkedAttendanceTodayRemote(
 ): Promise<boolean> {
   if (!supabase) return false;
   try {
-    const { data } = await supabase
-      .from("attendance_records")
-      .select("id")
-      .eq("device_id", deviceId)
-      .eq("course_code", courseCode)
-      .eq("day_key", dayKey)
-      .limit(1)
-      .maybeSingle();
-    return !!data;
+    void dayKey; // the server works out today's date itself
+    const { data } = await supabase.rpc("device_checked_in_today", { p_device: deviceId, p_course: courseCode });
+    return data === true;
   } catch {
     return false; // fail open — don't block students if DB is unreachable
   }
@@ -1055,11 +1049,7 @@ export function flagCodeFraud(matricNumber: string, enteredCode: string) {
     fraudMap[key].push({ enteredCode, at: new Date().toISOString() });
     localStorage.setItem(CODE_FRAUD_KEY, JSON.stringify(fraudMap));
     // Sync fraud flag to Supabase so the lecturer can see it
-    sync(
-      supabase?.from("attendance_records").update({
-        custom_fields: { code_fraud: true, fraud_code_entered: enteredCode },
-      }).ilike("matric_number", matricNumber.trim())
-    );
+    sync(supabase?.rpc("flag_code_fraud", { p_matric: matricNumber.trim(), p_entered: enteredCode }));
   } catch {
     // non-fatal
   }
@@ -1221,4 +1211,121 @@ export async function fetchSettingsFromSupabase(): Promise<AdminSettings | null>
   } catch {
     return null;
   }
+}
+
+
+// ── Server-side check-in (security-hardening.sql) ────────────────────────────
+
+export type SubmitAttendanceInput = {
+  id: string;
+  token: string;
+  deviceId: string;
+  fullName: string;
+  matricNumber: string;
+  department: string;
+  phone: string;
+  level: string;
+  gender: Gender;
+  topic: string;
+  sessionId: string;
+  roomCode: string;
+  lat: number | null;
+  lng: number | null;
+  accuracy: number | null;
+  customFields: Record<string, string>;
+};
+
+export type SubmitAttendanceResult = {
+  id: string;
+  distance: number;
+  classCode: string | null;
+  dayKey: string;
+  submittedAt: string;
+};
+
+/** Structured reason the server refused a check-in. */
+export type CheckInErrorCode =
+  | "not_found" | "closed" | "locked" | "wrong_code" | "weak_gps" | "no_gps"
+  | "out_of_range" | "duplicate_device" | "duplicate_matric" | "invalid"
+  | "not_configured" | "unknown";
+
+export class CheckInError extends Error {
+  code: CheckInErrorCode;
+  /** out_of_range → metres away; weak_gps → reported accuracy in metres */
+  meters?: number;
+  /** out_of_range → the allowed radius */
+  radius?: number;
+  constructor(code: CheckInErrorCode, message: string, meters?: number, radius?: number) {
+    super(message);
+    this.code = code;
+    this.meters = meters;
+    this.radius = radius;
+  }
+}
+
+function parseCheckInError(raw: string): CheckInError {
+  const m = raw.match(/(not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|invalid)(?::(\d+))?(?::(\d+))?/);
+  if (!m) {
+    if (/function .*submit_attendance.* does not exist|schema cache/i.test(raw)) {
+      return new CheckInError("not_configured", "Check-in is not set up yet. Ask your lecturer to run security-hardening.sql.");
+    }
+    return new CheckInError("unknown", raw);
+  }
+  const code = m[1] as CheckInErrorCode;
+  return new CheckInError(code, raw, m[2] ? Number(m[2]) : undefined, m[3] ? Number(m[3]) : undefined);
+}
+
+/**
+ * Sends a check-in to the server, which re-does every check (link open,
+ * room code, distance from the lecturer, GPS accuracy, duplicates).
+ * Throws CheckInError with a structured code on refusal.
+ */
+export async function submitAttendance(input: SubmitAttendanceInput): Promise<SubmitAttendanceResult> {
+  if (!supabase) throw new CheckInError("not_configured", "Database not configured.");
+  const { data, error } = await supabase.rpc("submit_attendance", { p: input });
+  if (error) throw parseCheckInError(error.message);
+  const r = data as SubmitAttendanceResult;
+  // Mirror locally so the device/matric checks work offline too
+  const all = loadRecords();
+  all.push({
+    id: r.id,
+    fullName: input.fullName,
+    matricNumber: input.matricNumber.toUpperCase(),
+    department: input.department,
+    phone: input.phone,
+    courseCode: "",
+    topic: input.topic,
+    level: input.level,
+    gender: input.gender,
+    submittedAt: r.submittedAt,
+    dayKey: r.dayKey,
+    deviceId: input.deviceId,
+    distanceMeters: r.distance,
+    lat: input.lat ?? 0,
+    lng: input.lng ?? 0,
+    sessionId: input.sessionId,
+    customFields: input.customFields,
+    assignedClassCode: r.classCode ?? undefined,
+  });
+  saveRecords(all);
+  return r;
+}
+
+/** Lecturer only: the room code currently showing for a link. */
+export async function fetchRoomCode(linkId: string): Promise<{ code: string; secondsLeft: number } | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc("get_room_code", { p_link_id: linkId });
+  if (error) throw new Error(error.message);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return { code: row.code as string, secondsLeft: Number(row.seconds_left) };
+}
+
+/** Student: look up own attendance record by matric (name, level, class code). */
+export async function lookupStudentRemote(matric: string): Promise<{ fullName: string; level: string; matricNumber: string; classCode: string | null } | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.rpc("lookup_student", { p_matric: matric.trim() });
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return { fullName: row.full_name, level: row.level || "", matricNumber: row.matric_number, classCode: row.assigned_class_code ?? null };
 }

@@ -30,6 +30,8 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
 
   // Live data
   const [livePos, setLivePos] = useState<Coords | null>(null);
+  const samplesRef = useRef<{ pos: Coords; at: number }[]>([]);
+  const [watchStarted, setWatchStarted] = useState(0);
   const [liveAddress, setLiveAddress] = useState<string | null>(null);
   const [liveWeather, setLiveWeather] = useState<Weather | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -66,10 +68,22 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     let weatherLoaded = false;
     watchRef.current = navigator.geolocation.watchPosition(
       (p) => {
-        const pos: Coords = {
+        const sample: Coords = {
           lat: p.coords.latitude,
           lng: p.coords.longitude,
           accuracy: p.coords.accuracy,
+          source: "gps",
+        };
+        // Keep the last 20 s of readings and use the most accurate ones,
+        // averaged — indoor GPS wobbles, and the first fix is usually rough.
+        const nowMs = Date.now();
+        samplesRef.current = [...samplesRef.current, { pos: sample, at: nowMs }].filter((x) => nowMs - x.at < 20_000);
+        const sorted = [...samplesRef.current].sort((a, b) => (a.pos.accuracy ?? 999) - (b.pos.accuracy ?? 999));
+        const best = sorted.slice(0, Math.min(3, sorted.length));
+        const pos: Coords = {
+          lat: best.reduce((t, x) => t + x.pos.lat, 0) / best.length,
+          lng: best.reduce((t, x) => t + x.pos.lng, 0) / best.length,
+          accuracy: best[0].pos.accuracy,
           source: "gps",
         };
         setLivePos(pos);
@@ -99,6 +113,8 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     setLiveAddress(null);
     setLiveWeather(null);
     lastGeocodeRef.current = null;
+    samplesRef.current = [];
+    setWatchStarted(Date.now());
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
@@ -153,6 +169,12 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     start();
   }
 
+  // Allow capture once accuracy is good (≤50 m), or after 12 s if it is at
+  // least usable (≤150 m — the server refuses anything worse).
+  const acc = livePos?.accuracy ?? 999;
+  const waited = now.getTime() - watchStarted;
+  const canCapture = Boolean(livePos) && (acc <= 50 || (waited > 12_000 && acc <= 150));
+
   const timeStr =
     now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
     ", " +
@@ -186,11 +208,18 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
               </p>
             </div>
           </div>
-          <Button type="button" className="w-full h-11" onClick={capture} disabled={!livePos}>
-            {livePos
-              ? <><Camera className="mr-2 h-4 w-4" /> Capture</>
-              : <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Waiting for location…</>}
+          <Button type="button" className="w-full h-11" onClick={capture} disabled={!canCapture}>
+            {!livePos
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Waiting for location…</>
+              : !canCapture
+                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Improving accuracy… ±{Math.round(acc)} m</>
+                : <><Camera className="mr-2 h-4 w-4" /> Capture</>}
           </Button>
+          {livePos && acc > 100 && (
+            <p className="text-center text-xs text-amber-700 dark:text-amber-400">
+              Weak signal (±{Math.round(acc)} m). Turn on WiFi and move near a window or the door.
+            </p>
+          )}
         </div>
       )}
 

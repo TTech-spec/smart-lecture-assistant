@@ -11,7 +11,7 @@ import {
   DASHBOARD_THEMES, saveDashboardTheme, saveDeveloperAccess, submitDeveloperAccessEmail,
   markOnboardingDone, type ThemeId,
 } from "@/lib/dashboard-preferences";
-import { getStoredPass, PASS_KEY } from "@/routes/admin";
+import { changeLecturerPassword } from "@/lib/lecturer-auth";
 import { toast } from "sonner";
 import type { MaterialAccessType } from "@/lib/materials-store";
 import { useInstallPrompt } from "@/hooks/use-install-prompt";
@@ -84,14 +84,17 @@ export function OnboardingWizard({ initialTheme, initialDevAccess, initialDevAcc
     }
   }
 
-  function changePassword() {
-    const current = prompt("Enter current admin password:");
+  async function changePassword() {
+    const current = prompt("Enter current password:");
     if (current == null) return;
-    if (current !== getStoredPass()) { toast.error("Wrong current password."); return; }
-    const next = prompt("Enter a new admin password (min 4 chars):");
-    if (!next || next.length < 4) { toast.error("Password too short."); return; }
-    localStorage.setItem(PASS_KEY, next);
-    toast.success("Admin password updated.");
+    const next = prompt("Enter a new password (min 8 characters):");
+    if (next == null) return;
+    try {
+      await changeLecturerPassword(current, next);
+      toast.success("Password updated.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not change password.");
+    }
   }
 
   function finish(goToMaterials: boolean) {

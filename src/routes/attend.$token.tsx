@@ -11,8 +11,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  addRecord,
   fetchLinkByToken,
+  submitAttendance,
+  CheckInError,
   getDeviceId,
   hasMarkedAttendanceForCourseToday,
   hasDeviceMarkedAttendanceToday,
@@ -20,13 +21,12 @@ import {
   isLinkValid,
   loadSettings,
   todayKey,
-  generateStudentClassCode,
   markClassCodeUsed,
-  updateStudentClassCode,
   type AttendanceLink,
   type Gender,
 } from "@/lib/attendance-store";
-import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition, isNearAnchor, type Coords } from "@/lib/geo";
+import { getCurrentPosition, type Coords } from "@/lib/geo";
+import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
 import { StampedSelfie } from "@/components/StampedSelfie";
 import type { StampInfo } from "@/lib/photo-stamp";
 
@@ -106,6 +106,9 @@ function AttendTokenPage() {
   const [deviceBlocked, setDeviceBlocked] = useState(false);
   // Live stamped selfie (required before submit)
   const [photo, setPhoto] = useState<{ dataUrl: string; info: StampInfo; pos: Coords } | null>(null);
+  const [roomCode, setRoomCode] = useState("");
+  // Set when the server refuses the check-in; shows a full-screen explanation
+  const [failure, setFailure] = useState<CheckInError | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -172,128 +175,38 @@ function AttendTokenPage() {
     if (!photo)                    return toast.error("Please take your live photo first.");
     if (Date.now() - photo.info.takenAt.getTime() > 5 * 60_000)
       return toast.error("Your photo is older than 5 minutes. Please retake it.");
+    if (roomCode.trim().length !== 4) return toast.error("Enter the 4-character room code from the projector.");
 
     const today = todayKey();
 
-    // ── Device block (re-check at submit time) ──────────────────────────────
+    // Fast local checks (the server repeats them authoritatively)
     if (hasDeviceMarkedAttendanceToday(deviceId, link.courseCode, today)) {
       setDeviceBlocked(true);
       return toast.error("This phone has already been used to mark attendance for this course today.");
     }
-    // Remote device check
-    const blockedRemote = await hasDeviceMarkedAttendanceTodayRemote(deviceId, link.courseCode, today);
-    if (blockedRemote) {
-      setDeviceBlocked(true);
-      return toast.error("This phone has already been used to mark attendance for this course today.");
-    }
-
-    // ── Matric duplicate check ──────────────────────────────────────────────
     if (hasMarkedAttendanceForCourseToday(form.matricNumber.trim(), link.courseCode, today)) {
-      return toast.error(
-        `You've already marked attendance for ${link.courseCode} today. Only one submission per course per day is allowed.`
-      );
+      return toast.error(`You've already marked attendance for ${link.courseCode} today.`);
     }
 
-    // ── GPS check ───────────────────────────────────────────────────────────
-    // Prefer the lecturer's verified location saved on this link
-    const anchored = link.anchorLat != null && link.anchorLng != null;
-    const locationSet = anchored || (settings.classLat != null && settings.classLng != null);
     setSubmitting(true);
-
     try {
-      let lat = 0, lng = 0, dist = 0;
-
-      if (locationSet) {
-        let pos: Coords;
-        try {
-          // Reuse the location captured with the photo so it matches the stamp
-          pos = photo.pos;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Could not read GPS.";
-          toast.error(
-            msg.toLowerCase().includes("denied")
-              ? "Location permission denied. Allow location access in your browser settings and try again."
-              : msg,
-          );
-          setSubmitting(false);
-          return;
-        }
-
-        if (anchored) {
-          if (pos.source === "ip") {
-            toast.error("Precise location is needed. Turn on Location (Precise) for this site and retake your photo.");
-            setSubmitting(false);
-            return;
-          }
-          const lecturerPos: Coords = { lat: link.anchorLat!, lng: link.anchorLng!, accuracy: link.anchorAccuracy };
-          const radius = link.anchorRadius ?? 100;
-          const check = isNearAnchor(pos, lecturerPos, radius);
-          dist = check.raw;
-          if (!check.inside) {
-            toast.error(
-              `You're about ${formatDistance(dist)} from your lecturer. You must be within ${radius} m. ` +
-              "If you are in class, move near a window or the door and retake your photo.",
-              { duration: 8000 },
-            );
-            setSubmitting(false);
-            return;
-          }
-          lat = pos.lat;
-          lng = pos.lng;
-        }
-
-        const classPos = anchored
-          ? { lat: link.anchorLat!, lng: link.anchorLng! }
-          : { lat: settings.classLat!, lng: settings.classLng! };
-        if (!anchored) dist = distanceMeters(pos, classPos);
-        const eff = anchored ? 0 : effectiveDistance(pos, classPos);
-
-        if (!anchored && eff > settings.radiusMeters) {
-          toast.error(
-            `You're ${formatDistance(dist)} away. Must be within ${settings.radiusMeters}m of class.` +
-            (pos.source === "ip"
-              ? " Your browser denied GPS so IP location is being used. Allow location access and try again."
-              : ""),
-          );
-          setSubmitting(false);
-          return;
-        }
-        lat = pos.lat;
-        lng = pos.lng;
-      }
-
-      // ── Auto-assign class code if link has it enabled ───────────────────
-      let classCode: string | undefined;
-      if (link.assignClassCode) {
-        const settings2 = loadSettings();
-        // Use the global classCode as the base prefix; fall back to courseCode
-        const base = settings2.classCode?.trim() || link.courseCode;
-        classCode = await generateStudentClassCode(
-          form.matricNumber.trim(),
-          base,
-          settings2.classCodeFormat || "numbers"
-        );
-        // Mark as used so the home-page "Get code" button knows it's already assigned
-        markClassCodeUsed(form.matricNumber.trim());
-      }
-
-      await addRecord({
+      const pos = photo.pos;
+      const result = await submitAttendance({
         id: crypto.randomUUID(),
+        token,
+        deviceId,
         fullName: form.fullName.trim(),
         matricNumber: form.matricNumber.trim().toUpperCase(),
         department: form.department.trim(),
         phone: form.phone.trim(),
-        courseCode: link.courseCode,
-        topic: settings.topic || "",
         level: form.level,
         gender: form.gender as Gender,
-        submittedAt: new Date().toISOString(),
-        dayKey: today,
-        deviceId,
-        distanceMeters: Math.round(dist),
-        lat,
-        lng,
+        topic: settings.topic || "",
         sessionId: settings.activeSessionId || "",
+        roomCode: roomCode.trim().toUpperCase(),
+        lat: pos.source === "gps" ? pos.lat : null,
+        lng: pos.source === "gps" ? pos.lng : null,
+        accuracy: pos.source === "gps" ? (pos.accuracy ?? null) : null,
         customFields: {
           photo: photo.dataUrl,
           photoAddress: photo.info.address,
@@ -301,24 +214,33 @@ function AttendTokenPage() {
           photoWeather: photo.info.weather,
           photoTakenAt: photo.info.takenAt.toISOString(),
         },
-        linkId: link.id,
-        assignedClassCode: classCode,
       });
 
-      // Persist the code on the attendance record in Supabase too
-      if (classCode) {
-        updateStudentClassCode(form.matricNumber.trim().toUpperCase(), classCode);
-        setAssignedCode(classCode);
+      if (result.classCode) {
+        markClassCodeUsed(form.matricNumber.trim());
+        setAssignedCode(result.classCode);
       }
-
       setDone(true);
       toast.success("Attendance marked successfully!");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not save attendance.";
-      toast.error(`Error: ${msg}`);
+      if (err instanceof CheckInError) {
+        if (err.code === "duplicate_device") setDeviceBlocked(true);
+        else setFailure(err);
+      } else {
+        const msg = err instanceof Error ? err.message : "Could not save attendance.";
+        toast.error(`Error: ${msg}`);
+      }
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function retryAfterFailure() {
+    const code = failure?.code;
+    setFailure(null);
+    // Location problems need a fresh photo; a wrong code only needs a new code
+    if (code !== "wrong_code") setPhoto(null);
+    setRoomCode("");
   }
 
   function copyCode() {
@@ -363,6 +285,11 @@ function AttendTokenPage() {
         </div>
       </div>
     );
+  }
+
+  // ── Server refused the check-in ────────────────────────────────────────────
+  if (failure) {
+    return <CheckInErrorScreen error={failure} courseCode={link ? (link as AttendanceLink).courseCode : "this course"} onRetry={retryAfterFailure} />;
   }
 
   // ── Success / done screen ──────────────────────────────────────────────────
@@ -606,6 +533,19 @@ function AttendTokenPage() {
               </Select>
             </Field>
 
+            <Field label="Room code — look at the projector" className="sm:col-span-2">
+              <Input
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 4))}
+                placeholder="e.g. K7P2"
+                inputMode="text"
+                autoCapitalize="characters"
+                autoComplete="off"
+                className="h-14 text-center font-mono text-2xl font-bold tracking-[0.4em]"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">The code changes every 30 seconds. Letters are never O or I.</p>
+            </Field>
+
             <Field label="Live photo (with location stamp)" className="sm:col-span-2">
               <StampedSelfie onChange={setPhoto} getPosition={() => getCurrentPosition()} />
             </Field>
@@ -614,18 +554,16 @@ function AttendTokenPage() {
               <Button
                 type="submit"
                 className="w-full h-11 text-base"
-                disabled={submitting || !photo || (alreadyMarked && !!form.matricNumber.trim())}
+                disabled={submitting || !photo || roomCode.length !== 4 || (alreadyMarked && !!form.matricNumber.trim())}
               >
                 {submitting
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
                   : <><CheckCircle2 className="mr-2 h-4 w-4" /> Mark my attendance</>
                 }
               </Button>
-              {settings.classLat == null && link.anchorLat == null && (
-                <p className="mt-2 text-center text-xs text-muted-foreground">
-                  No GPS check configured — your location won't be verified for this session.
-                </p>
-              )}
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                Your room code, location and photo are checked on the server before attendance is saved.
+              </p>
             </div>
           </form>
         )}

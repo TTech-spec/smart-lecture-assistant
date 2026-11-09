@@ -21,9 +21,9 @@ function makeClient() {
   try {
     const client = createClient(url!, key!, { 
       auth: { 
-        persistSession: false, 
-        autoRefreshToken: false, 
-        detectSessionInUrl: false 
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
       } 
     });
     console.log("Supabase client created successfully");
