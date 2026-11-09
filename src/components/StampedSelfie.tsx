@@ -6,7 +6,7 @@ import { currentWeather, reverseGeocode, stampPhoto, type StampInfo } from "@/li
 
 type Props = {
   /** Called with the stamped JPEG (data URL) and the info used, or null when retaking. */
-  onChange: (photo: { dataUrl: string; info: StampInfo; pos: Coords } | null) => void;
+  onChange: (photo: { dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement } | null) => void;
   /** Fallback one-shot location reader (used if live tracking is unavailable). */
   getPosition: () => Promise<Coords>;
 };
@@ -156,7 +156,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       const dataUrl = await stampPhoto(frame, pos, info);
       setPreview(dataUrl);
       setState("done");
-      onChange({ dataUrl, info, pos });
+      onChange({ dataUrl, info, pos, frame });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read your location.");
       setState("idle");

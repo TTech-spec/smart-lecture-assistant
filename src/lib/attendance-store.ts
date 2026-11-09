@@ -1232,6 +1232,8 @@ export type SubmitAttendanceInput = {
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
+  /** Distance between the selfie and the registered face (lower = closer); null if not registered */
+  faceDistance: number | null;
   customFields: Record<string, string>;
 };
 
@@ -1328,4 +1330,93 @@ export async function lookupStudentRemote(matric: string): Promise<{ fullName: s
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return null;
   return { fullName: row.full_name, level: row.level || "", matricNumber: row.matric_number, classCode: row.assigned_class_code ?? null };
+}
+
+// ── Student registration (students-migration.sql) ────────────────────────────
+
+export type StudentProfile = {
+  matricNumber: string;
+  fullName: string;
+  department: string;
+  level: string;
+  phone: string;
+  gender: Gender;
+  descriptor: number[];
+  status: "active" | "reset_requested";
+  photo?: string | null;
+  deviceId?: string;
+  createdAt?: string;
+};
+
+export type RegisterErrorCode = "invalid" | "matric_taken" | "device_taken" | "face_exists" | "not_configured" | "unknown";
+
+export class RegisterError extends Error {
+  code: RegisterErrorCode;
+  hint?: string;
+  constructor(code: RegisterErrorCode, message: string, hint?: string) {
+    super(message);
+    this.code = code;
+    this.hint = hint;
+  }
+}
+
+export async function registerStudent(input: {
+  fullName: string; matricNumber: string; department: string; level: string;
+  phone: string; gender: Gender; deviceId: string; descriptor: number[]; photo: string;
+}): Promise<void> {
+  if (!supabase) throw new RegisterError("not_configured", "Database not configured.");
+  const { error } = await supabase.rpc("register_student", { p: input });
+  if (error) {
+    const m = error.message.match(/(invalid|matric_taken|device_taken|face_exists)(?::([^\s"]+))?/);
+    if (m) throw new RegisterError(m[1] as RegisterErrorCode, error.message, m[2]);
+    if (/does not exist|schema cache/i.test(error.message)) {
+      throw new RegisterError("not_configured", "Registration is not set up yet. Ask your lecturer to run students-migration.sql.");
+    }
+    throw new RegisterError("unknown", error.message);
+  }
+  try { localStorage.setItem("att.student.matric", input.matricNumber.toUpperCase()); } catch { /* ignore */ }
+}
+
+/** The matric number registered on this phone, if any. */
+export function getRegisteredMatric(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("att.student.matric");
+}
+
+export async function fetchStudentProfile(matric: string): Promise<StudentProfile | null> {
+  if (!supabase || !matric.trim()) return null;
+  const { data, error } = await supabase.rpc("get_student_profile", { p_matric: matric.trim() });
+  if (error) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return {
+    matricNumber: row.matric_number, fullName: row.full_name, department: row.department || "",
+    level: row.level || "", phone: row.phone || "", gender: (row.gender as Gender) || "other",
+    descriptor: (row.descriptor as number[]) || [], status: row.status || "active",
+  };
+}
+
+export async function requestStudentReset(matric: string): Promise<void> {
+  if (!supabase) return;
+  await supabase.rpc("request_student_reset", { p_matric: matric.trim() });
+}
+
+/** Lecturer only. */
+export async function fetchStudents(): Promise<StudentProfile[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from("students").select("*").order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data || []).map((row) => ({
+    matricNumber: row.matric_number, fullName: row.full_name, department: row.department || "",
+    level: row.level || "", phone: row.phone || "", gender: (row.gender as Gender) || "other",
+    descriptor: [], status: row.status || "active", photo: row.photo, deviceId: row.device_id,
+    createdAt: row.created_at,
+  }));
+}
+
+/** Lecturer only: remove a registration so the student can register again. */
+export async function deleteStudent(matric: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("students").delete().eq("matric_number", matric);
+  if (error) throw new Error(error.message);
 }

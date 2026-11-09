@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X, Link2, Settings2, Download } from "lucide-react";
+import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X, Link2, Settings2, Download, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -185,6 +185,12 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
                 <Link2 className="h-3.5 w-3.5" /> Links
               </Link>
               <Link
+                to="/admin/students"
+                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                <Users className="h-3.5 w-3.5" /> Students
+              </Link>
+              <Link
                 to="/admin/materials"
                 className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
               >
@@ -243,6 +249,13 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
                 className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
               >
                 <Link2 className="h-4 w-4" /> Links
+              </Link>
+              <Link
+                to="/admin/students"
+                onClick={() => setMobileMenuOpen(false)}
+                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                <Users className="h-4 w-4" /> Students
               </Link>
               <Link
                 to="/admin/materials"

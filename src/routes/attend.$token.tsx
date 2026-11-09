@@ -12,8 +12,11 @@ import {
 } from "@/components/ui/select";
 import {
   fetchLinkByToken,
+  fetchStudentProfile,
+  getRegisteredMatric,
   submitAttendance,
   CheckInError,
+  type StudentProfile,
   getDeviceId,
   hasMarkedAttendanceForCourseToday,
   hasDeviceMarkedAttendanceToday,
@@ -27,6 +30,7 @@ import {
 } from "@/lib/attendance-store";
 import { getCurrentPosition, type Coords } from "@/lib/geo";
 import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
+import { analyseFace, faceDistance, FACE_MATCH_THRESHOLD } from "@/lib/face";
 import { StampedSelfie } from "@/components/StampedSelfie";
 import type { StampInfo } from "@/lib/photo-stamp";
 
@@ -105,7 +109,12 @@ function AttendTokenPage() {
   // Device-level block: set to true if this phone already submitted today
   const [deviceBlocked, setDeviceBlocked] = useState(false);
   // Live stamped selfie (required before submit)
-  const [photo, setPhoto] = useState<{ dataUrl: string; info: StampInfo; pos: Coords } | null>(null);
+  const [photo, setPhoto] = useState<{ dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement } | null>(null);
+  // Registered profile for the typed matric (details come from it, not the form)
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  // Face comparison of the selfie against the registered face
+  const [face, setFace] = useState<{ state: "checking" | "match" | "mismatch" | "noface"; distance?: number } | null>(null);
   const [roomCode, setRoomCode] = useState("");
   // Set when the server refuses the check-in; shows a full-screen explanation
   const [failure, setFailure] = useState<CheckInError | null>(null);
@@ -130,6 +139,46 @@ function AttendTokenPage() {
 
   const settings = useMemo(() => loadSettings(), []);
   const deviceId = useMemo(() => getDeviceId(), []);
+
+  // Prefill the matric registered on this phone
+  useEffect(() => {
+    const m = getRegisteredMatric();
+    if (m) setForm((f) => (f.matricNumber ? f : { ...f, matricNumber: m }));
+  }, []);
+
+  // Look up the registered profile as the matric is typed (debounced)
+  useEffect(() => {
+    const m = form.matricNumber.trim();
+    if (m.length < 5) { setProfile(null); return; }
+    let cancelled = false;
+    setProfileLoading(true);
+    const t = setTimeout(async () => {
+      const p = await fetchStudentProfile(m);
+      if (cancelled) return;
+      setProfile(p);
+      setProfileLoading(false);
+      if (p) {
+        setForm((f) => ({ ...f, fullName: p.fullName, department: p.department, phone: p.phone, level: p.level, gender: p.gender }));
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [form.matricNumber]);
+
+  // Compare the selfie with the registered face as soon as both exist
+  useEffect(() => {
+    if (!photo || !profile || profile.descriptor.length !== 128) { setFace(null); return; }
+    let cancelled = false;
+    setFace({ state: "checking" });
+    analyseFace(photo.frame, { withDescriptor: true })
+      .then((f) => {
+        if (cancelled) return;
+        if (!f || f.descriptor.length !== 128) { setFace({ state: "noface" }); return; }
+        const d = faceDistance(f.descriptor, profile.descriptor);
+        setFace({ state: d <= FACE_MATCH_THRESHOLD ? "match" : "mismatch", distance: d });
+      })
+      .catch(() => { if (!cancelled) setFace({ state: "noface" }); });
+    return () => { cancelled = true; };
+  }, [photo, profile]);
 
   // ── Device-level duplicate check (runs once link is known) ─────────────────
   useEffect(() => {
@@ -166,12 +215,16 @@ function AttendTokenPage() {
     if (!link || link === "loading") return;
     if (!isLinkValid(link, new Date())) return toast.error("This link is no longer valid.");
 
-    if (!form.fullName.trim())     return toast.error("Please enter your full name.");
     if (!form.matricNumber.trim()) return toast.error("Please enter your matric number.");
-    if (!form.department.trim())   return toast.error("Please enter your department.");
-    if (!form.phone.trim())        return toast.error("Please enter your phone number.");
-    if (!form.level)               return toast.error("Please select your level.");
-    if (!form.gender)              return toast.error("Please select your gender.");
+    if (!profile) {
+      if (!form.fullName.trim())     return toast.error("Please enter your full name.");
+      if (!form.department.trim())   return toast.error("Please enter your department.");
+      if (!form.phone.trim())        return toast.error("Please enter your phone number.");
+      if (!form.level)               return toast.error("Please select your level.");
+      if (!form.gender)              return toast.error("Please select your gender.");
+    }
+    if (profile && face?.state === "checking") return toast.error("Still checking your face — one moment.");
+    if (profile && face?.state === "noface")   return toast.error("No face found in your photo. Retake it facing the light.");
     if (!photo)                    return toast.error("Please take your live photo first.");
     if (Date.now() - photo.info.takenAt.getTime() > 5 * 60_000)
       return toast.error("Your photo is older than 5 minutes. Please retake it.");
@@ -207,6 +260,7 @@ function AttendTokenPage() {
         lat: pos.source === "gps" ? pos.lat : null,
         lng: pos.source === "gps" ? pos.lng : null,
         accuracy: pos.source === "gps" ? (pos.accuracy ?? null) : null,
+        faceDistance: face?.distance ?? null,
         customFields: {
           photo: photo.dataUrl,
           photoAddress: photo.info.address,
@@ -239,7 +293,7 @@ function AttendTokenPage() {
     const code = failure?.code;
     setFailure(null);
     // Location problems need a fresh photo; a wrong code only needs a new code
-    if (code !== "wrong_code") setPhoto(null);
+    if (code !== "wrong_code") { setPhoto(null); setFace(null); }
     setRoomCode("");
   }
 
@@ -439,19 +493,33 @@ function AttendTokenPage() {
             onSubmit={onSubmit}
             className="mt-4 grid gap-3 rounded-2xl border bg-card p-4 shadow-soft sm:mt-6 sm:gap-4 sm:p-6 sm:grid-cols-2"
           >
+            <Field label="Matric number" className="sm:col-span-2">
+              <Input
+                value={form.matricNumber}
+                onChange={(e) => update("matricNumber", e.target.value)}
+                placeholder="CSC/2021/001"
+                autoCapitalize="characters"
+              />
+              {profileLoading && <p className="mt-1 text-xs text-muted-foreground">Looking up your profile…</p>}
+              {profile && (
+                <div className="mt-2 flex items-center gap-3 rounded-xl bg-primary/10 px-3 py-2 text-sm">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                  <span>Welcome back, <strong>{profile.fullName}</strong> · {profile.level} Level · {profile.department}</span>
+                </div>
+              )}
+              {!profile && !profileLoading && form.matricNumber.trim().length >= 5 && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  Not registered yet — fill in your details below. <Link to="/register" className="underline">Register once</Link> to skip this next time.
+                </p>
+              )}
+            </Field>
+
+            {!profile && (<>
             <Field label="Full name" className="sm:col-span-2">
               <Input
                 value={form.fullName}
                 onChange={(e) => update("fullName", e.target.value)}
                 placeholder="Jane Doe"
-              />
-            </Field>
-
-            <Field label="Matric number">
-              <Input
-                value={form.matricNumber}
-                onChange={(e) => update("matricNumber", e.target.value)}
-                placeholder="CSC/2021/001"
               />
             </Field>
 
@@ -533,6 +601,8 @@ function AttendTokenPage() {
               </Select>
             </Field>
 
+            </>)}
+
             <Field label="Room code — look at the projector" className="sm:col-span-2">
               <Input
                 value={roomCode}
@@ -548,6 +618,17 @@ function AttendTokenPage() {
 
             <Field label="Live photo (with location stamp)" className="sm:col-span-2">
               <StampedSelfie onChange={setPhoto} getPosition={() => getCurrentPosition()} />
+              {profile && photo && face && (
+                <p className={`mt-2 flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
+                  face.state === "match" ? "bg-primary/10 text-primary"
+                  : face.state === "checking" ? "bg-secondary text-muted-foreground"
+                  : "bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300"}`}>
+                  {face.state === "checking" && <><Loader2 className="h-4 w-4 animate-spin" /> Comparing with your registered face…</>}
+                  {face.state === "match" && <><CheckCircle2 className="h-4 w-4" /> Face matches your registration</>}
+                  {face.state === "mismatch" && <>Face doesn't clearly match your registration. You can still submit — your lecturer will review it. Better light usually fixes this; try Retake.</>}
+                  {face.state === "noface" && <>No face found in the photo. Retake it facing the light.</>}
+                </p>
+              )}
             </Field>
 
             <div className="sm:col-span-2 pt-1">
