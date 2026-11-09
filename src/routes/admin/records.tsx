@@ -652,6 +652,7 @@ function RecordsPage() {
           <table className="w-full text-sm sm:text-base">
             <thead className="bg-secondary text-left text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
+                <th className="px-4 py-3 whitespace-nowrap">Photo</th>
                 <th className="px-4 py-3 whitespace-nowrap">Name</th>
                 <th className="px-4 py-3 whitespace-nowrap">Matric</th>
                 <th className="px-4 py-3 whitespace-nowrap">Dept</th>
@@ -672,7 +673,7 @@ function RecordsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-4 py-14 text-center text-muted-foreground">
+                  <td colSpan={16} className="px-4 py-14 text-center text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <ClipboardList className="h-10 w-10 opacity-20" />
                       <p className="text-base font-medium">No records match these filters</p>
@@ -686,6 +687,18 @@ function RecordsPage() {
                   const linkTitle = r.linkId ? linkMap.get(r.linkId) : null;
                   return (
                     <tr key={r.id} className="border-t hover:bg-secondary/40 transition-colors">
+                      <td className="px-4 py-2">
+                        {r.customFields?.photo ? (
+                          <button type="button"
+                             onClick={() => {
+                               const w = window.open("", "_blank");
+                               if (w) w.document.write(`<title>${r.fullName}</title><img src="${r.customFields.photo}" style="max-width:100%">`);
+                             }}
+                             title={[r.customFields.photoAddress, r.customFields.photoTakenAt && new Date(r.customFields.photoTakenAt).toLocaleString()].filter(Boolean).join(" · ")}>
+                            <img src={r.customFields.photo} alt={`Photo of ${r.fullName}`} className="h-12 w-16 rounded object-cover border" />
+                          </button>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td className="px-4 py-3 font-medium whitespace-nowrap">{r.fullName}</td>
                       <td className="px-4 py-3 font-mono text-xs sm:text-sm whitespace-nowrap">{r.matricNumber}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{r.department}</td>

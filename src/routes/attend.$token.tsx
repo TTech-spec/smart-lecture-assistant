@@ -26,7 +26,9 @@ import {
   type AttendanceLink,
   type Gender,
 } from "@/lib/attendance-store";
-import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition } from "@/lib/geo";
+import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition, type Coords } from "@/lib/geo";
+import { StampedSelfie } from "@/components/StampedSelfie";
+import type { StampInfo } from "@/lib/photo-stamp";
 
 export const Route = createFileRoute("/attend/$token")({
   head: () => ({
@@ -102,6 +104,8 @@ function AttendTokenPage() {
   const [copied, setCopied]         = useState(false);
   // Device-level block: set to true if this phone already submitted today
   const [deviceBlocked, setDeviceBlocked] = useState(false);
+  // Live stamped selfie (required before submit)
+  const [photo, setPhoto] = useState<{ dataUrl: string; info: StampInfo; pos: Coords } | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -165,6 +169,9 @@ function AttendTokenPage() {
     if (!form.phone.trim())        return toast.error("Please enter your phone number.");
     if (!form.level)               return toast.error("Please select your level.");
     if (!form.gender)              return toast.error("Please select your gender.");
+    if (!photo)                    return toast.error("Please take your live photo first.");
+    if (Date.now() - photo.info.takenAt.getTime() > 5 * 60_000)
+      return toast.error("Your photo is older than 5 minutes. Please retake it.");
 
     const today = todayKey();
 
@@ -195,9 +202,10 @@ function AttendTokenPage() {
       let lat = 0, lng = 0, dist = 0;
 
       if (locationSet) {
-        let pos;
+        let pos: Coords;
         try {
-          pos = await getCurrentPosition();
+          // Reuse the location captured with the photo so it matches the stamp
+          pos = photo.pos;
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Could not read GPS.";
           toast.error(
@@ -259,7 +267,13 @@ function AttendTokenPage() {
         lat,
         lng,
         sessionId: settings.activeSessionId || "",
-        customFields: {},
+        customFields: {
+          photo: photo.dataUrl,
+          photoAddress: photo.info.address,
+          photoTemperatureC: photo.info.temperatureC != null ? String(photo.info.temperatureC) : "",
+          photoWeather: photo.info.weather,
+          photoTakenAt: photo.info.takenAt.toISOString(),
+        },
         linkId: link.id,
         assignedClassCode: classCode,
       });
@@ -565,11 +579,15 @@ function AttendTokenPage() {
               </Select>
             </Field>
 
+            <Field label="Live photo (with location stamp)" className="sm:col-span-2">
+              <StampedSelfie onChange={setPhoto} getPosition={() => getCurrentPosition()} />
+            </Field>
+
             <div className="sm:col-span-2 pt-1">
               <Button
                 type="submit"
                 className="w-full h-11 text-base"
-                disabled={submitting || (alreadyMarked && !!form.matricNumber.trim())}
+                disabled={submitting || !photo || (alreadyMarked && !!form.matricNumber.trim())}
               >
                 {submitting
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
