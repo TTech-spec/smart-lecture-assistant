@@ -13,6 +13,8 @@ import {
 } from "@/lib/dashboard-preferences";
 import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { IOSInstallHelp } from "@/components/IOSInstallHelp";
+import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { useStore } from "@/hooks/use-store";
 import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth } from "@/lib/lecturer-auth";
 
 export const Route = createFileRoute("/admin")({
@@ -151,150 +153,56 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
     };
   }, []);
 
+  const { links, records } = useStore();
+  const sidebar = (onNavigate?: () => void) => (
+    <AdminSidebar
+      links={links}
+      records={records}
+      onNavigate={onNavigate}
+      onLogout={onLogout}
+      onSetup={() => { setWizardOpen(true); onNavigate?.(); }}
+      onInstall={() => { handleInstallClick(); onNavigate?.(); }}
+      showInstall={!installed}
+    />
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-hero" style={getThemeVars(themeId)}>
-      <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur-md shadow-soft">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-4">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow">
-                <MapPin className="h-4 w-4" />
-              </div>
-              <span className="font-semibold tracking-tight hidden sm:block">Attendly</span>
-            </Link>
-            
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-1">
-              <Link
-                to="/admin"
-                activeOptions={{ exact: true }}
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <LayoutDashboard className="h-3.5 w-3.5" /> Dashboard
-              </Link>
-              <Link
-                to="/admin/records"
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <ClipboardList className="h-3.5 w-3.5" /> Records
-              </Link>
-              <Link
-                to="/admin/links"
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <Link2 className="h-3.5 w-3.5" /> Links
-              </Link>
-              <Link
-                to="/admin/students"
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <Users className="h-3.5 w-3.5" /> Students
-              </Link>
-              <Link
-                to="/admin/materials"
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <BookOpen className="h-3.5 w-3.5" /> Materials
-              </Link>
-            </nav>
-          </div>
+    <div className="min-h-screen bg-[#fbfcfc] lg:flex" style={getThemeVars(themeId)}>
+      {/* Desktop sidebar */}
+      <div className="sticky top-0 hidden h-screen shrink-0 lg:block">{sidebar()}</div>
 
-          <div className="flex items-center gap-2">
-            {!installed && (
-              <Button size="sm" variant="outline" onClick={handleInstallClick} className="hidden sm:flex">
-                <Download className="mr-2 h-3.5 w-3.5" /> Install app
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => setWizardOpen(true)} className="hidden sm:flex">
-              <Settings2 className="mr-2 h-3.5 w-3.5" /> Setup
-            </Button>
-            <Button size="sm" variant="outline" onClick={onLogout} className="hidden sm:flex">
-              <LogOut className="mr-2 h-3.5 w-3.5" /> Sign out
-            </Button>
-
-            {/* Mobile Menu Button */}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="md:hidden"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      {/* Mobile top bar + slide-in sidebar */}
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b bg-[#121a2b] px-4 py-3 text-white lg:hidden">
+        <Link to="/admin" className="flex items-center gap-2 font-display text-lg font-semibold">
+          <ShieldCheck className="h-5 w-5 text-[#4fd8a8]" /> Attendly
+        </Link>
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          aria-label="Open menu"
+          className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-white/10"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      </header>
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+          <button aria-label="Close menu" className="absolute inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
+          <div className="relative h-full w-[248px] shadow-xl">
+            {sidebar(() => setMobileMenuOpen(false))}
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              aria-label="Close menu"
+              className="absolute right-2 top-4 flex h-9 w-9 items-center justify-center rounded-lg text-[#c9d1dc] hover:bg-white/10"
             >
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
+      )}
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t bg-card/95 backdrop-blur-md">
-            <nav className="flex flex-col p-4 space-y-2">
-              <Link
-                to="/admin"
-                activeOptions={{ exact: true }}
-                onClick={() => setMobileMenuOpen(false)}
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <LayoutDashboard className="h-4 w-4" /> Dashboard
-              </Link>
-              <Link
-                to="/admin/records"
-                onClick={() => setMobileMenuOpen(false)}
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <ClipboardList className="h-4 w-4" /> Records
-              </Link>
-              <Link
-                to="/admin/links"
-                onClick={() => setMobileMenuOpen(false)}
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <Link2 className="h-4 w-4" /> Links
-              </Link>
-              <Link
-                to="/admin/students"
-                onClick={() => setMobileMenuOpen(false)}
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <Users className="h-4 w-4" /> Students
-              </Link>
-              <Link
-                to="/admin/materials"
-                onClick={() => setMobileMenuOpen(false)}
-                className="[&.active]:bg-primary/10 [&.active]:text-primary flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                <BookOpen className="h-4 w-4" /> Materials
-              </Link>
-              {!installed && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => { handleInstallClick(); setMobileMenuOpen(false); }}
-                  className="w-full justify-start"
-                >
-                  <Download className="mr-2 h-4 w-4" /> Install app
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => { setWizardOpen(true); setMobileMenuOpen(false); }}
-                className="w-full justify-start"
-              >
-                <Settings2 className="mr-2 h-4 w-4" /> Setup
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => { onLogout(); setMobileMenuOpen(false); }}
-                className="w-full justify-start"
-              >
-                <LogOut className="mr-2 h-4 w-4" /> Sign out
-              </Button>
-            </nav>
-          </div>
-        )}
-      </header>
+      <div className="min-w-0 flex-grow">
       <Outlet />
+      </div>
       <InstallAppButton />
       <IOSInstallHelp open={showIOSHelp} onClose={() => setShowIOSHelp(false)} />
       {wizardOpen && (

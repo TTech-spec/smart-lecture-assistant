@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Ban, Loader2, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { QrCode as QrImage } from "@/components/QrCode";
 import { useStore } from "@/hooks/use-store";
 import { disableLink, fetchRoomCode, isLinkValid, type AttendanceLink } from "@/lib/attendance-store";
 
@@ -82,7 +83,6 @@ function ProjectorPage() {
   const msLeft = new Date(link.expiresAt).getTime() - now;
   const closesIn = msLeft > 0 ? `${Math.floor(msLeft / 60000)}:${String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0")}` : "closed";
   const url = buildAttendUrl(link.token);
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=0&data=${encodeURIComponent(url)}`;
 
   function endCheckIn(l: AttendanceLink) {
     if (!confirm("End check-in now? Students will no longer be able to submit.")) return;
@@ -118,7 +118,7 @@ function ProjectorPage() {
 
       <div className="flex flex-grow flex-col items-center justify-center gap-10 px-8 lg:flex-row lg:gap-28">
         <div className="rounded-3xl bg-white p-4 sm:p-5">
-          <img src={qrSrc} alt={`QR code for ${link.title}`} className="h-48 w-48 sm:h-64 sm:w-64" />
+          <QrImage value={url} size={256} alt={`QR code for ${link.title}`} className="h-48 w-48 sm:h-64 sm:w-64" />
         </div>
         <div className="flex flex-col items-center gap-4 lg:items-start">
           <p className="text-base text-[#9aa6b8] sm:text-lg">Scan, then enter this code</p>

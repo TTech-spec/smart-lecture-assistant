@@ -1420,3 +1420,53 @@ export async function deleteStudent(matric: string): Promise<void> {
   const { error } = await supabase.from("students").delete().eq("matric_number", matric);
   if (error) throw new Error(error.message);
 }
+
+// ── Lecturer: blocked/failed check-in attempts (security-hardening.sql) ─────
+
+export type CheckInAttempt = {
+  id: number;
+  linkId: string | null;
+  deviceId: string | null;
+  matric: string | null;
+  reason: string;
+  detail: string | null;
+  lat: number | null;
+  lng: number | null;
+  accuracy: number | null;
+  at: string;
+};
+
+/** Lecturer only. Most recent first. */
+export async function fetchAttempts(opts: { linkId?: string; sinceDays?: number; limit?: number } = {}): Promise<CheckInAttempt[]> {
+  if (!supabase) return [];
+  let q = supabase.from("attendance_attempts").select("*").order("at", { ascending: false }).limit(opts.limit ?? 200);
+  if (opts.linkId) q = q.eq("link_id", opts.linkId);
+  if (opts.sinceDays) q = q.gte("at", new Date(Date.now() - opts.sinceDays * 86_400_000).toISOString());
+  const { data, error } = await q;
+  if (error) return [];
+  return (data || []).map((r) => ({
+    id: r.id, linkId: r.link_id, deviceId: r.device_id, matric: r.matric, reason: r.reason,
+    detail: r.detail, lat: r.lat, lng: r.lng, accuracy: r.accuracy, at: r.at,
+  }));
+}
+
+/** Lecturer decision on a flagged check-in. Approve keeps it; reject removes it. */
+export function reviewRecord(record: AttendanceRecord, decision: "approved" | "rejected") {
+  const all = loadRecords();
+  if (decision === "rejected") {
+    deleteRecordById(record.id, all);
+    return;
+  }
+  const updated: AttendanceRecord = {
+    ...record,
+    customFields: { ...record.customFields, reviewed: "approved", reviewedAt: new Date().toISOString() },
+  };
+  saveRecords(all.map((r) => (r.id === record.id ? updated : r)));
+  syncRecord(updated);
+}
+
+/** Move a link's closing time (lecturer). */
+export function setLinkExpiry(id: string, expiresAt: string) {
+  saveLinks(loadLinks().map((l) => (l.id === id ? { ...l, expiresAt } : l)));
+  sync(supabase?.from("attendance_links").update({ expires_at: expiresAt }).eq("id", id));
+}

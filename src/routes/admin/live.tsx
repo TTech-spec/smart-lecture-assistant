@@ -1,0 +1,204 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { useStore } from "@/hooks/use-store";
+import {
+  disableLink, fetchAttempts, setLinkExpiry,
+  type AttendanceLink, type AttendanceRecord, type CheckInAttempt,
+} from "@/lib/attendance-store";
+import { needsReview } from "@/components/admin/AdminSidebar";
+import { ATTEMPT_LABEL, Avatar, PageHeader, Panel, PanelTitle, Stat } from "@/components/admin/ui";
+import { useClassCode, useLiveLink } from "@/routes/admin/index";
+
+export const Route = createFileRoute("/admin/live")({
+  head: () => ({ meta: [{ title: "Live session — Attendly" }] }),
+  component: LivePage,
+});
+
+function LivePage() {
+  const { links, records } = useStore();
+  const { live, now } = useLiveLink(links);
+  const { code, secondsLeft } = useClassCode(live?.id ?? null);
+  const [attempts, setAttempts] = useState<CheckInAttempt[]>([]);
+
+  // Refresh blocked attempts every 10 s while live
+  useEffect(() => {
+    if (!live) return;
+    let cancelled = false;
+    const load = () => fetchAttempts({ linkId: live.id }).then((a) => { if (!cancelled) setAttempts(a); });
+    load();
+    const t = setInterval(load, 10_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [live]);
+
+  if (!live) {
+    return (
+      <main className="mx-auto max-w-[1240px] px-4 py-6 sm:px-8 lg:py-7">
+        <PageHeader eyebrow="Live session" title="No check-in is running" />
+        <Panel className="mt-6 flex flex-col items-start gap-3">
+          <p className="text-sm text-muted-foreground">Start a check-in from the lecture hall to see students arrive here in real time.</p>
+          <Button asChild className="rounded-xl"><Link to="/admin/links">Start check-in</Link></Button>
+        </Panel>
+      </main>
+    );
+  }
+
+  const mine = records.filter((r) => r.linkId === live.id);
+  const flagged = mine.filter(needsReview).length;
+  const start = new Date(live.createdAt);
+  const end = new Date(live.expiresAt);
+  const blockedByReason = attempts.reduce<Record<string, number>>((acc, a) => { acc[a.reason] = (acc[a.reason] ?? 0) + 1; return acc; }, {});
+
+  function extend(minutes: number) {
+    setLinkExpiry(live!.id, new Date(Math.max(end.getTime(), Date.now()) + minutes * 60_000).toISOString());
+    toast.success(`Check-in extended by ${minutes} minutes.`);
+  }
+
+  return (
+    <main className="mx-auto flex max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-8 lg:py-7">
+      <PageHeader
+        eyebrow={<span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#12b886]" />Live · started {start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · closes {end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+        title={`${live.courseCode} · ${live.title}`}
+        actions={<>
+          <Button variant="outline" className="h-10 rounded-xl" onClick={() => extend(5)}>+5 minutes</Button>
+          <Button variant="outline" className="h-10 rounded-xl text-red-700 hover:text-red-700" onClick={() => { if (confirm("End check-in now?")) { disableLink(live.id); toast.success("Check-in ended."); } }}>End check-in</Button>
+          <Button asChild className="h-10 rounded-xl"><Link to="/admin/projector" search={{ link: live.id }}>Open projector</Link></Button>
+        </>}
+      />
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="rounded-2xl bg-[#121a2b] px-5 py-4 text-white">
+          <p className="text-[13px] text-[#9aa6b8]">Class code</p>
+          <p className="mt-1.5 font-display text-[34px] font-semibold leading-none tracking-[0.08em]">{code ?? "····"}</p>
+          <div className="mt-3 h-[3px] rounded bg-[#283349]"><div className="h-full rounded bg-[#4fd8a8] transition-[width] duration-1000 ease-linear" style={{ width: `${(secondsLeft / 30) * 100}%` }} /></div>
+        </div>
+        <Stat label="Checked in" value={mine.length} hint={`Closes in ${Math.max(0, Math.ceil((end.getTime() - now) / 60000))} min`} />
+        <Stat label="Flagged" value={flagged} tone={flagged ? "amber" : undefined} hint={flagged ? <Link to="/admin/review" className="text-[#0f8a66] hover:underline">Review now</Link> : "All clear"} />
+        <Stat label="Blocked attempts" value={attempts.length} hint={Object.entries(blockedByReason).map(([k, v]) => `${v} ${(ATTEMPT_LABEL[k] ?? k).toLowerCase()}`).join(" · ") || "None"} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-5">
+        <Panel className="flex min-h-[420px] flex-col lg:col-span-3">
+          <PanelTitle action={live.anchorRadius ? <span className="text-xs text-muted-foreground">Allowed: within {live.anchorRadius} m of you</span> : null}>
+            Where students checked in from
+          </PanelTitle>
+          <CheckInMap link={live} records={mine} attempts={attempts} />
+        </Panel>
+        <Panel className="flex flex-col lg:col-span-2">
+          <PanelTitle action={<span className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#12b886]" />Updating</span>}>
+            Live feed
+          </PanelTitle>
+          <Feed records={mine} attempts={attempts} />
+        </Panel>
+      </div>
+    </main>
+  );
+}
+
+type FeedItem =
+  | { kind: "ok"; at: string; r: AttendanceRecord }
+  | { kind: "blocked"; at: string; a: CheckInAttempt };
+
+function Feed({ records, attempts }: { records: AttendanceRecord[]; attempts: CheckInAttempt[] }) {
+  const items: FeedItem[] = useMemo(() => [
+    ...records.map((r) => ({ kind: "ok" as const, at: r.submittedAt, r })),
+    ...attempts.map((a) => ({ kind: "blocked" as const, at: a.at, a })),
+  ].sort((x, y) => y.at.localeCompare(x.at)).slice(0, 12), [records, attempts]);
+
+  if (items.length === 0) return <p className="m-auto py-10 text-sm text-muted-foreground">Waiting for the first check-in…</p>;
+  return (
+    <div className="mt-2 divide-y divide-[rgba(27,36,57,0.06)] overflow-y-auto">
+      {items.map((it) => {
+        const time = new Date(it.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        if (it.kind === "ok") {
+          const flagged = needsReview(it.r);
+          return (
+            <div key={`r${it.r.id}`} className="flex items-center gap-3 py-2.5">
+              <Avatar src={it.r.customFields?.photo} name={it.r.fullName} size={32} />
+              <div className="min-w-0 flex-grow">
+                <p className="truncate text-sm font-medium">{it.r.fullName}</p>
+                <p className={`text-xs ${flagged ? "text-amber-700 dark:text-amber-400" : "text-[#0f8a66]"}`}>
+                  {flagged ? "Flagged for review" : "Checked in"}{it.r.distanceMeters ? ` · ${it.r.distanceMeters} m` : ""}
+                </p>
+              </div>
+              <span className="text-xs text-muted-foreground">{time}</span>
+            </div>
+          );
+        }
+        return (
+          <div key={`a${it.a.id}`} className="flex items-center gap-3 py-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-xs font-bold text-red-700 dark:bg-red-900/30">✕</span>
+            <div className="min-w-0 flex-grow">
+              <p className="truncate text-sm font-medium">{it.a.matric || "Unknown student"}</p>
+              <p className="text-xs text-red-700 dark:text-red-400">
+                Blocked · {ATTEMPT_LABEL[it.a.reason] ?? it.a.reason}
+                {it.a.reason === "out_of_range" && it.a.detail ? ` · ${it.a.detail} m away` : ""}
+              </p>
+            </div>
+            <span className="text-xs text-muted-foreground">{time}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Simple map without tiles: the lecturer's verified spot in the middle, the
+ * allowed radius as a dashed circle, and every check-in / blocked attempt
+ * placed at its real offset (north up). Far-away points are pinned to the edge.
+ */
+function CheckInMap({ link, records, attempts }: { link: AttendanceLink; records: AttendanceRecord[]; attempts: CheckInAttempt[] }) {
+  if (link.anchorLat == null || link.anchorLng == null) {
+    return <p className="m-auto max-w-sm py-10 text-center text-sm text-muted-foreground">This check-in has no verified lecturer location, so there's nothing to map. New check-ins ask you to verify your location first.</p>;
+  }
+  const radius = link.anchorRadius ?? 100;
+  const W = 640, H = 400, cx = W / 2, cy = H / 2;
+  const viewM = radius * 3; // metres from centre to the shorter edge
+  const scale = (H / 2 - 16) / viewM;
+  const toXY = (lat: number, lng: number) => {
+    const dy = (lat - link.anchorLat!) * 111_320;
+    const dx = (lng - link.anchorLng!) * 111_320 * Math.cos((link.anchorLat! * Math.PI) / 180);
+    let x = cx + dx * scale, y = cy - dy * scale;
+    const maxX = W / 2 - 12, maxY = H / 2 - 12;
+    const k = Math.max(Math.abs(x - cx) / maxX, Math.abs(y - cy) / maxY, 1);
+    x = cx + (x - cx) / k; y = cy + (y - cy) / k;
+    return { x, y, clipped: k > 1 };
+  };
+
+  const dots = [
+    ...records.filter((r) => r.lat && r.lng).map((r) => ({ key: `r${r.id}`, ...toXY(r.lat, r.lng), fill: needsReview(r) ? "#f59e0b" : "#12b886", label: r.fullName })),
+    ...attempts.filter((a) => a.lat != null && a.lng != null).map((a) => ({ key: `a${a.id}`, ...toXY(a.lat!, a.lng!), fill: "#ef4444", label: `${a.matric ?? "Unknown"} · ${ATTEMPT_LABEL[a.reason] ?? a.reason}` })),
+  ];
+
+  return (
+    <div className="relative mt-3 flex-grow overflow-hidden rounded-2xl border border-[rgba(27,36,57,0.06)] bg-[#eef2f1] dark:bg-[#1a2338]">
+      <svg role="img" aria-label="Map of check-in locations relative to you" viewBox={`0 0 ${W} ${H}`} className="h-full w-full" preserveAspectRatio="xMidYMid meet">
+        {[1, 2, 3].map((i) => (
+          <circle key={i} cx={cx} cy={cy} r={radius * i * scale} fill="none" stroke="rgba(27,36,57,0.08)" strokeWidth="1" />
+        ))}
+        <circle cx={cx} cy={cy} r={radius * scale} fill="rgba(18,184,134,0.10)" stroke="#12b886" strokeWidth="2" strokeDasharray="6 5" />
+        <text x={cx + radius * scale + 6} y={cy - 4} fontSize="11" fill="#5f6b7d">{radius} m</text>
+        <text x={cx + radius * 3 * scale - 30} y={cy - 4} fontSize="11" fill="#5f6b7d">{radius * 3} m</text>
+        {dots.map((d) => (
+          <circle key={d.key} cx={d.x} cy={d.y} r={d.clipped ? 7 : 5.5} fill={d.fill} stroke={d.clipped ? "#fff" : "none"} strokeWidth="2">
+            <title>{d.label}{d.clipped ? " (further away)" : ""}</title>
+          </circle>
+        ))}
+        <circle cx={cx} cy={cy} r="8" fill="#121a2b" stroke="#fff" strokeWidth="3"><title>You</title></circle>
+        <text x={W - 22} y={22} fontSize="12" fontWeight="600" fill="#5f6b7d">N ↑</text>
+      </svg>
+      <div className="absolute bottom-3 left-3 flex flex-wrap gap-3 rounded-lg border border-[rgba(27,36,57,0.08)] bg-white/90 px-3 py-1.5 text-xs dark:bg-black/60">
+        <Legend color="#121a2b" label="You" />
+        <Legend color="#12b886" label="Accepted" />
+        <Legend color="#f59e0b" label="Flagged" />
+        <Legend color="#ef4444" label="Blocked" />
+      </div>
+    </div>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />{label}</span>;
+}

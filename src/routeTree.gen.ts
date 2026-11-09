@@ -17,9 +17,12 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as TestRouteImport } from './routes/test'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminLinksRouteImport } from './routes/admin/links'
+import { Route as AdminLiveRouteImport } from './routes/admin/live'
+import { Route as AdminManageRouteImport } from './routes/admin/manage'
 import { Route as AdminMaterialsRouteImport } from './routes/admin/materials'
 import { Route as AdminProjectorRouteImport } from './routes/admin/projector'
 import { Route as AdminRecordsRouteImport } from './routes/admin/records'
+import { Route as AdminReviewRouteImport } from './routes/admin/review'
 import { Route as AdminStudentsRouteImport } from './routes/admin/students'
 import { Route as AttendTokenRouteImport } from './routes/attend.$token'
 import { Route as TestTokenRouteImport } from './routes/test.$token'
@@ -64,6 +67,16 @@ const AdminLinksRoute = AdminLinksRouteImport.update({
   path: '/links',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminLiveRoute = AdminLiveRouteImport.update({
+  id: '/live',
+  path: '/live',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminManageRoute = AdminManageRouteImport.update({
+  id: '/manage',
+  path: '/manage',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminMaterialsRoute = AdminMaterialsRouteImport.update({
   id: '/materials',
   path: '/materials',
@@ -77,6 +90,11 @@ const AdminProjectorRoute = AdminProjectorRouteImport.update({
 const AdminRecordsRoute = AdminRecordsRouteImport.update({
   id: '/records',
   path: '/records',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminReviewRoute = AdminReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminStudentsRoute = AdminStudentsRouteImport.update({
@@ -103,9 +121,12 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
+  '/admin/live': typeof AdminLiveRoute
+  '/admin/manage': typeof AdminManageRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/projector': typeof AdminProjectorRoute
   '/admin/records': typeof AdminRecordsRoute
+  '/admin/review': typeof AdminReviewRoute
   '/admin/students': typeof AdminStudentsRoute
   '/attend/$token': typeof AttendTokenRoute
   '/test/$token': typeof TestTokenRoute
@@ -118,9 +139,12 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
+  '/admin/live': typeof AdminLiveRoute
+  '/admin/manage': typeof AdminManageRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/projector': typeof AdminProjectorRoute
   '/admin/records': typeof AdminRecordsRoute
+  '/admin/review': typeof AdminReviewRoute
   '/admin/students': typeof AdminStudentsRoute
   '/attend/$token': typeof AttendTokenRoute
   '/test/$token': typeof TestTokenRoute
@@ -135,9 +159,12 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
+  '/admin/live': typeof AdminLiveRoute
+  '/admin/manage': typeof AdminManageRoute
   '/admin/materials': typeof AdminMaterialsRoute
   '/admin/projector': typeof AdminProjectorRoute
   '/admin/records': typeof AdminRecordsRoute
+  '/admin/review': typeof AdminReviewRoute
   '/admin/students': typeof AdminStudentsRoute
   '/attend/$token': typeof AttendTokenRoute
   '/test/$token': typeof TestTokenRoute
@@ -153,9 +180,12 @@ export interface FileRouteTypes {
     | '/register'
     | '/test'
     | '/admin/links'
+    | '/admin/live'
+    | '/admin/manage'
     | '/admin/materials'
     | '/admin/projector'
     | '/admin/records'
+    | '/admin/review'
     | '/admin/students'
     | '/attend/$token'
     | '/test/$token'
@@ -168,9 +198,12 @@ export interface FileRouteTypes {
     | '/register'
     | '/test'
     | '/admin/links'
+    | '/admin/live'
+    | '/admin/manage'
     | '/admin/materials'
     | '/admin/projector'
     | '/admin/records'
+    | '/admin/review'
     | '/admin/students'
     | '/attend/$token'
     | '/test/$token'
@@ -184,9 +217,12 @@ export interface FileRouteTypes {
     | '/register'
     | '/test'
     | '/admin/links'
+    | '/admin/live'
+    | '/admin/manage'
     | '/admin/materials'
     | '/admin/projector'
     | '/admin/records'
+    | '/admin/review'
     | '/admin/students'
     | '/attend/$token'
     | '/test/$token'
@@ -261,6 +297,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLinksRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/live': {
+      id: '/admin/live'
+      path: '/live'
+      fullPath: '/admin/live'
+      preLoaderRoute: typeof AdminLiveRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/manage': {
+      id: '/admin/manage'
+      path: '/manage'
+      fullPath: '/admin/manage'
+      preLoaderRoute: typeof AdminManageRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/materials': {
       id: '/admin/materials'
       path: '/materials'
@@ -280,6 +330,13 @@ declare module '@tanstack/react-router' {
       path: '/records'
       fullPath: '/admin/records'
       preLoaderRoute: typeof AdminRecordsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/review': {
+      id: '/admin/review'
+      path: '/review'
+      fullPath: '/admin/review'
+      preLoaderRoute: typeof AdminReviewRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/students': {
@@ -308,18 +365,24 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminLinksRoute: typeof AdminLinksRoute
+  AdminLiveRoute: typeof AdminLiveRoute
+  AdminManageRoute: typeof AdminManageRoute
   AdminMaterialsRoute: typeof AdminMaterialsRoute
   AdminProjectorRoute: typeof AdminProjectorRoute
   AdminRecordsRoute: typeof AdminRecordsRoute
+  AdminReviewRoute: typeof AdminReviewRoute
   AdminStudentsRoute: typeof AdminStudentsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminLinksRoute: AdminLinksRoute,
+  AdminLiveRoute: AdminLiveRoute,
+  AdminManageRoute: AdminManageRoute,
   AdminMaterialsRoute: AdminMaterialsRoute,
   AdminProjectorRoute: AdminProjectorRoute,
   AdminRecordsRoute: AdminRecordsRoute,
+  AdminReviewRoute: AdminReviewRoute,
   AdminStudentsRoute: AdminStudentsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }

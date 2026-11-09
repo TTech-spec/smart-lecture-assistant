@@ -6,6 +6,7 @@ import {
   MapPin, Loader2, MonitorPlay,
 } from "lucide-react";
 import { getPrecisePosition, type Coords } from "@/lib/geo";
+import { QrCode as QrImage } from "@/components/QrCode";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,6 @@ function StatusBadge({ link }: { link: AttendanceLink }) {
 
 // ── QR Code modal ─────────────────────────────────────────────────────────────
 function QrModal({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(url)}`;
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -91,7 +91,7 @@ function QrModal({ url, title, onClose }: { url: string; title: string; onClose:
         <h2 className="mt-3 text-lg font-semibold">{title}</h2>
         <p className="mt-1 text-xs text-muted-foreground break-all">{url}</p>
         <div className="mt-4 flex justify-center rounded-xl border bg-white p-3">
-          <img src={qrSrc} alt="QR code" width={200} height={200} className="rounded" />
+          <QrImage value={url} size={200} alt={`QR code for ${title}`} className="rounded" />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
           Students can scan this QR code to open the link directly.
@@ -383,7 +383,7 @@ function GenerateLinkForm({
                 No tests available yet. Upload your test questions in the dashboard first.
               </p>
               <Button asChild size="sm" type="button" className="w-full">
-                <Link to="/admin" hash="tests-quizzes">Click here to upload questions</Link>
+                <Link to="/admin/manage" hash="tests-quizzes">Click here to upload questions</Link>
               </Button>
             </div>
           ) : (
