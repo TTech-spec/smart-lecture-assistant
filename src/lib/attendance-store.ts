@@ -639,6 +639,14 @@ export async function fetchLinkByToken(token: string): Promise<AttendanceLink | 
   if (!supabase) return local;
 
   try {
+    // Students: server function that returns only this link, without the lecturer's GPS
+    const rpc = await supabase.rpc("get_attendance_link", { p_token: token });
+    if (!rpc.error) {
+      const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+      return row ? linkFromDb(row) : null;
+    }
+
+    // Older databases without security-fixes.sql: read the table directly
     const { data, error } = await supabase
       .from("attendance_links")
       .select("*")
@@ -1249,7 +1257,7 @@ export type SubmitAttendanceResult = {
 export type CheckInErrorCode =
   | "not_found" | "closed" | "locked" | "wrong_code" | "weak_gps" | "no_gps"
   | "out_of_range" | "duplicate_device" | "duplicate_matric" | "invalid"
-  | "not_configured" | "unknown";
+  | "no_location" | "not_configured" | "unknown";
 
 export class CheckInError extends Error {
   code: CheckInErrorCode;
@@ -1266,7 +1274,7 @@ export class CheckInError extends Error {
 }
 
 function parseCheckInError(raw: string): CheckInError {
-  const m = raw.match(/(not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|invalid)(?::(\d+))?(?::(\d+))?/);
+  const m = raw.match(/(not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|no_location|invalid)(?::(\d+))?(?::(\d+))?/);
   if (!m) {
     if (/function .*submit_attendance.* does not exist|schema cache/i.test(raw)) {
       return new CheckInError("not_configured", "Check-in is not set up yet. Ask your lecturer to run security-hardening.sql.");
@@ -1286,6 +1294,10 @@ export async function submitAttendance(input: SubmitAttendanceInput): Promise<Su
   if (!supabase) throw new CheckInError("not_configured", "Database not configured.");
   const { data, error } = await supabase.rpc("submit_attendance", { p: input });
   if (error) throw parseCheckInError(error.message);
+  // Refusals the server logs (wrong code, out of range…) come back as {"error": "..."}
+  if (data && typeof data === "object" && "error" in data && (data as { error?: string }).error) {
+    throw parseCheckInError(String((data as { error: string }).error));
+  }
   const r = data as SubmitAttendanceResult;
   // Mirror locally so the device/matric checks work offline too
   const all = loadRecords();

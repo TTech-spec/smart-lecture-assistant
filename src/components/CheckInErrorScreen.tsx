@@ -168,6 +168,13 @@ function describe(e: CheckInError, course: string): View {
         title: "Already marked today",
         body: `This matric number has already been marked present for ${course} today.`,
       };
+    case "no_location":
+      return {
+        tone: "grey",
+        icon: <MapPinOff className="h-6 w-6" />,
+        title: "Check-in isn't ready yet",
+        body: "Your lecturer hasn't verified the class location for this check-in, so it can't accept anyone yet. Let your lecturer know — they need to start a new check-in from the lecture hall.",
+      };
     case "not_found":
       return {
         tone: "grey",

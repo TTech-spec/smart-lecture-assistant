@@ -202,19 +202,19 @@ begin
     v_name := st.full_name; v_dept := st.department; v_level := st.level;
     v_gender := st.gender; v_phone := st.phone;
     if v_face is null then
-      v_flags := v_flags || 'no_face_check';
+      v_flags := array_append(v_flags, 'no_face_check');
     elsif v_face > 0.55 then
-      v_flags := v_flags || 'face_mismatch';
+      v_flags := array_append(v_flags, 'face_mismatch');
     end if;
     if st.device_id <> v_device then
-      v_flags := v_flags || 'different_phone';
+      v_flags := array_append(v_flags, 'different_phone');
     end if;
   else
     if coalesce(p->>'fullName', '') = '' then raise exception 'invalid'; end if;
     v_name := left(p->>'fullName', 120); v_dept := left(coalesce(p->>'department', ''), 120);
     v_level := left(coalesce(p->>'level', ''), 10); v_gender := left(coalesce(p->>'gender', 'other'), 10);
     v_phone := left(coalesce(p->>'phone', ''), 30);
-    v_flags := v_flags || 'not_registered';
+    v_flags := array_append(v_flags, 'not_registered');
   end if;
 
   if l.assign_class_code then

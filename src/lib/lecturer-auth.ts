@@ -17,10 +17,22 @@ const LOCAL_DEFAULT_PASS = "lecturer123";
 
 export const usesSupabaseAuth = Boolean(supabase);
 
+/**
+ * Whether the signed-in account is on the lecturers list (security-fixes.sql).
+ * Databases without that file yet: any signed-in account counts, as before.
+ */
+async function accountIsLecturer(): Promise<boolean> {
+  if (!supabase) return true;
+  const { data, error } = await supabase.rpc("is_lecturer");
+  if (error) return /does not exist|schema cache|Could not find/i.test(error.message);
+  return data === true;
+}
+
 export async function isLecturerSignedIn(): Promise<boolean> {
   if (supabase) {
     const { data } = await supabase.auth.getSession();
-    return Boolean(data.session);
+    if (!data.session) return false;
+    return accountIsLecturer();
   }
   return typeof window !== "undefined" && sessionStorage.getItem(LOCAL_AUTH_KEY) === "1";
 }
@@ -36,6 +48,10 @@ export async function signInLecturer(email: string, password: string): Promise<v
             ? "This account's email is not confirmed yet. Confirm it in Supabase → Authentication → Users."
             : error.message,
       );
+    }
+    if (!(await accountIsLecturer())) {
+      await supabase.auth.signOut();
+      throw new Error("This account isn't a lecturer account. Ask your administrator to add you.");
     }
     return;
   }
@@ -71,6 +87,9 @@ export async function changeLecturerPassword(current: string, next: string): Pro
 /** Subscribe to sign-in / sign-out changes (Supabase only). */
 export function onLecturerAuthChange(cb: (signedIn: boolean) => void): () => void {
   if (!supabase) return () => {};
-  const { data } = supabase.auth.onAuthStateChange((_e, session) => cb(Boolean(session)));
+  const { data } = supabase.auth.onAuthStateChange((_e, session) => {
+    if (!session) { cb(false); return; }
+    accountIsLecturer().then(cb);
+  });
   return () => data.subscription.unsubscribe();
 }
