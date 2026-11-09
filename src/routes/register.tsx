@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FaceScan, type FaceScanResult } from "@/components/FaceScan";
+import { preloadFaceModels } from "@/lib/face";
 import {
   getDeviceId, getRegisteredMatric, loadSettings, registerStudent, RegisterError, type Gender,
 } from "@/lib/attendance-store";
@@ -34,6 +35,9 @@ function RegisterPage() {
   const deviceId = useMemo(() => getDeviceId(), []);
   const already = useMemo(() => getRegisteredMatric(), []);
   const departments = settings.departments || [];
+
+  // Download and warm up the face scanner while the student types their details
+  useEffect(() => { preloadFaceModels(); }, []);
 
   const update = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 

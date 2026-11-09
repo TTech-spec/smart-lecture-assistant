@@ -30,7 +30,7 @@ import {
 } from "@/lib/attendance-store";
 import { getCurrentPosition, type Coords } from "@/lib/geo";
 import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
-import { analyseFace, faceDistance, FACE_MATCH_THRESHOLD } from "@/lib/face";
+import { analyseFace, faceDistance, FACE_MATCH_THRESHOLD, preloadFaceModels } from "@/lib/face";
 import { StampedSelfie } from "@/components/StampedSelfie";
 import type { StampInfo } from "@/lib/photo-stamp";
 
@@ -158,6 +158,7 @@ function AttendTokenPage() {
       setProfile(p);
       setProfileLoading(false);
       if (p) {
+        preloadFaceModels(); // ready by the time the selfie is taken
         setForm((f) => ({ ...f, fullName: p.fullName, department: p.department, phone: p.phone, level: p.level, gender: p.gender }));
       }
     }, 500);

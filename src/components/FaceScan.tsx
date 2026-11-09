@@ -17,7 +17,7 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
   const [status, setStatus] = useState<"loading" | "live" | "error">("loading");
   const [step, setStep] = useState<Step>("hold");
   const [faceSeen, setFaceSeen] = useState(false);
-  const [hint, setHint] = useState("Loading face scanner…");
+  const [hint, setHint] = useState("Loading face scanner (first time only)…");
   const [error, setError] = useState<string | null>(null);
   const doneRef = useRef(false);
 
@@ -61,22 +61,23 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
       const v = videoRef.current;
       if (v && v.videoWidth) {
         try {
-          const f = await analyseFace(v, { withDescriptor: current === "hold" && stillFrames >= 8 });
+          const f = await analyseFace(v, { withDescriptor: current === "hold" && stillFrames >= 4 });
           setFaceSeen(Boolean(f));
           if (!f) {
             stillFrames = 0;
             setHint("No face found — move closer, into the light");
-          } else if (f.box.w < 0.25) {
-            stillFrames = 0;
+          } else if (f.box.w < 0.15) {
+            stillFrames = Math.max(0, stillFrames - 1);
             setHint("Move closer to the camera");
           } else {
             const moved = lastBox ? Math.hypot(f.box.x - lastBox.x, f.box.y - lastBox.y) : 0;
             lastBox = { x: f.box.x, y: f.box.y };
 
             if (current === "hold") {
-              stillFrames = moved < 0.02 ? stillFrames + 1 : 0;
-              setHint(stillFrames < 8 ? "Hold still…" : "Capturing…");
-              if (stillFrames >= 8 && f.descriptor.length === 128) {
+              // Forgiving: small wobbles only slow the count, they don't restart it
+              stillFrames = moved < 0.05 ? stillFrames + 1 : Math.max(0, stillFrames - 1);
+              setHint(stillFrames < 4 ? "Hold still…" : "Capturing…");
+              if (stillFrames >= 4 && f.descriptor.length === 128) {
                 baselineDescriptor = f.descriptor;
                 const c = document.createElement("canvas");
                 c.width = v.videoWidth; c.height = v.videoHeight;
@@ -107,7 +108,7 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
           /* skip frame */
         }
       }
-      raf = window.setTimeout(loop, 120) as unknown as number;
+      raf = window.setTimeout(loop, 40) as unknown as number;
     }
 
     function finish() {
