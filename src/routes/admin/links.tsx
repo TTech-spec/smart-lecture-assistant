@@ -3,7 +3,9 @@ import { useMemo, useState } from "react";
 import {
   Link2, Plus, X, Copy, Ban, ChevronDown, ChevronUp,
   Clock, CheckCircle2, XCircle, Users, RefreshCw, QrCode, Trash2, KeyRound, FileQuestion,
+  MapPin, Loader2,
 } from "lucide-react";
+import { getPrecisePosition, type Coords } from "@/lib/geo";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -126,6 +128,29 @@ function GenerateLinkForm({
   const [linkType, setLinkType] = useState<"attendance" | "test" | null>(null); // null = not answered yet
   const [assignClassCode, setAssignClassCode] = useState<boolean | null>(null); // null = not answered yet
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null); // for test links
+  // Lecturer-verified location (attendance links)
+  const [anchor, setAnchor] = useState<Coords | null>(null);
+  const [anchorRadius, setAnchorRadius] = useState(100);
+  const [locating, setLocating] = useState(false);
+  const [locAccuracy, setLocAccuracy] = useState<number | null>(null);
+
+  async function verifyLocation() {
+    setLocating(true);
+    setLocAccuracy(null);
+    try {
+      const pos = await getPrecisePosition({ maxWaitMs: 20_000, targetAccuracy: 25 }, setLocAccuracy);
+      setAnchor(pos);
+      if ((pos.accuracy ?? 999) > 100) {
+        toast.warning(`Location is rough (±${Math.round(pos.accuracy ?? 0)} m). Move near a window or door and verify again for better results.`);
+      } else {
+        toast.success(`Location verified (±${Math.round(pos.accuracy ?? 0)} m).`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not read your location.");
+    } finally {
+      setLocating(false);
+    }
+  }
   const tests = loadTests();
 
   // Suggestions: courses that match what's been typed
@@ -140,6 +165,8 @@ function GenerateLinkForm({
     if (linkType === null) return toast.error("Please select whether this link is for attendance or test.");
     if (linkType === "attendance" && assignClassCode === null) return toast.error("Please answer the class code question above.");
     if (linkType === "test" && !selectedTestId) return toast.error("Please select a test for this link.");
+    if (linkType === "attendance" && !anchor)
+      return toast.error("Verify your location first — stand in the lecture hall and tap “Verify my location”.");
     setCreating(true);
     try {
       const now = new Date();
@@ -178,6 +205,15 @@ function GenerateLinkForm({
           expiresAt,
           assignClassCode: linkType === "attendance" ? (assignClassCode ?? false) : false,
           linkType: linkType,
+          ...(anchor
+            ? {
+                anchorLat: anchor.lat,
+                anchorLng: anchor.lng,
+                anchorAccuracy: anchor.accuracy,
+                anchorRadius,
+                anchorAt: new Date().toISOString(),
+              }
+            : {}),
         };
         await addLink(link);
         toast.success(`Link "${link.title}" created and saved to database.`);
@@ -189,7 +225,7 @@ function GenerateLinkForm({
       setLinkType(null);
       setAssignClassCode(null);
       setSelectedTestId(null);
-      setShowForm(false);
+      setAnchor(null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       if (msg.toLowerCase().includes("does not exist") || msg.toLowerCase().includes("relation")) {
@@ -290,6 +326,42 @@ function GenerateLinkForm({
               Students will see a standard success screen with no class code.
             </p>
           )}
+        </div>
+      )}
+
+      {/* ── Lecturer location (attendance links) ── */}
+      {linkType === "attendance" && (
+        <div className="rounded-xl border bg-secondary/40 p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-semibold">Verify your location</p>
+              <p className="text-xs text-muted-foreground">
+                Stand inside the lecture hall. Students must be near this spot to check in.
+              </p>
+            </div>
+          </div>
+          <Button type="button" variant={anchor ? "outline" : "default"} className="w-full" onClick={verifyLocation} disabled={locating}>
+            {locating ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {locAccuracy != null ? `Improving accuracy… ±${Math.round(locAccuracy)} m` : "Getting your location…"}</>
+            ) : anchor ? (
+              <><CheckCircle2 className="mr-2 h-4 w-4 text-primary" /> Verified (±{Math.round(anchor.accuracy ?? 0)} m) · Verify again</>
+            ) : (
+              <><MapPin className="mr-2 h-4 w-4" /> Verify my location</>
+            )}
+          </Button>
+          <div>
+            <Label className="text-sm">Students must be within</Label>
+            <Select value={String(anchorRadius)} onValueChange={(v) => setAnchorRadius(Number(v))}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[50, 100, 150, 200, 300].map((m) => (
+                  <SelectItem key={m} value={String(m)}>{m} m of me{m === 100 ? " (recommended)" : ""}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
@@ -403,7 +475,7 @@ function GenerateLinkForm({
         </div>
       </div>
 
-      <Button type="submit" className="w-full" disabled={creating || linkType === null || (linkType === "attendance" && assignClassCode === null) || (linkType === "test" && !selectedTestId)}>
+      <Button type="submit" className="w-full" disabled={creating || linkType === null || (linkType === "attendance" && (assignClassCode === null || !anchor)) || (linkType === "test" && !selectedTestId)}>
         <Plus className="mr-2 h-4 w-4" /> Generate link
       </Button>
     </form>

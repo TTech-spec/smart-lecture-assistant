@@ -127,3 +127,71 @@ export function formatDistance(m: number): string {
   if (m < 1000) return `${Math.round(m)} m`;
   return `${(m / 1000).toFixed(2)} km`;
 }
+
+/**
+ * Reads a precise GPS fix for the lecturer: watches the GPS for up to
+ * `maxWaitMs`, keeps the best readings and averages them. Never falls back
+ * to IP location. `onProgress` reports the best accuracy seen so far.
+ */
+export function getPrecisePosition(
+  { maxWaitMs = 20_000, targetAccuracy = 25 }: { maxWaitMs?: number; targetAccuracy?: number } = {},
+  onProgress?: (accuracy: number) => void,
+): Promise<Coords> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("Geolocation is not supported on this device."));
+      return;
+    }
+    const samples: Coords[] = [];
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      navigator.geolocation.clearWatch(id);
+      clearTimeout(timer);
+      if (!samples.length) {
+        reject(new Error("Could not get a GPS reading. Turn on Location (Precise) and try again."));
+        return;
+      }
+      // Average the most accurate half of the readings
+      const best = [...samples].sort((a, b) => (a.accuracy ?? 999) - (b.accuracy ?? 999))
+        .slice(0, Math.max(1, Math.ceil(samples.length / 2)));
+      const lat = best.reduce((s, p) => s + p.lat, 0) / best.length;
+      const lng = best.reduce((s, p) => s + p.lng, 0) / best.length;
+      const accuracy = Math.min(...best.map((p) => p.accuracy ?? 999));
+      resolve({ lat, lng, accuracy, source: "gps" });
+    };
+    const id = navigator.geolocation.watchPosition(
+      (p) => {
+        const c: Coords = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: "gps" };
+        samples.push(c);
+        onProgress?.(Math.min(...samples.map((s) => s.accuracy ?? 999)));
+        const good = samples.filter((s) => (s.accuracy ?? 999) <= targetAccuracy);
+        if (good.length >= 3) finish();
+      },
+      (err) => {
+        if (!samples.length) {
+          done = true;
+          navigator.geolocation.clearWatch(id);
+          clearTimeout(timer);
+          reject(new Error(err.code === 1
+            ? "Location permission denied. Allow location access and try again."
+            : err.message || "Unable to read your location."));
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: maxWaitMs },
+    );
+    const timer = setTimeout(finish, maxWaitMs);
+  });
+}
+
+/**
+ * Distance check between a student and the lecturer's verified spot.
+ * Both GPS readings can be off indoors, so part of each reported accuracy
+ * (capped) is allowed as tolerance.
+ */
+export function isNearAnchor(student: Coords, anchor: Coords, radius: number) {
+  const raw = distanceMeters(student, anchor);
+  const tolerance = Math.min(student.accuracy ?? 0, 75) + Math.min(anchor.accuracy ?? 0, 50);
+  return { raw, inside: raw - tolerance <= radius };
+}

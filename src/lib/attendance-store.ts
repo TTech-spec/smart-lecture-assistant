@@ -82,6 +82,12 @@ export type AttendanceLink = {
   linkType?: "attendance" | "test";
   /** For test links, the ID of the test to associate with */
   testId?: string;
+  /** Lecturer-verified location: students must be within anchorRadius metres of it */
+  anchorLat?: number;
+  anchorLng?: number;
+  anchorAccuracy?: number;
+  anchorRadius?: number;
+  anchorAt?: string;
 };
 
 /**
@@ -489,6 +495,17 @@ function linkToDb(l: AttendanceLink): Row {
     assign_class_code: l.assignClassCode ?? false,
     link_type: l.linkType ?? "attendance",
     test_id: l.testId ?? null,
+    // Only sent when the lecturer verified a location, so databases that
+    // haven't run lecturer-location-migration.sql keep working.
+    ...(l.anchorLat != null && l.anchorLng != null
+      ? {
+          anchor_lat: l.anchorLat,
+          anchor_lng: l.anchorLng,
+          anchor_accuracy: l.anchorAccuracy ?? null,
+          anchor_radius: l.anchorRadius ?? null,
+          anchor_at: l.anchorAt ?? null,
+        }
+      : {}),
   };
 }
 
@@ -505,6 +522,11 @@ function linkFromDb(row: Row): AttendanceLink {
     assignClassCode: Boolean(row.assign_class_code),
     linkType: (row.link_type as "attendance" | "test" | undefined) || undefined,
     testId: row.test_id || undefined,
+    anchorLat: row.anchor_lat ?? undefined,
+    anchorLng: row.anchor_lng ?? undefined,
+    anchorAccuracy: row.anchor_accuracy ?? undefined,
+    anchorRadius: row.anchor_radius ?? undefined,
+    anchorAt: row.anchor_at ?? undefined,
   };
 }
 
@@ -547,6 +569,11 @@ export async function addLink(l: AttendanceLink): Promise<void> {
     const row = linkToDb(l);
     let { error } = await supabase.from("attendance_links").upsert(row);
 
+    if (error && /anchor_/.test(error.message)) {
+      throw new Error(
+        "Lecturer location columns are missing. Run lecturer-location-migration.sql in the Supabase SQL Editor, then try again.",
+      );
+    }
     if (error) {
       // If the error is because assign_class_code or link_type column doesn't exist yet
       // (migration not run), retry without those columns so the link still saves.

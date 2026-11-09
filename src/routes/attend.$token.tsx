@@ -26,7 +26,7 @@ import {
   type AttendanceLink,
   type Gender,
 } from "@/lib/attendance-store";
-import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition, type Coords } from "@/lib/geo";
+import { distanceMeters, effectiveDistance, formatDistance, getCurrentPosition, isNearAnchor, type Coords } from "@/lib/geo";
 import { StampedSelfie } from "@/components/StampedSelfie";
 import type { StampInfo } from "@/lib/photo-stamp";
 
@@ -195,7 +195,9 @@ function AttendTokenPage() {
     }
 
     // ── GPS check ───────────────────────────────────────────────────────────
-    const locationSet = settings.classLat != null && settings.classLng != null;
+    // Prefer the lecturer's verified location saved on this link
+    const anchored = link.anchorLat != null && link.anchorLng != null;
+    const locationSet = anchored || (settings.classLat != null && settings.classLng != null);
     setSubmitting(true);
 
     try {
@@ -217,11 +219,36 @@ function AttendTokenPage() {
           return;
         }
 
-        const classPos = { lat: settings.classLat!, lng: settings.classLng! };
-        dist = distanceMeters(pos, classPos);
-        const eff = effectiveDistance(pos, classPos);
+        if (anchored) {
+          if (pos.source === "ip") {
+            toast.error("Precise location is needed. Turn on Location (Precise) for this site and retake your photo.");
+            setSubmitting(false);
+            return;
+          }
+          const lecturerPos: Coords = { lat: link.anchorLat!, lng: link.anchorLng!, accuracy: link.anchorAccuracy };
+          const radius = link.anchorRadius ?? 100;
+          const check = isNearAnchor(pos, lecturerPos, radius);
+          dist = check.raw;
+          if (!check.inside) {
+            toast.error(
+              `You're about ${formatDistance(dist)} from your lecturer. You must be within ${radius} m. ` +
+              "If you are in class, move near a window or the door and retake your photo.",
+              { duration: 8000 },
+            );
+            setSubmitting(false);
+            return;
+          }
+          lat = pos.lat;
+          lng = pos.lng;
+        }
 
-        if (eff > settings.radiusMeters) {
+        const classPos = anchored
+          ? { lat: link.anchorLat!, lng: link.anchorLng! }
+          : { lat: settings.classLat!, lng: settings.classLng! };
+        if (!anchored) dist = distanceMeters(pos, classPos);
+        const eff = anchored ? 0 : effectiveDistance(pos, classPos);
+
+        if (!anchored && eff > settings.radiusMeters) {
           toast.error(
             `You're ${formatDistance(dist)} away. Must be within ${settings.radiusMeters}m of class.` +
             (pos.source === "ip"
@@ -594,7 +621,7 @@ function AttendTokenPage() {
                   : <><CheckCircle2 className="mr-2 h-4 w-4" /> Mark my attendance</>
                 }
               </Button>
-              {settings.classLat == null && (
+              {settings.classLat == null && link.anchorLat == null && (
                 <p className="mt-2 text-center text-xs text-muted-foreground">
                   No GPS check configured — your location won't be verified for this session.
                 </p>
