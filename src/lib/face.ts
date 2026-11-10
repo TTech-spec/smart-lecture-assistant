@@ -39,6 +39,14 @@ export function loadFaceApi(): Promise<Api> {
   return apiPromise;
 }
 
+/** Switch TensorFlow to the CPU backend (slower, but works where the GPU path fails). */
+export async function switchToCpuBackend(): Promise<void> {
+  const api = await loadFaceApi();
+  const tf = api.tf as unknown as { setBackend?: (b: string) => Promise<boolean>; ready?: () => Promise<void>; getBackend?: () => string };
+  if (tf.getBackend?.() === "cpu") return;
+  try { await tf.setBackend?.("cpu"); await tf.ready?.(); } catch { /* keep current backend */ }
+}
+
 /** Start downloading + warming up the face models early (no-op if already done). */
 export function preloadFaceModels(): void {
   if (typeof window === "undefined") return;
@@ -102,10 +110,16 @@ export async function analyseFace(
     const task = api.detectSingleFace(frame, new api.TinyFaceDetectorOptions({ inputSize, scoreThreshold: 0.35 })).withFaceLandmarks(true);
     return opts.withDescriptor ? task.withFaceDescriptor() : task;
   };
-  // Fast pass first; only if it finds nothing, one more try at a larger size
-  const first = opts.inputSize ?? (opts.withDescriptor ? 320 : 224);
-  let res = await run(first);
-  if (!res && !opts.inputSize && first < 416) res = await run(416);
+  // Same search sizes for live checks and the fingerprint frame: a face the
+  // live check found must also be found when the fingerprint is taken (the
+  // fingerprint itself is read from the full-resolution face either way).
+  // Fast size first; larger ones only when nothing was found.
+  const sizes = opts.inputSize ? [opts.inputSize] : [224, 320, 416];
+  let res = null;
+  for (const size of sizes) {
+    res = await run(size);
+    if (res) break;
+  }
   if (!res) return null;
 
   const pts = res.landmarks.positions;

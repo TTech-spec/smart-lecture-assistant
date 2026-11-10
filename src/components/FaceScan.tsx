@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { analyseFace, cropFacePhoto, loadFaceApi } from "@/lib/face";
+import { analyseFace, cropFacePhoto, loadFaceApi, switchToCpuBackend } from "@/lib/face";
 
 export type FaceScanResult = { descriptor: number[]; photo: string };
 
@@ -33,6 +33,13 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
     let baselineSource: HTMLCanvasElement | null = null;
     let lastBox: { x: number; y: number } | null = null;
     let current: Step = "hold";
+    // Once the face has been steady, we're "capturing": every frame asks for
+    // the fingerprint and the first good one is used — movement during the
+    // (slower) fingerprint frame no longer restarts the count.
+    let capturing = false;
+    let missedFrames = 0;      // consecutive frames with no face
+    let descriptorErrors = 0;  // fingerprint failures (some phones' GPUs)
+    let holdStartedAt = Date.now();
 
     async function start() {
       try {
@@ -61,23 +68,41 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
       const v = videoRef.current;
       if (v && v.videoWidth) {
         try {
-          const f = await analyseFace(v, { withDescriptor: current === "hold" && stillFrames >= 4 });
+          let f: Awaited<ReturnType<typeof analyseFace>> = null;
+          try {
+            f = await analyseFace(v, { withDescriptor: current === "hold" && capturing });
+          } catch (err) {
+            // A fingerprint failure on this phone's GPU: fall back to the slower CPU path
+            if (current === "hold" && capturing && ++descriptorErrors === 3) await switchToCpuBackend();
+            console.warn("Face scan frame failed:", err);
+          }
           setFaceSeen(Boolean(f));
           if (!f) {
-            stillFrames = 0;
-            setHint("No face found — move closer, into the light");
+            // One missed frame is normal; only react after several in a row
+            missedFrames++;
+            if (missedFrames >= 4) {
+              stillFrames = 0;
+              capturing = false;
+              setHint("No face found — move closer, into the light");
+            }
           } else if (f.box.w < 0.15) {
+            missedFrames = 0;
             stillFrames = Math.max(0, stillFrames - 1);
             setHint("Move closer to the camera");
           } else {
+            missedFrames = 0;
             const moved = lastBox ? Math.hypot(f.box.x - lastBox.x, f.box.y - lastBox.y) : 0;
             lastBox = { x: f.box.x, y: f.box.y };
 
             if (current === "hold") {
-              // Forgiving: small wobbles only slow the count, they don't restart it
-              stillFrames = moved < 0.05 ? stillFrames + 1 : Math.max(0, stillFrames - 1);
-              setHint(stillFrames < 4 ? "Hold still…" : "Capturing…");
-              if (stillFrames >= 4 && f.descriptor.length === 128) {
+              if (!capturing) {
+                // Forgiving: small wobbles only slow the count, they don't restart it
+                stillFrames = moved < 0.06 ? stillFrames + 1 : Math.max(0, stillFrames - 1);
+                if (stillFrames >= 3) capturing = true;
+                const slow = Date.now() - holdStartedAt > 12_000;
+                setHint(capturing ? "Capturing…" : slow ? "Hold the phone steady, at eye level" : "Hold still…");
+              }
+              if (capturing && f.descriptor.length === 128) {
                 baselineDescriptor = f.descriptor;
                 const c = document.createElement("canvas");
                 c.width = v.videoWidth; c.height = v.videoHeight;
