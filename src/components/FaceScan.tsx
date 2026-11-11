@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { analyseFace, cropFacePhoto, loadFaceApi, switchToCpuBackend } from "@/lib/face";
+import { startLiveness, updateLiveness, type LivenessFrame, type LivenessState } from "@/lib/liveness";
 
 export type FaceScanResult = { descriptor: number[]; photo: string };
 
@@ -26,9 +27,9 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
     let raf = 0;
     // Liveness state
     let stillFrames = 0;
-    let blinkSeen = false;
-    let eyesWereOpen = false;
-    let turnSeen = false;
+    // Eye/head readings while holding still → this student's own baseline
+    const steadyReadings: LivenessFrame[] = [];
+    let live: LivenessState | null = null;
     let baselineDescriptor: Float32Array | null = null;
     let baselineSource: HTMLCanvasElement | null = null;
     let lastBox: { x: number; y: number } | null = null;
@@ -95,6 +96,8 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
             lastBox = { x: f.box.x, y: f.box.y };
 
             if (current === "hold") {
+              steadyReadings.push({ eyeOpenness: f.eyeOpenness, yaw: f.yaw });
+              if (steadyReadings.length > 8) steadyReadings.shift();
               if (!capturing) {
                 // Forgiving: small wobbles only slow the count, they don't restart it
                 stillFrames = moved < 0.06 ? stillFrames + 1 : Math.max(0, stillFrames - 1);
@@ -108,25 +111,21 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
                 c.width = v.videoWidth; c.height = v.videoHeight;
                 c.getContext("2d")!.drawImage(v, 0, 0);
                 baselineSource = c;
+                live = startLiveness(steadyReadings);
                 current = "blink"; setStep("blink");
-                setHint("Now blink twice");
+                setHint("Close your eyes for a second");
               }
-            } else if (current === "blink") {
-              if (f.eyeOpenness > 0.25) eyesWereOpen = true;
-              if (eyesWereOpen && f.eyeOpenness < 0.18) { blinkSeen = true; }
-              if (blinkSeen && f.eyeOpenness > 0.25) {
-                current = "turn"; setStep("turn");
-                setHint("Now turn your head to the left");
-              }
-            } else if (current === "turn") {
-              if (Math.abs(f.yaw) > 0.35) turnSeen = true;
-              if (turnSeen && Math.abs(f.yaw) < 0.15) {
+            } else if (live) {
+              // Close eyes, then turn head — measured against this student's own baseline
+              const r = updateLiveness(live, { eyeOpenness: f.eyeOpenness, yaw: f.yaw });
+              live = r.state;
+              setHint(r.hint);
+              if (live.step === "turn" && current !== "turn") { current = "turn"; setStep("turn"); }
+              if (live.step === "done") {
                 current = "done"; setStep("done");
-                setHint("All checks passed");
                 finish();
                 return;
               }
-              setHint(turnSeen ? "Now look back at the camera" : "Turn your head to the left");
             }
           }
         } catch {
@@ -140,11 +139,13 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
       if (doneRef.current || !baselineDescriptor || !baselineSource) return;
       doneRef.current = true;
       // Re-detect on the saved frame to crop the photo around the face
-      analyseFace(baselineSource).then((f) => {
-        const photo = cropFacePhoto(baselineSource!, f?.box ?? { x: 0.25, y: 0.15, w: 0.5, h: 0.6 });
+      const save = (box?: { x: number; y: number; w: number; h: number }) => {
+        const photo = cropFacePhoto(baselineSource!, box ?? { x: 0.25, y: 0.15, w: 0.5, h: 0.6 });
         stop();
         onDone({ descriptor: Array.from(baselineDescriptor!), photo });
-      });
+      };
+      // If re-detecting fails, still save with a centred crop — never hang here
+      analyseFace(baselineSource).then((f) => save(f?.box), () => save());
     }
 
     function stop() {
@@ -158,8 +159,8 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
 
   const checks: { key: Step; label: string }[] = [
     { key: "hold", label: "Hold still" },
-    { key: "blink", label: "Blink" },
-    { key: "turn", label: "Turn left" },
+    { key: "blink", label: "Close eyes" },
+    { key: "turn", label: "Turn head" },
   ];
   const order: Step[] = ["hold", "blink", "turn", "done"];
   const idx = order.indexOf(step);
