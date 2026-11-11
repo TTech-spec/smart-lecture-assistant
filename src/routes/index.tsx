@@ -337,8 +337,8 @@ function Landing() {
   const scrollTo = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); setMenuOpen(false); };
 
   return (
-    <div className="flex h-[100svh] flex-col overflow-hidden bg-foreground p-2.5 sm:p-4 lg:p-6">
-      <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col rounded-[28px] bg-background sm:rounded-[40px]">
+    <div className="flex h-[100svh] flex-col overflow-hidden bg-background">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col bg-background">
         <motion.header initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
           className="relative z-10 flex items-center justify-between gap-6 px-6 pb-3 pt-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:px-14">
           <Link to="/" className="flex items-center gap-2.5 font-display text-xl font-bold">
