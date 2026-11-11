@@ -203,9 +203,12 @@ export async function runPayoutToLecturer(data: PayoutInput) {
   }
 }
 
-export const payoutToLecturer = createServerFn({ method: "POST" })
-  .validator((d: unknown) => PayoutSchema.parse(d))
-  .handler(async ({ data }) => runPayoutToLecturer(data));
+// NOTE: there is deliberately no client-callable payout endpoint. A public
+// server function that sends money lets anyone on the internet transfer the
+// Squad balance to any account. Payouts must only be started by trusted
+// server code that has verified the payment and reads the destination
+// account from lecturer-only data. Until that exists, withdraw from the
+// Squad dashboard.
 
 // ── 4. Platform payout (₦1,000 → platform account) ───────────────────────────
 const PlatformPayoutSchema = z.object({
@@ -254,6 +257,4 @@ export async function runPayoutToPlatform(data: PlatformPayoutInput) {
   }
 }
 
-export const payoutToPlatform = createServerFn({ method: "POST" })
-  .validator((d: unknown) => PlatformPayoutSchema.parse(d))
-  .handler(async ({ data }) => runPayoutToPlatform(data));
+

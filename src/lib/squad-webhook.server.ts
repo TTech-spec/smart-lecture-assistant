@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { secretKey, runPayoutToLecturer, runPayoutToPlatform } from "./squad-server";
+import { secretKey } from "./squad-server";
 
 /**
  * Squad signs the raw webhook body with HMAC-SHA512 using your secret key and
@@ -102,22 +102,10 @@ export async function handleSquadWebhook(request: Request): Promise<Response> {
     purchased_at: new Date().toISOString(),
   });
 
-  if (existing.lecturer_account_number && existing.lecturer_bank_code) {
-    runPayoutToLecturer({
-      transferRef: `PAY-LEC-${ref}`,
-      amountNGN: existing.lecturer_amount,
-      lecturerAccountNumber: existing.lecturer_account_number,
-      lecturerBankCode: existing.lecturer_bank_code,
-      lecturerAccountName: existing.lecturer_account_name || "Lecturer",
-      narration: `Payout for: ${existing.material_title}`,
-    }).catch((err: unknown) => console.error("Webhook lecturer payout failed:", err));
-  }
-
-  runPayoutToPlatform({
-    transferRef: `PAY-PLAT-${ref}`,
-    amountNGN: existing.platform_fee,
-    narration: `Platform fee: ${existing.material_title}`,
-  }).catch((err: unknown) => console.error("Webhook platform payout failed:", err));
+  // Automatic payouts are switched off: the payment record (amount and bank
+  // account) can currently be edited by anyone, so paying out from it could
+  // send money to an attacker. The money stays in the Squad account; the
+  // lecturer withdraws from the Squad dashboard.
 
   return new Response("ok", { status: 200 });
 }

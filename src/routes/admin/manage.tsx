@@ -26,7 +26,6 @@ import { changeLecturerPassword } from "@/lib/lecturer-auth";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
 import { calculateTotalEarnings } from "@/lib/materials-store";
-import { payoutToLecturer } from "@/lib/squad-server";
 import { NG_BANKS, generateTransactionRef, loadSquadPayments } from "@/lib/squad";
 
 export const Route = createFileRoute("/admin/manage")({
@@ -684,31 +683,12 @@ function EarningsDisplay() {
     }
     if (withdrawAmt < 100) return setWithdrawError("Minimum withdrawal is ₦100.");
 
-    setWithdrawStep("processing");
-
-    try {
-      const ref = `WD-${generateTransactionRef()}`;
-      const res = await payoutToLecturer({
-        data: {
-          transferRef: ref,
-          amountNGN: withdrawAmt,
-          lecturerAccountNumber: acctNumber.trim(),
-          lecturerBankCode: bankCode,
-          lecturerAccountName: acctName.trim(),
-          narration: "Attendly earnings withdrawal",
-        },
-      });
-
-      if (res.success) {
-        setWithdrawStep("success");
-        toast.success(`₦${withdrawAmt.toLocaleString()} withdrawal initiated successfully.`);
-      } else {
-        throw new Error((res.message as string) || "Transfer failed.");
-      }
-    } catch (err) {
-      setWithdrawStep("failed");
-      setWithdrawError(err instanceof Error ? err.message : "Transfer failed. Try again.");
-    }
+    // In-app withdrawals are paused: the old transfer call could be used by
+    // anyone to send the Squad balance to any account.
+    setWithdrawError(
+      "In-app withdrawals are paused for security. Your money is safe in your Squad account — " +
+      "withdraw it from the Squad dashboard (dashboard.squadco.com → Transfers).",
+    );
   }
 
   function resetWithdraw() {

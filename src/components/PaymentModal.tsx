@@ -13,7 +13,6 @@ import {
 } from "@/lib/squad";
 import {
   initiateSquadPayment, verifySquadTransaction,
-  payoutToLecturer, payoutToPlatform,
 } from "@/lib/squad-server";
 import { addPurchase, loadPurchases } from "@/lib/materials-store";
 
@@ -158,27 +157,8 @@ export function PaymentModal({
       purchasedAt: new Date().toISOString(),
     }).catch(() => {});
 
-    // Fire-and-forget payouts (don't block the success UI)
-    if (lecturerAccountNumber && lecturerBankCode) {
-      payoutToLecturer({
-        data: {
-          transferRef: `PAY-LEC-${ref}`,
-          amountNGN: fees.lecturerPrice,
-          lecturerAccountNumber,
-          lecturerBankCode,
-          lecturerAccountName: lecturerAccountName || "Lecturer",
-          narration: `Payout for: ${materialTitle}`,
-        },
-      }).catch((err) => console.error("Lecturer payout failed:", err));
-    }
-
-    payoutToPlatform({
-      data: {
-        transferRef: `PAY-PLAT-${ref}`,
-        amountNGN: fees.platformFee,
-        narration: `Platform fee: ${materialTitle}`,
-      },
-    }).catch((err) => console.error("Platform payout failed:", err));
+    // No payouts from the browser: the money stays in the Squad account and
+    // the lecturer withdraws it from the Squad dashboard.
   }
 
   // ── Initiate payment ────────────────────────────────────────────────────────
