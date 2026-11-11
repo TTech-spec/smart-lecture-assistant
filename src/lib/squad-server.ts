@@ -1,4 +1,3 @@
-import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 // ── Environment helpers ───────────────────────────────────────────────────────
@@ -31,7 +30,7 @@ export function secretKey() {
   return k;
 }
 
-function platformAccount() {
+export function platformAccount() {
   return {
     accountNumber: getEnv("SQUAD_PLATFORM_ACCOUNT_NUMBER"),
     bankCode: getEnv("SQUAD_PLATFORM_BANK_CODE") || "058", // GTBank default
@@ -39,7 +38,7 @@ function platformAccount() {
 }
 
 // ── Shared fetch helper ───────────────────────────────────────────────────────
-async function squadFetch(path: string, body: Record<string, unknown>) {
+export async function squadFetch(path: string, body: Record<string, unknown>) {
   const key = secretKey();
   if (!key) {
     throw new Error("Squad secret key not configured. Please set SQUAD_SECRET_KEY in your .env file.");
@@ -74,83 +73,22 @@ async function squadFetch(path: string, body: Record<string, unknown>) {
   return json;
 }
 
-// ── 1. Initiate payment (Squad payment modal / inline checkout) ───────────────
-const InitiateSchema = z.object({
-  transactionRef:       z.string(),
-  /** Total amount student will pay, in NGN (NOT kobo — we convert here) */
-  amountNGN:            z.number(),
-  email:                z.string().email(),
-  customerName:         z.string(),
-  customerPhone:        z.string(),
-  materialTitle:        z.string(),
-  /** Redirect URL after payment */
-  callbackUrl:          z.string(),
-});
-
-export const initiateSquadPayment = createServerFn({ method: "POST" })
-  .validator((d: unknown) => InitiateSchema.parse(d))
-  .handler(async ({ data }) => {
-    const body: Record<string, unknown> = {
-      email:             data.email,
-      amount:            Math.round(data.amountNGN * 100), // kobo
-      currency:          "NGN",
-      initiate_type:     "inline",
-      transaction_ref:   data.transactionRef,
-      callback_url:      data.callbackUrl,
-      pass_charge:       true, // charges passed to customer
-      customer_name:     data.customerName,
-      payment_channels:  ["card", "bank", "ussd", "bank_transfer"],
-      metadata: {
-        meta: [{ display_name: "Material", variable_name: "material", value: data.materialTitle }],
-      },
-    };
-
-    const json = await squadFetch("/transaction/initiate", body);
-    // json.data.checkout_url is the payment link
-    return json as {
-      status: number;
-      success: boolean;
-      message: string;
-      data?: { checkout_url?: string; transaction_ref?: string };
-    };
+// ── Verify a transaction (server-only helper) ───────────────────────────────
+export async function squadVerify(transactionRef: string): Promise<{ status: string; amountKobo: number }> {
+  const key = secretKey();
+  if (!key) throw new Error("Squad secret key not configured.");
+  const res = await fetch(`${baseUrl()}/transaction/verify/${encodeURIComponent(transactionRef)}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${key}` },
   });
-
-// ── 2. Verify transaction ─────────────────────────────────────────────────────
-const VerifySchema = z.object({ transactionRef: z.string() });
-
-export const verifySquadTransaction = createServerFn({ method: "POST" })
-  .validator((d: unknown) => VerifySchema.parse(d))
-  .handler(async ({ data }) => {
-    const key = secretKey();
-    if (!key) {
-      throw new Error("Squad secret key not configured. Please set SQUAD_SECRET_KEY in your .env file.");
-    }
-
-    const url = `${baseUrl()}/transaction/verify/${data.transactionRef}`;
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${key}` },
-    });
-
-    const text = await res.text();
-    let json: Record<string, unknown>;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      throw new Error(`Squad verify returned non-JSON (${res.status}): ${text.slice(0, 200)}`);
-    }
-
-    return json as {
-      status: number;
-      success: boolean;
-      message: string;
-      data?: {
-        transaction_status?: string;  // "success" | "failed" | "pending"
-        transaction_amount?: number;  // in kobo
-        transaction_ref?: string;
-      };
-    };
-  });
+  const text = await res.text();
+  let json: { data?: { transaction_status?: string; transaction_amount?: number } };
+  try { json = JSON.parse(text); } catch { throw new Error(`Squad verify returned non-JSON (${res.status})`); }
+  return {
+    status: String(json.data?.transaction_status ?? "pending"),
+    amountKobo: Number(json.data?.transaction_amount ?? 0),
+  };
+}
 
 // ── 3. Payout transfer (after successful payment) ────────────────────────────
 const PayoutSchema = z.object({

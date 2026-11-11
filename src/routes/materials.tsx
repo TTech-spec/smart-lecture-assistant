@@ -15,7 +15,9 @@ import {
 import { loadMaterials, syncMaterialsFromSupabase, type Material, type MaterialFileType } from "@/lib/materials-store";
 import { loadSettings } from "@/lib/attendance-store";
 import { PaymentModal } from "@/components/PaymentModal";
-import { hasUserPaidForMaterial } from "@/lib/squad";
+import { toast } from "sonner";
+import { getPurchaseToken, hasUserPaidForMaterial } from "@/lib/squad";
+import { getMaterialLink } from "@/lib/payments-server";
 
 export const Route = createFileRoute("/materials")({
   head: () => ({
@@ -321,8 +323,21 @@ function MaterialCard({ material, index, userMatric, onView, onPaymentClick }: {
             className="w-full mt-auto"
             variant={isPaid ? "outline" : "default"}
             size="sm"
-            onClick={() => {
-              if (!isPaid || hasPaid) {
+            onClick={async () => {
+              if (isPaid && hasPaid) {
+                // Paid file: the server checks the purchase and gives a short-lived link
+                const tab = window.open("about:blank", "_blank");
+                const token = getPurchaseToken(material.id);
+                const res = token ? await getMaterialLink({ data: { materialId: material.id, accessToken: token } }).catch(() => null) : null;
+                if (res && res.ok) {
+                  if (tab) tab.location.href = res.url; else window.location.href = res.url;
+                } else {
+                  tab?.close();
+                  toast.error(res && !res.ok ? res.message : "Couldn't open the material. Check your connection and try again.");
+                }
+                return;
+              }
+              if (!isPaid) {
                 if (material.fileType === "link" || material.fileType === "video") {
                   window.open(material.url, "_blank", "noopener,noreferrer");
                 } else {

@@ -7,14 +7,8 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import {
-  calcFees, generateTransactionRef, saveSquadPayment, loadSquadPayments, hasUserPaidForMaterial,
-  type SquadPaymentRecord,
-} from "@/lib/squad";
-import {
-  initiateSquadPayment, verifySquadTransaction,
-} from "@/lib/squad-server";
-import { addPurchase, loadPurchases } from "@/lib/materials-store";
+import { calcFees, hasUserPaidForMaterial, savePurchaseToken } from "@/lib/squad";
+import { confirmMaterialPayment, startMaterialPayment } from "@/lib/payments-server";
 
 interface PaymentModalProps {
   open: boolean;
@@ -86,20 +80,21 @@ export function PaymentModal({
 
       try {
         console.log(`[Payment Poll] Attempt ${attempts}/${MAX} for transaction ${txRef}`);
-        const res = await verifySquadTransaction({ data: { transactionRef: txRef } });
-        console.log("[Payment Poll] Response:", res);
-        
-        const status = ((res.data?.transaction_status as string) || "").toLowerCase();
-        console.log("[Payment Poll] Status:", status);
-
-        if (status === "success") {
-          await handlePaymentSuccess(txRef);
+        const res = await confirmMaterialPayment({ data: { transactionRef: txRef } });
+        if (res.state === "success") {
+          handlePaymentSuccess(res.accessToken);
           return;
         }
-        if (status === "failed" || status === "cancelled") {
+        if (res.state === "failed" || res.state === "not_found") {
           setStep("failed");
           setLoading(false);
           toast.error("Payment was not completed.");
+          return;
+        }
+        if (res.state === "amount_mismatch") {
+          setStep("failed");
+          setLoading(false);
+          toast.error("The amount paid didn't match the price. Contact your lecturer with your payment reference.");
           return;
         }
       } catch (err) {
@@ -115,50 +110,15 @@ export function PaymentModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, txRef]);
 
-  // ── After payment confirmed: trigger payouts ───────────────────────────────
-  async function handlePaymentSuccess(ref: string) {
+  // ── After the server confirmed the payment ─────────────────────────────────
+  function handlePaymentSuccess(accessToken: string) {
+    // The token proves the purchase to the server when opening the file;
+    // the server already recorded the purchase and paid the lecturer.
+    savePurchaseToken(materialId, accessToken);
     setStep("success");
     setLoading(false);
     toast.success("Payment successful! Access unlocked.");
     onSuccess();
-
-    // Update record to successful
-    const record: SquadPaymentRecord = {
-      id: crypto.randomUUID(),
-      transactionRef: ref,
-      materialId,
-      materialTitle,
-      chargedAmount: fees.totalCharge,
-      lecturerAmount: fees.lecturerPrice,
-      platformFee: fees.platformFee,
-      transferFee: fees.transferFee,
-      squadFee: fees.squadFee,
-      currency: "NGN",
-      status: "successful",
-      customerEmail: matricConfirm.trim().toUpperCase(), // matric stored in email field
-      customerName: name,
-      customerPhone: phone,
-      lecturerAccountNumber,
-      lecturerBankCode,
-      lecturerAccountName,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await saveSquadPayment(record);
-
-    // Record purchase for earnings tracking
-    addPurchase({
-      id: crypto.randomUUID(),
-      materialId,
-      studentName: name,
-      matricNumber: matricConfirm.trim().toUpperCase(),
-      purchaseAmount: fees.lecturerPrice,
-      currency: "NGN",
-      purchasedAt: new Date().toISOString(),
-    }).catch(() => {});
-
-    // No payouts from the browser: the money stays in the Squad account and
-    // the lecturer withdraws it from the Squad dashboard.
   }
 
   // ── Initiate payment ────────────────────────────────────────────────────────
@@ -175,57 +135,19 @@ export function PaymentModal({
     setLoading(true);
 
     try {
-      const ref = generateTransactionRef();
-      setTxRef(ref);
-
-      const pending: SquadPaymentRecord = {
-        id: crypto.randomUUID(),
-        transactionRef: ref,
-        materialId,
-        materialTitle,
-        chargedAmount: fees.totalCharge,
-        lecturerAmount: fees.lecturerPrice,
-        platformFee: fees.platformFee,
-        transferFee: fees.transferFee,
-        squadFee: fees.squadFee,
-        currency: "NGN",
-        status: "pending",
-        customerEmail: matricConfirm.trim().toUpperCase(),
-        customerName: name,
-        customerPhone: phone,
-        lecturerAccountNumber,
-        lecturerBankCode,
-        lecturerAccountName,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      await saveSquadPayment(pending);
-
-      const callbackUrl =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/materials`
-          : "https://attendly.app/materials";
-
-      // Squad requires a valid email — we generate one from the matric number
-      const squadEmail = `${matricConfirm.trim().toLowerCase().replace(/[^a-z0-9]/g, "")}@student.attendly.app`;
-
-      const res = await initiateSquadPayment({
+      // Price, fees and the reference are decided by the server
+      const res = await startMaterialPayment({
         data: {
-          transactionRef: ref,
-          amountNGN: fees.totalCharge,
-          email: squadEmail,
-          customerName: name.trim(),
-          customerPhone: phone.trim(),
-          materialTitle,
-          callbackUrl,
+          materialId,
+          matric: matricConfirm.trim().toUpperCase(),
+          name: name.trim(),
+          phone: phone.trim(),
+          origin: window.location.origin,
         },
       });
-
-      if (!res.success || !res.data?.checkout_url) {
-        throw new Error(res.message || "Could not open checkout. Please try again.");
-      }
-
-      const url = res.data.checkout_url;
+      if (!res.ok) throw new Error(res.message);
+      setTxRef(res.transactionRef);
+      const url = res.checkoutUrl;
       setCheckoutUrl(url);
       window.open(url, "_blank", "noopener,noreferrer");
       setStep("processing");
@@ -234,7 +156,7 @@ export function PaymentModal({
       const errorMessage = err instanceof Error ? err.message : "Failed to start payment.";
       
       // Provide more helpful error messages for common issues
-      if (errorMessage.includes("Squad secret key not configured")) {
+      if (/Squad secret key not configured|SUPABASE_SERVICE_ROLE_KEY/.test(errorMessage)) {
         toast.error("Payment system not configured. Please contact support.");
       } else if (errorMessage.includes("Squad API error")) {
         toast.error("Payment service temporarily unavailable. Please try again later.");

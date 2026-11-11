@@ -1,5 +1,6 @@
-import { supabase } from "./supabase";
 import { secretKey } from "./squad-server";
+import { finalizePayment } from "./payments-core";
+import { adminClient, platform, squadClient, supabaseDb } from "./payments-adapters.server";
 
 /**
  * Squad signs the raw webhook body with HMAC-SHA512 using your secret key and
@@ -70,42 +71,13 @@ export async function handleSquadWebhook(request: Request): Promise<Response> {
     return new Response("ok", { status: 200 });
   }
 
-  if (!supabase) return new Response("ok", { status: 200 });
-
-  const { data: existing } = await supabase
-    .from("squad_payment_records")
-    .select("*")
-    .eq("transaction_ref", ref)
-    .maybeSingle();
-
-  if (!existing) {
-    console.warn(`Squad webhook: no payment record found for ${ref}`);
-    return new Response("ok", { status: 200 });
+  try {
+    const r = await finalizePayment(supabaseDb(adminClient()), squadClient, ref, platform());
+    if (r.state !== "success") console.warn(`Squad webhook: ${ref} → ${r.state}`);
+  } catch (err) {
+    console.error("Squad webhook finalize failed:", err);
+    return new Response("retry", { status: 500 }); // Squad retries later
   }
-  if (existing.status === "successful") {
-    // Already finalized — most likely by the client-side poll. Nothing to do.
-    return new Response("ok", { status: 200 });
-  }
-
-  await supabase
-    .from("squad_payment_records")
-    .update({ status: "successful", updated_at: new Date().toISOString() })
-    .eq("transaction_ref", ref);
-
-  await supabase.from("material_purchases").upsert({
-    id: crypto.randomUUID(),
-    material_id: existing.material_id,
-    student_name: existing.customer_name,
-    matric_number: existing.customer_email,
-    purchase_amount: existing.lecturer_amount,
-    currency: existing.currency,
-    purchased_at: new Date().toISOString(),
-  });
-
-  // Automatic payouts are switched off: the payment record (amount and bank
-  // account) can currently be edited by anyone, so paying out from it could
-  // send money to an attacker. The money stays in the Squad account; the
-  // lecturer withdraws from the Squad dashboard.
 
   return new Response("ok", { status: 200 });
 }

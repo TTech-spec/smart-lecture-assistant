@@ -1,39 +1,6 @@
 import { supabase } from "./supabase";
 
-// ── Fee constants ─────────────────────────────────────────────────────────────
-// Squad local card/transfer: 1.2%, capped at ₦1,500
-export const SQUAD_RATE        = 0.012;
-export const SQUAD_FEE_CAP     = 1500;   // ₦
-// Transfer payout fee (₦10–₦50 flat; we charge ₦50 to be safe)
-export const TRANSFER_FEE      = 50;     // ₦
-// Payment gateway processing fee charged to the student on every transaction
-export const PLATFORM_FEE      = 1000;   // ₦
-
-/**
- * Given the lecturer's listed price (what they want to receive),
- * return the full breakdown of what the student pays.
- *
- *  Student pays  = lecturerPrice + platformFee + transferFee + squadFee
- *  squadFee      = 1.2% of (lecturerPrice + platformFee + transferFee), capped ₦1,500
- */
-export function calcFees(lecturerPrice: number): {
-  lecturerPrice: number;
-  platformFee: number;
-  transferFee: number;
-  squadFee: number;
-  totalCharge: number;
-} {
-  const base      = lecturerPrice + PLATFORM_FEE + TRANSFER_FEE;
-  const squadFee  = Math.min(Math.round(base * SQUAD_RATE), SQUAD_FEE_CAP);
-  const total     = base + squadFee;
-  return {
-    lecturerPrice,
-    platformFee: PLATFORM_FEE,
-    transferFee: TRANSFER_FEE,
-    squadFee,
-    totalCharge: total,
-  };
-}
+export { SQUAD_RATE, SQUAD_FEE_CAP, TRANSFER_FEE, PLATFORM_FEE, calcFees } from "./squad-fees";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type SquadPaymentStatus = "pending" | "successful" | "failed" | "cancelled";
@@ -113,13 +80,31 @@ export async function saveSquadPayment(record: SquadPaymentRecord): Promise<void
   }
 }
 
-export function hasUserPaidForMaterial(materialId: string, matricNumber: string): boolean {
-  return loadSquadPayments().some(
-    (p) =>
-      p.materialId === materialId &&
-      p.customerEmail.toLowerCase() === matricNumber.trim().toLowerCase() &&
-      p.status === "successful"
-  );
+// ── Purchase tokens (issued by the server after Squad confirms payment) ──────
+const TOKENS_KEY = "att.material.tokens.v1";
+
+function loadTokens(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(TOKENS_KEY) || "{}"); } catch { return {}; }
+}
+
+export function savePurchaseToken(materialId: string, token: string) {
+  const all = loadTokens();
+  all[materialId] = token;
+  try { localStorage.setItem(TOKENS_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+}
+
+export function getPurchaseToken(materialId: string): string | null {
+  return loadTokens()[materialId] ?? null;
+}
+
+/**
+ * Whether this phone holds a purchase token for the material. A token
+ * typed in by hand doesn't help: the server checks it before handing out
+ * the file link.
+ */
+export function hasUserPaidForMaterial(materialId: string, _matricNumber?: string): boolean {
+  return Boolean(getPurchaseToken(materialId));
 }
 
 export function generateTransactionRef(): string {

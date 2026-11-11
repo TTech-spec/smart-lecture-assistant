@@ -134,9 +134,16 @@ export function deleteMaterial(id: string) {
 export async function syncMaterialsFromSupabase(): Promise<void> {
   if (!supabase) return;
   try {
+    // Lecturers can read the table (with bank details); students get the
+    // public list, which never includes the link to a paid file.
     const { data } = await supabase.from("materials").select("*");
-    if (data && data.length > 0) {
-      localStorage.setItem(MAT_KEY, JSON.stringify(data.map(materialFromDb)));
+    let rows = data ?? [];
+    if (rows.length === 0) {
+      const pub = await supabase.rpc("list_materials");
+      if (!pub.error && Array.isArray(pub.data)) rows = pub.data;
+    }
+    if (rows.length > 0) {
+      localStorage.setItem(MAT_KEY, JSON.stringify(rows.map(materialFromDb)));
       window.dispatchEvent(new Event("att:materials"));
     }
   } catch {
@@ -209,11 +216,22 @@ export function calculateTotalEarnings(): { amount: number; currency: string; sa
 }
 
 // ── Supabase Storage file upload ──────────────────────────────────────────────
-export async function uploadMaterialFile(file: File, id: string): Promise<string> {
+export async function uploadMaterialFile(file: File, id: string, paid = false): Promise<string> {
   if (!supabase) throw new Error("Supabase not configured. Paste a URL instead of uploading a file.");
 
   const ext = file.name.split(".").pop() || "bin";
   const path = `${id}.${ext}`;
+
+  if (paid) {
+    // Private bucket: students only get a short-lived link from the server after paying
+    const { error } = await supabase.storage
+      .from("materials-paid")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (error) throw new Error(/bucket not found/i.test(error.message)
+      ? "Paid uploads need payments-secure.sql to be run in Supabase first."
+      : error.message);
+    return `storage:materials-paid/${path}`;
+  }
 
   const { error } = await supabase.storage
     .from("materials")
@@ -228,10 +246,10 @@ export async function uploadMaterialFile(file: File, id: string): Promise<string
 /** Removes a file uploaded via `uploadMaterialFile`. Used to roll back a
  *  storage upload when the follow-up database write fails, so a failed
  *  save never leaves an orphaned file with no matching material row. */
-export async function deleteMaterialFile(path: string): Promise<void> {
+export async function deleteMaterialFile(path: string, paid = false): Promise<void> {
   if (!supabase) return;
   try {
-    await supabase.storage.from("materials").remove([path]);
+    await supabase.storage.from(paid ? "materials-paid" : "materials").remove([path]);
   } catch {
     // best-effort cleanup — the original save error is what matters to the user
   }

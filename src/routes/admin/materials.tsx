@@ -143,7 +143,7 @@ function MaterialsAdmin() {
         const tempId = crypto.randomUUID();
         const ext = draft.file.name.split(".").pop() || "bin";
         uploadedPath = `${tempId}.${ext}`;
-        finalUrl = await uploadMaterialFile(draft.file, tempId);
+        finalUrl = await uploadMaterialFile(draft.file, tempId, draft.accessType === "paid");
       }
 
       await addMaterial({
@@ -171,7 +171,7 @@ function MaterialsAdmin() {
     } catch (err) {
       // The file may have already landed in storage before this step failed —
       // remove it so a failed save never leaves an orphaned file students can't see.
-      if (uploadedPath) await deleteMaterialFile(uploadedPath);
+      if (uploadedPath) await deleteMaterialFile(uploadedPath, draft.accessType === "paid");
       const msg = err instanceof Error ? err.message : "Failed to save material";
       toast.error(`Upload failed and was not published — nothing was saved. Check your connection and try again. (${msg})`, { duration: 8000 });
     } finally {
