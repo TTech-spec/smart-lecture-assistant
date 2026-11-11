@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FaceScan, type FaceScanResult } from "@/components/FaceScan";
 import { preloadFaceModels } from "@/lib/face";
+import { APP_VERSION } from "@/lib/version";
 import {
   getDeviceId, getRegisteredMatric, loadSettings, registerStudent, RegisterError, type Gender,
 } from "@/lib/attendance-store";
@@ -208,6 +209,7 @@ function Shell({ step, dark, children }: { step: 1 | 2 | 3; dark?: boolean; chil
         </div>
         <p className={`mt-2 text-xs font-semibold ${dark ? "text-gray-400" : "text-muted-foreground"}`}>Step {step} of 3 · {labels[step - 1]}</p>
         <div className="mt-2 flex flex-grow flex-col">{children}</div>
+        <p className={`mt-6 text-center text-[11px] ${dark ? "text-gray-500" : "text-muted-foreground/70"}`}>Version {APP_VERSION}</p>
       </div>
     </div>
   );

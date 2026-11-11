@@ -140,7 +140,21 @@ function RootComponent() {
     // browser won't consider the app installable and beforeinstallprompt
     // never fires.
     import("virtual:pwa-register").then(({ registerSW }) => {
-      registerSW({ immediate: true });
+      registerSW({
+        immediate: true,
+        // Phones keep the saved (offline) copy of the app until the service
+        // worker notices a new release. Check every minute and whenever the
+        // app comes back to the foreground; with autoUpdate the page reloads
+        // itself onto the new version as soon as it is downloaded.
+        onRegisteredSW(_url, registration) {
+          if (!registration) return;
+          const check = () => { registration.update().catch(() => {}); };
+          setInterval(check, 60_000);
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") check();
+          });
+        },
+      });
     });
   }, []);
 
