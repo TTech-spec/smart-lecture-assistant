@@ -2,8 +2,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   MapPin, ShieldCheck, Clock, Sparkles,
-  GraduationCap, FileQuestion, KeyRound, X, BookOpen, UserPlus, ClipboardCheck } from "lucide-react";
+  FileQuestion, KeyRound, X, UserPlus, ArrowRight, Check, Menu, Plus, ScanFace } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import studentWoman from "@/assets/creator-woman.jpg";
+import studentMan from "@/assets/creator-man.jpg";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import * as THREE from "three";
@@ -163,6 +165,8 @@ function Feature({ icon: Icon, title, desc }: { icon: React.ComponentType<{ clas
 
 function Landing() {
   const [activeTest, setActiveTest] = useState<TestConfig | null>(() => getActiveTest());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [activeFeature, setActiveFeature] = useState("Live GPS check");
   const [settings, setSettings] = useState<AdminSettings>(() => loadSettings());
   const [codeOpen, setCodeOpen] = useState(false);
   const [codeName, setCodeName] = useState("");
@@ -322,148 +326,119 @@ function Landing() {
     });
   }
 
+  const features = ["Live GPS check", "Face match", "Class code", "Live selfie", "Study materials"];
+  const featureText: Record<string, string> = {
+    "Live GPS check": "Students sign only inside the lecturer's pinned radius",
+    "Face match": "Each check-in is matched to the face scanned at registration",
+    "Class code": "A code on the projector changes every 30 seconds",
+    "Live selfie": "A fresh photo with time and place, no gallery uploads",
+    "Study materials": "Course files, with paid ones unlocked after a confirmed payment",
+  };
+  const scrollTo = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); setMenuOpen(false); };
+
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-hero">
-      <ParticleNetwork />
-
-      <motion.header
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6"
-      >
-        <Link to="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow">
-            <MapPin className="h-4 w-4" />
-          </div>
-          <span className="text-lg font-semibold tracking-tight">Attendly</span>
-        </Link>
-        <nav>
-          <Button asChild><Link to="/attendance">Sign attendance</Link></Button>
-        </nav>
-      </motion.header>
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-24 pt-10">
-        <section className="grid items-center gap-10 lg:grid-cols-2">
-          <div>
-            <motion.span custom={0} variants={hero} initial="hidden" animate="show"
-              className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-soft">
-              <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              GPS-verified · One device per day
-            </motion.span>
-
-            <motion.h1 custom={0.1} variants={hero} initial="hidden" animate="show"
-              className="mt-5 text-5xl font-bold leading-tight tracking-tight sm:text-6xl">
-              Attendance that{" "}
-              <span className="bg-gradient-primary bg-clip-text text-transparent">can't be faked</span>.
-            </motion.h1>
-
-            <motion.p custom={0.2} variants={hero} initial="hidden" animate="show"
-              className="mt-5 max-w-lg text-lg text-muted-foreground">
-              No more signing in from the hostel. Students can only mark attendance when they're
-              physically inside the lecturer's class radius — and only once per device, per day.
-            </motion.p>
-
-            <motion.div custom={0.32} variants={hero} initial="hidden" animate="show"
-              className="mt-8 flex flex-wrap items-center gap-3">
-              <Button asChild size="lg">
-                <Link to="/attendance"><GraduationCap className="mr-2 h-4 w-4" /> Sign my attendance</Link>
-              </Button>
-
-              <Button asChild size="lg" variant="outline">
-                <Link to="/register"><UserPlus className="mr-2 h-4 w-4" /> Register (once)</Link>
-              </Button>
-
-              <Button asChild size="lg" variant="outline">
-                <Link to="/me"><ClipboardCheck className="mr-2 h-4 w-4" /> My attendance</Link>
-              </Button>
-
-              <Button asChild size="lg" variant="outline">
-                <Link to="/materials"><BookOpen className="mr-2 h-4 w-4" /> Study Materials</Link>
-              </Button>
-
-              {settings.classCodeEnabled && settings.classCode && (
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.08, duration: 0.3 }}>
-                  <Button size="lg" variant="outline"
-                    className="border-amber-400 text-amber-600 hover:bg-amber-50 dark:border-amber-500 dark:text-amber-400 dark:hover:bg-amber-900/20"
-                    onClick={() => setCodeOpen(true)}>
-                    <KeyRound className="mr-2 h-4 w-4" /> Get class code
-                  </Button>
-                </motion.div>
-              )}
-
-              {activeTest && (
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1, duration: 0.3 }}>
-                  <Button asChild size="lg" variant="outline" className="border-primary text-primary hover:bg-primary/10">
-                    <Link to="/test"><FileQuestion className="mr-2 h-4 w-4" /> Take test</Link>
-                  </Button>
-                </motion.div>
-              )}
-            </motion.div>
-
-            {activeTest && (
-              <motion.div custom={0.42} variants={hero} initial="hidden" animate="show" className="mt-4">
-                <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-4 py-2 text-sm">
-                  <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                  <span className="font-medium text-primary">{activeTest.courseCode}</span>
-                  <span className="text-muted-foreground">— {activeTest.title} is now open</span>
-                </div>
-              </motion.div>
-            )}
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.25, duration: 0.6, ease: "circOut" }}
-            className="relative"
-          >
-            <div className="absolute -inset-4 rounded-3xl bg-gradient-primary opacity-20 blur-2xl" />
-            <motion.div
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-              className="relative rounded-3xl border bg-card p-6 shadow-soft"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">Live session</p>
-                  <p className="mt-1 font-semibold">CSC 401 — Distributed Systems</p>
-                </div>
-                <span className="rounded-full bg-success/15 px-2.5 py-1 text-xs font-medium" style={{ color: "var(--color-success)" }}>
-                  Open
-                </span>
-              </div>
-              <div className="mt-5 grid grid-cols-3 gap-3 text-center">
-                {[{ value: "42", label: "Signed in" }, { value: "100m", label: "Radius" }, { value: "08:14", label: "Closes in" }].map((s) => (
-                  <div key={s.label} className="rounded-xl bg-secondary p-3">
-                    <p className="text-2xl font-semibold">{s.value}</p>
-                    <p className="text-xs text-muted-foreground">{s.label}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-5 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                <MapPin className="mr-2 inline h-4 w-4" />
-                Lecturer pinned <span className="font-medium text-foreground">Hall B, Block 3</span> as today's location.
-              </div>
-            </motion.div>
-          </motion.div>
-        </section>
-
-        <motion.section variants={featureContainer} initial="hidden" animate="show" className="mt-20 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Feature icon={MapPin} title="GPS check" desc="Student location must match the lecturer's pin within the chosen radius." />
-          <Feature icon={ShieldCheck} title="One device per day" desc="Each device can only submit attendance once per day, per course." />
-          <Feature icon={Clock} title="Timed window" desc="Lecturer sets how long the form stays open. After that, it auto-locks." />
-          <Feature icon={Sparkles} title="AI assistant" desc="Ask the dashboard things like 'who from Computer Science signed today?'" />
-        </motion.section>
-      </main>
-
-      <footer className="mx-auto w-full max-w-6xl px-6 py-6">
-        <div className="flex items-center justify-center border-t pt-6">
-          <Link to="/admin" className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors">
-            Lecturer login
+    <div className="min-h-screen bg-foreground p-3 sm:p-6 lg:p-12">
+      <div className="mx-auto max-w-[1440px] rounded-[28px] bg-background sm:rounded-[48px]">
+        <motion.header initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+          className="relative z-10 flex items-center justify-between gap-6 px-6 pb-3 pt-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:px-16">
+          <Link to="/" className="flex items-center gap-2.5 font-display text-xl font-bold">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground"><MapPin className="h-4 w-4" /></span>
+            Attendly
           </Link>
-        </div>
-      </footer>
+          <nav className={`${menuOpen ? "flex" : "hidden"} absolute inset-x-4 top-full flex-col gap-1 rounded-2xl border bg-background p-3 shadow-soft lg:static lg:flex lg:flex-row lg:justify-center lg:gap-8 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none`}>
+            {[["how", "How it works"], ["features", "Features"]].map(([id, label]) => (
+              <button key={id} onClick={() => scrollTo(id)} className="px-2 py-2 text-left text-sm hover:opacity-60">{label}</button>
+            ))}
+            <Link to="/register" className="px-2 py-2 text-sm hover:opacity-60">Register</Link>
+            <Link to="/me" className="px-2 py-2 text-sm hover:opacity-60">My attendance</Link>
+            <Link to="/materials" className="px-2 py-2 text-sm hover:opacity-60">Materials</Link>
+          </nav>
+          <div className="flex items-center justify-end gap-2">
+            <Button asChild className="rounded-full bg-foreground text-background hover:bg-foreground/85"><Link to="/attendance">Sign attendance</Link></Button>
+            <Button variant="ghost" size="icon" className="lg:hidden" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>
+              {menuOpen ? <X /> : <Menu />}
+            </Button>
+          </div>
+        </motion.header>
+
+        <main className="grid items-center gap-10 px-6 pb-14 pt-6 lg:grid-cols-[0.83fr_1.17fr] lg:gap-16 lg:px-16">
+          <section>
+            <motion.p custom={0} variants={hero} initial="hidden" animate="show" className="mb-4 flex items-center gap-2 text-[11px] font-bold tracking-widest text-muted-foreground">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-primary" /> EKSU · GPS-VERIFIED ATTENDANCE
+            </motion.p>
+            <motion.h1 custom={0.1} variants={hero} initial="hidden" animate="show" className="font-display text-[44px] font-bold leading-[0.99] tracking-tight sm:text-6xl lg:text-7xl">
+              Attendance<br />that can't<br />be faked{" "}
+              <span className="inline-flex h-9 w-9 -translate-y-1 items-center justify-center rounded-full bg-accent align-middle"><ShieldCheck className="h-5 w-5 text-primary" /></span>
+            </motion.h1>
+            <motion.p custom={0.2} variants={hero} initial="hidden" animate="show" className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground">
+              Students sign in only when they are really in the lecture hall: live location, a face match and a class code that keeps changing. No more signing from the hostel.
+            </motion.p>
+            <motion.div custom={0.3} variants={hero} initial="hidden" animate="show" className="mt-6 flex flex-wrap gap-2.5">
+              <Button asChild size="lg" className="rounded-full bg-foreground text-background hover:bg-foreground/85">
+                <Link to="/attendance">Sign my attendance <ArrowRight className="ml-1 h-4 w-4" /></Link>
+              </Button>
+              <Button asChild size="lg" variant="outline" className="rounded-full"><Link to="/register"><UserPlus className="mr-1 h-4 w-4" /> Register once</Link></Button>
+              {settings.classCodeEnabled && settings.classCode && (
+                <Button size="lg" variant="outline" className="rounded-full border-amber-400 text-amber-600" onClick={() => setCodeOpen(true)}>
+                  <KeyRound className="mr-1 h-4 w-4" /> Get class code
+                </Button>
+              )}
+              {activeTest && (
+                <Button asChild size="lg" variant="outline" className="rounded-full border-primary text-primary"><Link to="/test"><FileQuestion className="mr-1 h-4 w-4" /> Take test</Link></Button>
+              )}
+            </motion.div>
+            {activeTest && (
+              <p className="mt-3 text-sm text-muted-foreground"><span className="font-medium text-primary">{activeTest.courseCode}</span> — {activeTest.title} is now open</p>
+            )}
+
+            <motion.div custom={0.4} variants={hero} initial="hidden" animate="show" id="features" className="mt-8 flex flex-wrap gap-2">
+              {features.map((f) => (
+                <button key={f} onClick={() => setActiveFeature(f)} aria-pressed={activeFeature === f}
+                  className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs transition-colors ${activeFeature === f ? "border-foreground bg-foreground text-background" : "hover:bg-secondary"}`}>
+                  {f} <Plus className="h-3 w-3" />
+                </button>
+              ))}
+            </motion.div>
+            <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-primary" /> {featureText[activeFeature]}</p>
+          </section>
+
+          <motion.section id="how" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25, duration: 0.6 }}
+            className="grid scroll-mt-6 grid-cols-2 gap-3 sm:gap-4">
+            <div className="relative aspect-square overflow-hidden rounded-3xl bg-accent">
+              <img src={studentWoman} alt="A student signing attendance on her phone" className="h-full w-full object-cover" width={1024} height={1024} fetchPriority="high" />
+              <span className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium"><MapPin className="h-3.5 w-3.5 text-primary" /> Inside the hall</span>
+            </div>
+            <div className="flex aspect-square flex-col rounded-3xl bg-primary p-4 text-primary-foreground sm:p-6">
+              <div className="flex items-center justify-between text-sm font-semibold"><span className="whitespace-nowrap">CSC 401</span><span className="whitespace-nowrap rounded-full bg-background/90 px-2 py-0.5 text-[10px] text-foreground sm:text-xs">42 signed</span></div>
+              <div className="mt-auto flex h-1/2 items-end gap-1.5 sm:gap-2" aria-hidden="true">
+                {[36, 54, 47, 69, 57, 79].map((h, i) => <span key={i} className="flex-1 rounded-t-lg bg-background/80" style={{ height: `${h}%` }} />)}
+              </div>
+              <div className="mt-1.5 flex justify-between text-[10px] opacity-80" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+              <span className="mt-2 text-[10px] font-bold tracking-widest">CLASS TURNOUT THIS WEEK</span>
+            </div>
+            <div className="flex aspect-square flex-col justify-between rounded-3xl bg-secondary p-4 sm:p-6">
+              <div className="flex -space-x-3">
+                <img src={studentWoman} alt="" className="h-12 w-12 rounded-full border-2 border-background object-cover" loading="lazy" />
+                <img src={studentMan} alt="" className="h-12 w-12 rounded-full border-2 border-background object-cover" loading="lazy" />
+                <span className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-background bg-primary text-primary-foreground"><ScanFace className="h-5 w-5" /></span>
+              </div>
+              <div>
+                <p className="font-display text-xl font-bold leading-tight sm:text-2xl">Face matched,<br />not just named</p>
+                <p className="mt-1 text-[10px] font-bold tracking-widest text-muted-foreground">NO PROXY SIGN-INS</p>
+              </div>
+            </div>
+            <div className="relative aspect-square overflow-hidden rounded-3xl bg-accent">
+              <img src={studentMan} alt="A student checking in for his lecture" className="h-full w-full object-cover" width={1024} height={1024} loading="lazy" />
+              <span className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium"><Clock className="h-3.5 w-3.5 text-primary" /> Signed at 08:02</span>
+            </div>
+          </motion.section>
+        </main>
+      </div>
+
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-5 text-[11px] tracking-widest text-background/70">
+        <span>ONE STUDENT · ONE DEVICE · ONE CLASS</span>
+        <Link to="/admin" className="flex items-center gap-1.5 tracking-normal hover:text-background">Lecturer login <ArrowRight className="h-3.5 w-3.5" /></Link>
+      </div>
 
       {/* Class code modal */}
       <AnimatePresence>
