@@ -10,6 +10,7 @@ import {
 import { needsReview } from "@/components/admin/AdminSidebar";
 import { ATTEMPT_LABEL, Avatar, PageHeader, Panel, PanelTitle, Stat } from "@/components/admin/ui";
 import { useClassCode, useLiveLink } from "@/routes/admin/index";
+import { LeafletMap, type MapPoint } from "@/components/LeafletMap";
 
 export const Route = createFileRoute("/admin/live")({
   head: () => ({ meta: [{ title: "Live session — Attendly" }] }),
@@ -144,52 +145,31 @@ function Feed({ records, attempts }: { records: AttendanceRecord[]; attempts: Ch
   );
 }
 
-/**
- * Simple map without tiles: the lecturer's verified spot in the middle, the
- * allowed radius as a dashed circle, and every check-in / blocked attempt
- * placed at its real offset (north up). Far-away points are pinned to the edge.
- */
+/** Real street map (OpenStreetMap): your spot, the allowed circle, and every check-in / blocked attempt. */
 function CheckInMap({ link, records, attempts }: { link: AttendanceLink; records: AttendanceRecord[]; attempts: CheckInAttempt[] }) {
   if (link.anchorLat == null || link.anchorLng == null) {
     return <p className="m-auto max-w-sm py-10 text-center text-sm text-muted-foreground">This check-in has no verified lecturer location, so there's nothing to map. New check-ins ask you to verify your location first.</p>;
   }
-  const radius = link.anchorRadius ?? 100;
-  const W = 640, H = 400, cx = W / 2, cy = H / 2;
-  const viewM = radius * 3; // metres from centre to the shorter edge
-  const scale = (H / 2 - 16) / viewM;
-  const toXY = (lat: number, lng: number) => {
-    const dy = (lat - link.anchorLat!) * 111_320;
-    const dx = (lng - link.anchorLng!) * 111_320 * Math.cos((link.anchorLat! * Math.PI) / 180);
-    let x = cx + dx * scale, y = cy - dy * scale;
-    const maxX = W / 2 - 12, maxY = H / 2 - 12;
-    const k = Math.max(Math.abs(x - cx) / maxX, Math.abs(y - cy) / maxY, 1);
-    x = cx + (x - cx) / k; y = cy + (y - cy) / k;
-    return { x, y, clipped: k > 1 };
-  };
-
-  const dots = [
-    ...records.filter((r) => r.lat && r.lng).map((r) => ({ key: `r${r.id}`, ...toXY(r.lat, r.lng), fill: needsReview(r) ? "#f59e0b" : "#12b886", label: r.fullName })),
-    ...attempts.filter((a) => a.lat != null && a.lng != null).map((a) => ({ key: `a${a.id}`, ...toXY(a.lat!, a.lng!), fill: "#ef4444", label: `${a.matric ?? "Unknown"} · ${ATTEMPT_LABEL[a.reason] ?? a.reason}` })),
+  const points: MapPoint[] = [
+    ...records.filter((r) => r.lat && r.lng).map((r) => ({
+      id: `r${r.id}`, lat: r.lat, lng: r.lng,
+      color: needsReview(r) ? "#f59e0b" : "#12b886",
+      label: `${r.fullName}${r.distanceMeters ? ` · ${r.distanceMeters} m` : ""}`,
+    })),
+    ...attempts.filter((a) => a.lat != null && a.lng != null).map((a) => ({
+      id: `a${a.id}`, lat: a.lat!, lng: a.lng!, color: "#ef4444",
+      label: `${a.matric ?? "Unknown"} · ${ATTEMPT_LABEL[a.reason] ?? a.reason}${a.reason === "out_of_range" && a.detail ? ` · ${a.detail} m` : ""}`,
+    })),
   ];
-
   return (
-    <div className="relative mt-3 flex-grow overflow-hidden rounded-2xl border border-[rgba(27,36,57,0.06)] bg-[#eef2f1] dark:bg-[#1a2338]">
-      <svg role="img" aria-label="Map of check-in locations relative to you" viewBox={`0 0 ${W} ${H}`} className="h-full w-full" preserveAspectRatio="xMidYMid meet">
-        {[1, 2, 3].map((i) => (
-          <circle key={i} cx={cx} cy={cy} r={radius * i * scale} fill="none" stroke="rgba(27,36,57,0.08)" strokeWidth="1" />
-        ))}
-        <circle cx={cx} cy={cy} r={radius * scale} fill="rgba(18,184,134,0.10)" stroke="#12b886" strokeWidth="2" strokeDasharray="6 5" />
-        <text x={cx + radius * scale + 6} y={cy - 4} fontSize="11" fill="#5f6b7d">{radius} m</text>
-        <text x={cx + radius * 3 * scale - 30} y={cy - 4} fontSize="11" fill="#5f6b7d">{radius * 3} m</text>
-        {dots.map((d) => (
-          <circle key={d.key} cx={d.x} cy={d.y} r={d.clipped ? 7 : 5.5} fill={d.fill} stroke={d.clipped ? "#fff" : "none"} strokeWidth="2">
-            <title>{d.label}{d.clipped ? " (further away)" : ""}</title>
-          </circle>
-        ))}
-        <circle cx={cx} cy={cy} r="8" fill="#121a2b" stroke="#fff" strokeWidth="3"><title>You</title></circle>
-        <text x={W - 22} y={22} fontSize="12" fontWeight="600" fill="#5f6b7d">N ↑</text>
-      </svg>
-      <div className="absolute bottom-3 left-3 flex flex-wrap gap-3 rounded-lg border border-[rgba(27,36,57,0.08)] bg-white/90 px-3 py-1.5 text-xs dark:bg-black/60">
+    <div className="relative mt-3 flex-grow overflow-hidden rounded-2xl border border-[rgba(27,36,57,0.06)]">
+      <LeafletMap
+        center={{ lat: link.anchorLat, lng: link.anchorLng }}
+        radius={link.anchorRadius ?? 100}
+        points={points}
+        className="h-full min-h-[340px] w-full"
+      />
+      <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap gap-3 rounded-lg border border-[rgba(27,36,57,0.08)] bg-white/90 px-3 py-1.5 text-xs dark:bg-black/60">
         <Legend color="#121a2b" label="You" />
         <Legend color="#12b886" label="Accepted" />
         <Legend color="#f59e0b" label="Flagged" />

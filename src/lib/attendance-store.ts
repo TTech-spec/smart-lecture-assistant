@@ -56,6 +56,17 @@ export type AdminSettings = {
   activeSessionId: string | null;
   courses: string[];
   departments: string[];
+  /** Lecture halls saved by the lecturer (exact spot, set once) */
+  venues?: Venue[];
+};
+
+export type Venue = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  /** Metres; small when the pin was placed by hand on the map */
+  accuracy: number;
 };
 
 export type AttendanceSession = {

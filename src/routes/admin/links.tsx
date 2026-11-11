@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { getPrecisePosition, type Coords } from "@/lib/geo";
 import { QrCode as QrImage } from "@/components/QrCode";
+import { LeafletMap } from "@/components/LeafletMap";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import {
 import {
   addLink, disableLink, deleteLink, generateToken, isLinkValid,
   fetchLinksFromSupabase, saveLinks, loadTests, addTestLink, loadTestLinks, deleteTestLink,
-  type AttendanceLink, type TestConfig, type TestLink,
+  type AttendanceLink, type TestConfig, type TestLink, loadSettings, saveSettings, type Venue
 } from "@/lib/attendance-store";
 import { useStore } from "@/hooks/use-store";
 
@@ -131,6 +132,35 @@ function GenerateLinkForm({
   // Lecturer-verified location (attendance links)
   const [anchor, setAnchor] = useState<Coords | null>(null);
   const [anchorRadius, setAnchorRadius] = useState(100);
+  // Saved lecture halls; picking one replaces indoor GPS
+  const [venues, setVenues] = useState<Venue[]>(() => loadSettings().venues ?? []);
+  const [venueId, setVenueId] = useState<string>("");
+  const [venueName, setVenueName] = useState("");
+  const [pinMoved, setPinMoved] = useState(false);
+
+  function pickVenue(id: string) {
+    setVenueId(id);
+    const v = venues.find((x) => x.id === id);
+    if (v) { setAnchor({ lat: v.lat, lng: v.lng, accuracy: v.accuracy, source: "gps" }); setPinMoved(false); }
+  }
+
+  function saveVenue() {
+    if (!anchor || !venueName.trim()) return toast.error("Give the venue a name first.");
+    const v: Venue = { id: `ven-${Date.now()}`, name: venueName.trim(), lat: anchor.lat, lng: anchor.lng, accuracy: Math.round(anchor.accuracy ?? 10) };
+    const next = [...venues.filter((x) => x.name.toLowerCase() !== v.name.toLowerCase()), v];
+    saveSettings({ ...loadSettings(), venues: next });
+    setVenues(next);
+    setVenueId(v.id);
+    setVenueName("");
+    toast.success(`Saved "${v.name}". Pick it next time instead of using GPS.`);
+  }
+
+  function deleteVenue(id: string) {
+    const next = venues.filter((x) => x.id !== id);
+    saveSettings({ ...loadSettings(), venues: next });
+    setVenues(next);
+    if (venueId === id) setVenueId("");
+  }
   const [locating, setLocating] = useState(false);
   const [locAccuracy, setLocAccuracy] = useState<number | null>(null);
 
@@ -140,6 +170,8 @@ function GenerateLinkForm({
     try {
       const pos = await getPrecisePosition({ maxWaitMs: 20_000, targetAccuracy: 25 }, setLocAccuracy);
       setAnchor(pos);
+      setVenueId("");
+      setPinMoved(false);
       if ((pos.accuracy ?? 999) > 100) {
         toast.warning(`Location is rough (±${Math.round(pos.accuracy ?? 0)} m). Move near a window or door and verify again for better results.`);
       } else {
@@ -226,6 +258,8 @@ function GenerateLinkForm({
       setAssignClassCode(null);
       setSelectedTestId(null);
       setAnchor(null);
+      setVenueId("");
+      setPinMoved(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       if (msg.toLowerCase().includes("does not exist") || msg.toLowerCase().includes("relation")) {
@@ -341,16 +375,63 @@ function GenerateLinkForm({
               </p>
             </div>
           </div>
+          {venues.length > 0 && (
+            <div>
+              <Label className="text-sm">Use a saved venue</Label>
+              <div className="mt-1 flex gap-2">
+                <Select value={venueId} onValueChange={pickVenue}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Choose a lecture hall" /></SelectTrigger>
+                  <SelectContent>
+                    {venues.map((v) => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {venueId && (
+                  <Button type="button" variant="outline" size="icon" aria-label="Delete this venue" onClick={() => deleteVenue(venueId)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <p className="mt-2 text-center text-xs text-muted-foreground">— or —</p>
+            </div>
+          )}
           <Button type="button" variant={anchor ? "outline" : "default"} className="w-full" onClick={verifyLocation} disabled={locating}>
             {locating ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 {locAccuracy != null ? `Improving accuracy… ±${Math.round(locAccuracy)} m` : "Getting your location…"}</>
             ) : anchor ? (
-              <><CheckCircle2 className="mr-2 h-4 w-4 text-primary" /> Verified (±{Math.round(anchor.accuracy ?? 0)} m) · Verify again</>
+              <><CheckCircle2 className="mr-2 h-4 w-4 text-primary" /> {venueId ? "Using saved venue · use my GPS instead" : `Verified (±${Math.round(anchor.accuracy ?? 0)} m) · Verify again`}</>
             ) : (
               <><MapPin className="mr-2 h-4 w-4" /> Verify my location</>
             )}
           </Button>
+          {anchor && (
+            <div className="space-y-2">
+              <LeafletMap
+                center={{ lat: anchor.lat, lng: anchor.lng }}
+                radius={anchorRadius}
+                draggable
+                onMove={(p) => { setAnchor({ ...p, accuracy: 5, source: "gps" }); setVenueId(""); setPinMoved(true); }}
+                className="h-56 w-full overflow-hidden rounded-lg border"
+              />
+              <p className="text-xs text-muted-foreground">
+                {pinMoved
+                  ? "Pin placed by hand — students are measured from here."
+                  : "Is the pin on your lecture hall? If not, drag it onto the exact building."}
+              </p>
+              {!venueId && (
+                <div className="flex gap-2">
+                  <Input
+                    value={venueName}
+                    onChange={(e) => setVenueName(e.target.value)}
+                    placeholder="Save as e.g. EKSU Faculty of Science LT1"
+                    className="h-9 flex-1 text-sm"
+                    aria-label="Venue name"
+                  />
+                  <Button type="button" variant="outline" size="sm" className="h-9" onClick={saveVenue}>Save venue</Button>
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <Label className="text-sm">Students must be within</Label>
             <Select value={String(anchorRadius)} onValueChange={(v) => setAnchorRadius(Number(v))}>
