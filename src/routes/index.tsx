@@ -337,10 +337,10 @@ function Landing() {
   const scrollTo = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); setMenuOpen(false); };
 
   return (
-    <div className="min-h-screen bg-foreground p-3 sm:p-6 lg:p-12">
-      <div className="mx-auto max-w-[1440px] rounded-[28px] bg-background sm:rounded-[48px]">
+    <div className="flex h-[100svh] flex-col overflow-hidden bg-foreground p-2.5 sm:p-4 lg:p-6">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col rounded-[28px] bg-background sm:rounded-[40px]">
         <motion.header initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-          className="relative z-10 flex items-center justify-between gap-6 px-6 pb-3 pt-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:px-16">
+          className="relative z-10 flex items-center justify-between gap-6 px-6 pb-3 pt-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:px-14">
           <Link to="/" className="flex items-center gap-2.5 font-display text-xl font-bold">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground"><MapPin className="h-4 w-4" /></span>
             Attendly
@@ -352,25 +352,26 @@ function Landing() {
             <Link to="/register" className="px-2 py-2 text-sm hover:opacity-60">Register</Link>
             <Link to="/me" className="px-2 py-2 text-sm hover:opacity-60">My attendance</Link>
             <Link to="/materials" className="px-2 py-2 text-sm hover:opacity-60">Materials</Link>
+            <Link to="/admin" className="px-2 py-2 text-sm text-muted-foreground hover:opacity-60">Lecturer login</Link>
           </nav>
           <div className="flex items-center justify-end gap-2">
-            <Button asChild className="rounded-full bg-foreground text-background hover:bg-foreground/85"><Link to="/attendance">Sign attendance</Link></Button>
+            <Button asChild className="hidden rounded-full bg-foreground text-background hover:bg-foreground/85 sm:inline-flex"><Link to="/attendance">Sign attendance</Link></Button>
             <Button variant="ghost" size="icon" className="lg:hidden" aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen(!menuOpen)}>
               {menuOpen ? <X /> : <Menu />}
             </Button>
           </div>
         </motion.header>
 
-        <main className="grid items-center gap-10 px-6 pb-14 pt-6 lg:grid-cols-[0.83fr_1.17fr] lg:gap-16 lg:px-16">
+        <main className="grid min-h-0 flex-1 items-center gap-10 px-6 pb-6 pt-2 lg:grid-cols-[0.83fr_1.17fr] lg:gap-14 lg:px-14 lg:pb-8">
           <section>
             <motion.p custom={0} variants={hero} initial="hidden" animate="show" className="mb-4 flex items-center gap-2 text-[11px] font-bold tracking-widest text-muted-foreground">
               <span className="h-2 w-2 animate-pulse rounded-full bg-primary" /> EKSU · GPS-VERIFIED ATTENDANCE
             </motion.p>
-            <motion.h1 custom={0.1} variants={hero} initial="hidden" animate="show" className="font-display text-[44px] font-bold leading-[0.99] tracking-tight sm:text-6xl lg:text-7xl">
+            <motion.h1 custom={0.1} variants={hero} initial="hidden" animate="show" className="font-display text-[40px] font-bold leading-[0.99] tracking-tight sm:text-6xl xl:text-7xl [@media(max-height:760px)]:text-5xl [@media(max-height:600px)]:text-4xl">
               Attendance<br />that can't<br />be faked{" "}
               <span className="inline-flex h-9 w-9 -translate-y-1 items-center justify-center rounded-full bg-accent align-middle"><ShieldCheck className="h-5 w-5 text-primary" /></span>
             </motion.h1>
-            <motion.p custom={0.2} variants={hero} initial="hidden" animate="show" className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground">
+            <motion.p custom={0.2} variants={hero} initial="hidden" animate="show" className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground [@media(max-height:600px)]:mt-3 [@media(max-height:600px)]:text-xs">
               Students sign in only when they are really in the lecture hall: live location, a face match and a class code that keeps changing. No more signing from the hostel.
             </motion.p>
             <motion.div custom={0.3} variants={hero} initial="hidden" animate="show" className="mt-6 flex flex-wrap gap-2.5">
@@ -391,7 +392,7 @@ function Landing() {
               <p className="mt-3 text-sm text-muted-foreground"><span className="font-medium text-primary">{activeTest.courseCode}</span> — {activeTest.title} is now open</p>
             )}
 
-            <motion.div custom={0.4} variants={hero} initial="hidden" animate="show" id="features" className="mt-8 flex flex-wrap gap-2">
+            <motion.div custom={0.4} variants={hero} initial="hidden" animate="show" id="features" className="mt-6 flex flex-wrap gap-2 [@media(max-height:700px)]:hidden">
               {features.map((f) => (
                 <button key={f} onClick={() => setActiveFeature(f)} aria-pressed={activeFeature === f}
                   className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs transition-colors ${activeFeature === f ? "border-foreground bg-foreground text-background" : "hover:bg-secondary"}`}>
@@ -399,16 +400,16 @@ function Landing() {
                 </button>
               ))}
             </motion.div>
-            <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-primary" /> {featureText[activeFeature]}</p>
+            <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground [@media(max-height:700px)]:hidden"><Check className="h-3.5 w-3.5 text-primary" /> {featureText[activeFeature]}</p>
           </section>
 
           <motion.section id="how" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25, duration: 0.6 }}
-            className="grid scroll-mt-6 grid-cols-2 gap-3 sm:gap-4">
-            <div className="relative aspect-square overflow-hidden rounded-3xl bg-accent">
+            className="hidden h-full max-h-[720px] min-h-0 grid-cols-2 grid-rows-2 gap-3 lg:grid xl:gap-4">
+            <div className="relative min-h-0 overflow-hidden rounded-3xl bg-accent">
               <img src={studentWoman} alt="A student signing attendance on her phone" className="h-full w-full object-cover" width={1024} height={1024} fetchPriority="high" />
               <span className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium"><MapPin className="h-3.5 w-3.5 text-primary" /> Inside the hall</span>
             </div>
-            <div className="flex aspect-square flex-col rounded-3xl bg-primary p-4 text-primary-foreground sm:p-6">
+            <div className="flex min-h-0 flex-col rounded-3xl bg-primary p-4 text-primary-foreground sm:p-6">
               <div className="flex items-center justify-between text-sm font-semibold"><span className="whitespace-nowrap">CSC 401</span><span className="whitespace-nowrap rounded-full bg-background/90 px-2 py-0.5 text-[10px] text-foreground sm:text-xs">42 signed</span></div>
               <div className="mt-auto flex h-1/2 items-end gap-1.5 sm:gap-2" aria-hidden="true">
                 {[36, 54, 47, 69, 57, 79].map((h, i) => <span key={i} className="flex-1 rounded-t-lg bg-background/80" style={{ height: `${h}%` }} />)}
@@ -416,7 +417,7 @@ function Landing() {
               <div className="mt-1.5 flex justify-between text-[10px] opacity-80" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
               <span className="mt-2 text-[10px] font-bold tracking-widest">CLASS TURNOUT THIS WEEK</span>
             </div>
-            <div className="flex aspect-square flex-col justify-between rounded-3xl bg-secondary p-4 sm:p-6">
+            <div className="flex min-h-0 flex-col justify-between rounded-3xl bg-secondary p-4 sm:p-6">
               <div className="flex -space-x-3">
                 <img src={studentWoman} alt="" className="h-12 w-12 rounded-full border-2 border-background object-cover" loading="lazy" />
                 <img src={studentMan} alt="" className="h-12 w-12 rounded-full border-2 border-background object-cover" loading="lazy" />
@@ -427,7 +428,7 @@ function Landing() {
                 <p className="mt-1 text-[10px] font-bold tracking-widest text-muted-foreground">NO PROXY SIGN-INS</p>
               </div>
             </div>
-            <div className="relative aspect-square overflow-hidden rounded-3xl bg-accent">
+            <div className="relative min-h-0 overflow-hidden rounded-3xl bg-accent">
               <img src={studentMan} alt="A student checking in for his lecture" className="h-full w-full object-cover" width={1024} height={1024} loading="lazy" />
               <span className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium"><Clock className="h-3.5 w-3.5 text-primary" /> Signed at 08:02</span>
             </div>
@@ -435,10 +436,6 @@ function Landing() {
         </main>
       </div>
 
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-5 text-[11px] tracking-widest text-background/70">
-        <span>ONE STUDENT · ONE DEVICE · ONE CLASS</span>
-        <Link to="/admin" className="flex items-center gap-1.5 tracking-normal hover:text-background">Lecturer login <ArrowRight className="h-3.5 w-3.5" /></Link>
-      </div>
 
       {/* Class code modal */}
       <AnimatePresence>
