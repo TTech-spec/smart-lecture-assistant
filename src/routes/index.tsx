@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import studentWoman from "@/assets/creator-woman.jpg";
 import studentMan from "@/assets/creator-man.jpg";
 import { Input } from "@/components/ui/input";
-import { motion, AnimatePresence, type Variants } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig, animate as animateValue, useInView, type Variants } from "framer-motion";
 import * as THREE from "three";
 import { toast } from "sonner";
 import { getActiveTest, loadSettings, lookupStudentRemote, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, fetchActiveTestFromSupabase, fetchSettingsFromSupabase, pollActiveTest, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
@@ -161,6 +161,37 @@ function Feature({ icon: Icon, title, desc }: { icon: React.ComponentType<{ clas
       <p className="mt-1 text-sm text-muted-foreground">{desc}</p>
     </motion.div>
   );
+}
+
+const gridStagger: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.12, delayChildren: 0.35 } } };
+const card: Variants = {
+  hidden: { opacity: 0, y: 28, scale: 0.96 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.55, ease: "circOut" } },
+};
+
+/** Little label on a photo that pops in, then floats gently. */
+function FloatTag({ children, delay }: { children: React.ReactNode; delay: number }) {
+  return (
+    <motion.span initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: [0, -4, 0] }}
+      transition={{ opacity: { delay, duration: 0.4 }, y: { delay: delay + 0.4, duration: 3, repeat: Infinity, ease: "easeInOut" } }}
+      className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium sm:bottom-3 sm:left-3 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs">
+      {children}
+    </motion.span>
+  );
+}
+
+/** Counts up from 0 once it's on screen. */
+function CountUp({ to }: { to: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true });
+  const [n, setN] = useState(to);
+  useEffect(() => {
+    if (!inView) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setN(to); return; }
+    const c = animateValue(0, to, { duration: 1.4, delay: 1, ease: "easeOut", onUpdate: (v) => setN(Math.round(v)) });
+    return () => c.stop();
+  }, [inView, to]);
+  return <span ref={ref}>{n}</span>;
 }
 
 function Landing() {
@@ -337,7 +368,7 @@ function Landing() {
   const scrollTo = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); setMenuOpen(false); };
 
   return (
-    <div className="flex h-[100svh] flex-col overflow-hidden bg-background">
+    <MotionConfig reducedMotion="user"><div className="flex min-h-[100svh] flex-col bg-background lg:h-[100svh] lg:overflow-hidden">
       <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col bg-background">
         <motion.header initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
           className="relative z-10 flex items-center justify-between gap-6 px-6 pb-3 pt-6 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:px-14">
@@ -362,16 +393,16 @@ function Landing() {
           </div>
         </motion.header>
 
-        <main className="grid min-h-0 flex-1 items-center gap-10 px-6 pb-6 pt-2 lg:grid-cols-[0.83fr_1.17fr] lg:gap-14 lg:px-14 lg:pb-8">
+        <main className="grid min-h-0 flex-1 items-center gap-8 px-5 pb-8 pt-2 sm:px-6 lg:gap-10 lg:grid-cols-[0.83fr_1.17fr] lg:gap-14 lg:px-14 lg:pb-8">
           <section>
             <motion.p custom={0} variants={hero} initial="hidden" animate="show" className="mb-4 flex items-center gap-2 text-[11px] font-bold tracking-widest text-muted-foreground">
               <span className="h-2 w-2 animate-pulse rounded-full bg-primary" /> EKSU · GPS-VERIFIED ATTENDANCE
             </motion.p>
-            <motion.h1 custom={0.1} variants={hero} initial="hidden" animate="show" className="font-display text-[40px] font-bold leading-[0.99] tracking-tight sm:text-6xl xl:text-7xl [@media(max-height:760px)]:text-5xl [@media(max-height:600px)]:text-4xl">
+            <motion.h1 custom={0.1} variants={hero} initial="hidden" animate="show" className="font-display text-[40px] font-bold leading-[0.99] tracking-tight sm:text-6xl xl:text-7xl lg:[@media(max-height:760px)]:text-5xl lg:[@media(max-height:600px)]:text-4xl">
               Attendance<br />that can't<br />be faked{" "}
               <span className="inline-flex h-9 w-9 -translate-y-1 items-center justify-center rounded-full bg-accent align-middle"><ShieldCheck className="h-5 w-5 text-primary" /></span>
             </motion.h1>
-            <motion.p custom={0.2} variants={hero} initial="hidden" animate="show" className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground [@media(max-height:600px)]:mt-3 [@media(max-height:600px)]:text-xs">
+            <motion.p custom={0.2} variants={hero} initial="hidden" animate="show" className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground lg:[@media(max-height:600px)]:mt-3 lg:[@media(max-height:600px)]:text-xs">
               Students sign in only when they are really in the lecture hall: live location, a face match and a class code that keeps changing. No more signing from the hostel.
             </motion.p>
             <motion.div custom={0.3} variants={hero} initial="hidden" animate="show" className="mt-6 flex flex-wrap gap-2.5">
@@ -392,7 +423,7 @@ function Landing() {
               <p className="mt-3 text-sm text-muted-foreground"><span className="font-medium text-primary">{activeTest.courseCode}</span> — {activeTest.title} is now open</p>
             )}
 
-            <motion.div custom={0.4} variants={hero} initial="hidden" animate="show" id="features" className="mt-6 flex flex-wrap gap-2 [@media(max-height:700px)]:hidden">
+            <motion.div custom={0.4} variants={hero} initial="hidden" animate="show" id="features" className="mt-6 flex flex-wrap gap-2 lg:[@media(max-height:700px)]:hidden">
               {features.map((f) => (
                 <button key={f} onClick={() => setActiveFeature(f)} aria-pressed={activeFeature === f}
                   className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs transition-colors ${activeFeature === f ? "border-foreground bg-foreground text-background" : "hover:bg-secondary"}`}>
@@ -400,38 +431,52 @@ function Landing() {
                 </button>
               ))}
             </motion.div>
-            <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground [@media(max-height:700px)]:hidden"><Check className="h-3.5 w-3.5 text-primary" /> {featureText[activeFeature]}</p>
+            <div className="mt-3 h-5 overflow-hidden lg:[@media(max-height:700px)]:hidden">
+              <AnimatePresence mode="wait">
+                <motion.p key={activeFeature} initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -12, opacity: 0 }} transition={{ duration: 0.25 }}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-primary" /> {featureText[activeFeature]}</motion.p>
+              </AnimatePresence>
+            </div>
           </section>
 
-          <motion.section id="how" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25, duration: 0.6 }}
-            className="hidden h-full max-h-[720px] min-h-0 grid-cols-2 grid-rows-2 gap-3 lg:grid xl:gap-4">
-            <div className="relative min-h-0 overflow-hidden rounded-3xl bg-accent">
-              <img src={studentWoman} alt="A student signing attendance on her phone" className="h-full w-full object-cover" width={1024} height={1024} fetchPriority="high" />
-              <span className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium"><MapPin className="h-3.5 w-3.5 text-primary" /> Inside the hall</span>
-            </div>
-            <div className="flex min-h-0 flex-col rounded-3xl bg-primary p-4 text-primary-foreground sm:p-6">
-              <div className="flex items-center justify-between text-sm font-semibold"><span className="whitespace-nowrap">CSC 401</span><span className="whitespace-nowrap rounded-full bg-background/90 px-2 py-0.5 text-[10px] text-foreground sm:text-xs">42 signed</span></div>
-              <div className="mt-auto flex h-1/2 items-end gap-1.5 sm:gap-2" aria-hidden="true">
-                {[36, 54, 47, 69, 57, 79].map((h, i) => <span key={i} className="flex-1 rounded-t-lg bg-background/80" style={{ height: `${h}%` }} />)}
+          <motion.section id="how" variants={gridStagger} initial="hidden" animate="show"
+            className="grid grid-cols-2 gap-3 lg:h-full lg:max-h-[720px] lg:min-h-0 lg:grid-rows-2 xl:gap-4">
+            <motion.div variants={card} whileHover={{ y: -4 }} className="relative aspect-square min-h-0 overflow-hidden rounded-3xl bg-accent lg:aspect-auto">
+              <motion.img src={studentWoman} alt="A student signing attendance on her phone" className="h-full w-full object-cover" width={1024} height={1024} fetchPriority="high"
+                initial={{ scale: 1.12 }} animate={{ scale: 1 }} transition={{ duration: 1.4, ease: "easeOut" }} />
+              <FloatTag delay={1}><MapPin className="h-3.5 w-3.5 text-primary" /> Inside the hall</FloatTag>
+            </motion.div>
+            <motion.div variants={card} whileHover={{ y: -4 }} className="flex aspect-square min-h-0 flex-col rounded-3xl bg-primary p-3.5 text-primary-foreground sm:p-6 lg:aspect-auto">
+              <div className="flex items-center justify-between gap-1 text-xs font-semibold sm:text-sm"><span className="whitespace-nowrap">CSC 401</span><span className="whitespace-nowrap rounded-full bg-background/90 px-2 py-0.5 text-[10px] tabular-nums text-foreground sm:text-xs"><CountUp to={42} /> signed</span></div>
+              <div className="mt-auto flex h-1/2 items-end gap-1 sm:gap-2" aria-hidden="true">
+                {[36, 54, 47, 69, 57, 79].map((h, i) => (
+                  <motion.span key={i} className="flex-1 origin-bottom rounded-t-md bg-background/80 sm:rounded-t-lg" style={{ height: `${h}%` }}
+                    initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ delay: 0.9 + i * 0.08, duration: 0.6, ease: "circOut" }} />
+                ))}
               </div>
-              <div className="mt-1.5 flex justify-between text-[10px] opacity-80" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
-              <span className="mt-2 text-[10px] font-bold tracking-widest">CLASS TURNOUT THIS WEEK</span>
-            </div>
-            <div className="flex min-h-0 flex-col justify-between rounded-3xl bg-secondary p-4 sm:p-6">
+              <div className="mt-1.5 flex justify-between text-[9px] opacity-80 sm:text-[10px]" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+              <span className="mt-1.5 text-[9px] font-bold tracking-widest sm:mt-2 sm:text-[10px]">CLASS TURNOUT THIS WEEK</span>
+            </motion.div>
+            <motion.div variants={card} whileHover={{ y: -4 }} className="flex aspect-square min-h-0 flex-col justify-between rounded-3xl bg-secondary p-3.5 sm:p-6 lg:aspect-auto">
               <div className="flex -space-x-3">
-                <img src={studentWoman} alt="" className="h-12 w-12 rounded-full border-2 border-background object-cover" loading="lazy" />
-                <img src={studentMan} alt="" className="h-12 w-12 rounded-full border-2 border-background object-cover" loading="lazy" />
-                <span className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-background bg-primary text-primary-foreground"><ScanFace className="h-5 w-5" /></span>
+                <img src={studentWoman} alt="" className="h-9 w-9 rounded-full border-2 border-background object-cover sm:h-12 sm:w-12" loading="lazy" />
+                <img src={studentMan} alt="" className="h-9 w-9 rounded-full border-2 border-background object-cover sm:h-12 sm:w-12" loading="lazy" />
+                <motion.span className="relative flex h-9 w-9 items-center justify-center rounded-full border-2 border-background bg-primary text-primary-foreground sm:h-12 sm:w-12"
+                  animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}>
+                  <ScanFace className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <motion.span className="absolute inset-x-1.5 h-0.5 rounded bg-background/90" initial={{ top: "25%" }} animate={{ top: ["25%", "75%", "25%"] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 1.2 }} />
+                </motion.span>
               </div>
               <div>
-                <p className="font-display text-xl font-bold leading-tight sm:text-2xl">Face matched,<br />not just named</p>
-                <p className="mt-1 text-[10px] font-bold tracking-widest text-muted-foreground">NO PROXY SIGN-INS</p>
+                <p className="font-display text-base font-bold leading-tight sm:text-2xl">Face matched,<br />not just named</p>
+                <p className="mt-1 text-[9px] font-bold tracking-widest text-muted-foreground sm:text-[10px]">NO PROXY SIGN-INS</p>
               </div>
-            </div>
-            <div className="relative min-h-0 overflow-hidden rounded-3xl bg-accent">
-              <img src={studentMan} alt="A student checking in for his lecture" className="h-full w-full object-cover" width={1024} height={1024} loading="lazy" />
-              <span className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-xs font-medium"><Clock className="h-3.5 w-3.5 text-primary" /> Signed at 08:02</span>
-            </div>
+            </motion.div>
+            <motion.div variants={card} whileHover={{ y: -4 }} className="relative aspect-square min-h-0 overflow-hidden rounded-3xl bg-accent lg:aspect-auto">
+              <motion.img src={studentMan} alt="A student checking in for his lecture" className="h-full w-full object-cover" width={1024} height={1024} loading="lazy"
+                initial={{ scale: 1.12 }} animate={{ scale: 1 }} transition={{ duration: 1.4, ease: "easeOut", delay: 0.2 }} />
+              <FloatTag delay={1.3}><Clock className="h-3.5 w-3.5 text-primary" /> Signed at 08:02</FloatTag>
+            </motion.div>
           </motion.section>
         </main>
       </div>
@@ -511,6 +556,6 @@ function Landing() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </div></MotionConfig>
   );
 }
