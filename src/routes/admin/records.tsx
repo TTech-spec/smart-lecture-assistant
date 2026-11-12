@@ -3,7 +3,7 @@ import { friendlyError } from "@/lib/friendly-error";
 import { useMemo, useState, useEffect } from "react";
 import {
   RefreshCw, Trash2, Download, FileText, ClipboardList,
-  Plus, Pencil, X, CheckCircle2, XCircle, Link2, KeyRound,
+  Plus, Pencil, X, CheckCircle2, XCircle, Link2, KeyRound, Search, SlidersHorizontal, Sparkles, MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -350,9 +350,10 @@ function RecordsPage() {
   const [editingTestResult, setEditingTestResult] = useState<TestSubmission | null>(null);
 
   // Phones: the assistant and the extra filters fold away until asked for
-  const wide = typeof window !== "undefined" && window.innerWidth >= 1024;
-  const [showAi, setShowAi] = useState(wide);
-  const [showFilters, setShowFilters] = useState(wide);
+  const [showAi, setShowAi] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "review" | "other">("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Live: new check-ins appear without refreshing, highlighted for a few seconds
   const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
@@ -478,6 +479,7 @@ function RecordsPage() {
   }, [records, matric, dept, gender, level, course, linkFilter, classCodeFilter]);
 
   function resetFilters() {
+    setStatusFilter("all");
     setMatric(""); setDept("all"); setGender("all");
     setLevel("all"); setCourse("all"); setLinkFilter("all"); setClassCodeFilter("all");
   }
@@ -544,330 +546,256 @@ function RecordsPage() {
     closeModal();
   }
 
+  // ── Status for each record (Verified / needs review / other) ──
+  const statusOf = (r: AttendanceRecord): "ok" | "review" | "other" => {
+    const st = checkStatus(r.customFields);
+    return st.tone === "green" ? "ok" : st.tone === "amber" ? "review" : "other";
+  };
+  const shown = statusFilter === "all" ? filtered : filtered.filter((r) => statusOf(r) === statusFilter);
+  const counts = {
+    all: filtered.length,
+    ok: filtered.filter((r) => statusOf(r) === "ok").length,
+    review: filtered.filter((r) => statusOf(r) === "review").length,
+    other: filtered.filter((r) => statusOf(r) === "other").length,
+  };
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayCount = records.filter((r) => r.submittedAt.slice(0, 10) === todayKey).length;
+  const activeFilters: { label: string; clear: () => void }[] = [
+    level !== "all" && { label: `${level} Level`, clear: () => setLevel("all") },
+    course !== "all" && { label: course, clear: () => setCourse("all") },
+    dept !== "all" && { label: dept, clear: () => setDept("all") },
+    gender !== "all" && { label: gender[0].toUpperCase() + gender.slice(1), clear: () => setGender("all") },
+    linkFilter !== "all" && { label: linkFilter === "__none__" ? "No link" : linkMap.get(linkFilter) ?? "Link", clear: () => setLinkFilter("all") },
+    classCodeFilter !== "all" && { label: classCodeFilter === "__none__" ? "No class code" : classCodeFilter, clear: () => setClassCodeFilter("all") },
+  ].filter(Boolean) as { label: string; clear: () => void }[];
+  const selected = selectedId ? records.find((r) => r.id === selectedId) ?? null : null;
+  const initials = (n: string) => n.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const pillClass = (s: "ok" | "review" | "other") =>
+    s === "ok" ? "bg-[#12b886]/12 text-[#0b7a59] dark:text-[#5fe3b0]" : s === "review" ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" : "bg-secondary text-muted-foreground";
+
   return (
-    <main className="mx-auto max-w-7xl px-4 pb-32 pt-6 sm:px-6 sm:pt-8 lg:pb-16">
+    <main className="mx-auto max-w-6xl px-4 pb-32 pt-6 sm:px-6 sm:pt-8 lg:pb-16">
       {/* ── Header ── */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
-        className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 sm:text-3xl">
-            <ClipboardList className="h-6 w-6 text-[color:var(--color-primary)] sm:h-7 sm:w-7" /> Attendance records
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">{filtered.length} of {records.length} entries</p>
+          <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#12b886] opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#12b886]" /></span>
+            Live · checked {lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </p>
+          <h1 className="mt-1.5 font-display text-[28px] font-bold leading-tight tracking-tight sm:text-[32px]">Records</h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={openAdd}><Plus className="mr-1.5 h-3.5 w-3.5" /> Add record</Button>
-          <Button variant="outline" size="sm" onClick={resetFilters}><RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Reset</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => setShowAi(true)} className="h-10 rounded-full px-4"><Sparkles className="mr-1.5 h-4 w-4" /> Ask AI</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" disabled={filtered.length === 0} className="gap-1.5">
-                <Download className="h-3.5 w-3.5" /> Download ({filtered.length})
-              </Button>
+              <Button variant="outline" disabled={shown.length === 0} className="h-10 rounded-full px-4"><Download className="mr-1.5 h-4 w-4" /> Export</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => exportCSV(filtered, testResultMap, linkMap)}>
-                <FileText className="mr-2 h-4 w-4" /> Download CSV
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportJSON(filtered, testResultMap)}>
-                <FileText className="mr-2 h-4 w-4" /> Download JSON
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportPDF(filtered, testResultMap, linkMap)}>
-                <FileText className="mr-2 h-4 w-4" /> Download PDF
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportCSV(shown, testResultMap, linkMap)}><FileText className="mr-2 h-4 w-4" /> CSV ({shown.length})</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportJSON(shown, testResultMap)}><FileText className="mr-2 h-4 w-4" /> JSON ({shown.length})</DropdownMenuItem>
+              <DropdownMenuItem onClick={clearAll} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Clear all records…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="sm" onClick={clearAll} className="text-destructive hover:text-destructive">
-            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear all
+          <Button onClick={openAdd} className="h-10 rounded-full bg-foreground px-4 text-background hover:bg-foreground/85"><Plus className="mr-1.5 h-4 w-4" /> Add</Button>
+        </div>
+      </div>
+
+      {/* ── Summary ── */}
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {([
+          ["all", "All records", records.length, "in this view: " + filtered.length],
+          ["ok", "Verified", counts.ok, "location, code and face OK"],
+          ["review", "To review", counts.review, "face, phone or location"],
+          ["today", "Today", todayCount, new Date().toLocaleDateString([], { weekday: "long" })],
+        ] as const).map(([key, label, value, hint]) => {
+          const active = key !== "today" && statusFilter === key;
+          return (
+            <button key={key} type="button" disabled={key === "today"}
+              onClick={() => key !== "today" && setStatusFilter(key)}
+              className={`rounded-2xl p-4 text-left transition-all ${active ? "bg-foreground text-background" : "bg-card shadow-soft hover:-translate-y-0.5"} disabled:cursor-default disabled:hover:translate-y-0`}>
+              <p className={`text-[13px] ${active ? "opacity-75" : "text-muted-foreground"}`}>{label}</p>
+              <p className="mt-1 font-display text-[28px] font-bold leading-none tabular-nums">{value}</p>
+              <p className={`mt-1.5 truncate text-[12px] ${active ? "opacity-60" : "text-muted-foreground/80"}`}>{hint}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Toolbar ── */}
+      <div className="mt-6 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-0 flex-1 basis-60">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input id="rec-search" value={matric} onChange={(e) => setMatric(e.target.value)} placeholder="Search name or matric number"
+              className="h-11 rounded-full border-0 bg-card pl-10 text-base shadow-soft" />
+          </div>
+          <div className="flex rounded-full bg-secondary/70 p-1">
+            {([["all", "All"], ["ok", "Verified"], ["review", "Review"]] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setStatusFilter(k)} aria-pressed={statusFilter === k}
+                className={`h-9 rounded-full px-3.5 text-sm font-medium transition-colors ${statusFilter === k ? "bg-card text-foreground shadow-soft" : "text-muted-foreground hover:text-foreground"}`}>
+                {l}{k === "review" && counts.review ? <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">{counts.review}</span> : null}
+              </button>
+            ))}
+          </div>
+          <Button variant="outline" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters} className="h-11 rounded-full px-4">
+            <SlidersHorizontal className="mr-1.5 h-4 w-4" /> Filters{activeFilters.length ? ` · ${activeFilters.length}` : ""}
           </Button>
         </div>
-      </motion.div>
 
-      {/* ── Voice assistant ── */}
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.4 }} className="mt-5">
-        {showAi ? (
-          <div>
-            <VoiceAssistant records={records} />
-            <button type="button" onClick={() => setShowAi(false)} className="mt-2 text-xs font-medium text-muted-foreground hover:text-foreground lg:hidden">Hide assistant</button>
+        <AnimatePresence initial={false}>
+          {showFilters && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+              <div className="grid grid-cols-2 gap-3 rounded-2xl bg-card p-4 shadow-soft sm:grid-cols-3 lg:grid-cols-6">
+                <FilterSelect label="Level" value={level} onChange={setLevel} options={[["all", "All levels"], ...["100", "200", "300", "400", "500", "600"].map((l) => [l, `${l} Level`] as [string, string])]} />
+                <FilterSelect label="Course" value={course} onChange={setCourse} options={[["all", "All courses"], ...courses.map((c) => [c, c] as [string, string])]} />
+                <FilterSelect label="Department" value={dept} onChange={setDept} options={[["all", "All departments"], ...departments.map((d) => [d, d] as [string, string])]} />
+                <FilterSelect label="Gender" value={gender} onChange={setGender} options={[["all", "All"], ["male", "Male"], ["female", "Female"], ["other", "Other"]]} />
+                <FilterSelect label="Link used" value={linkFilter} onChange={setLinkFilter} options={[["all", "All links"], ["__none__", "No link"], ...usedLinks.map((l) => [l.id, l.title] as [string, string])]} />
+                <FilterSelect label="Class code" value={classCodeFilter} onChange={setClassCodeFilter} options={[["all", "All"], ["__none__", "No code yet"], ...usedClassCodes.map((c) => [c, c] as [string, string])]} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {activeFilters.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {activeFilters.map((f) => (
+              <button key={f.label} type="button" onClick={f.clear} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-foreground/90 px-3 text-[13px] font-medium text-background hover:bg-foreground">
+                {f.label} <X className="h-3.5 w-3.5" />
+              </button>
+            ))}
+            <button type="button" onClick={resetFilters} className="text-[13px] font-medium text-muted-foreground underline-offset-4 hover:underline">Clear filters</button>
+          </div>
+        )}
+      </div>
+
+      {/* ── List ── */}
+      <div className="mt-4 overflow-hidden rounded-3xl bg-card shadow-soft">
+        <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] gap-4 px-5 pb-2 pt-4 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground md:grid">
+          <span>Student</span><span>Course</span><span>Status</span><span>Tests</span><span className="w-28 text-right">Time</span>
+        </div>
+        {shown.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+            <ClipboardList className="h-10 w-10 text-muted-foreground/30" />
+            <p className="font-medium">{records.length === 0 ? "No check-ins yet" : "Nothing matches"}</p>
+            <p className="max-w-xs text-sm text-muted-foreground">{records.length === 0 ? "Start a check-in from Links. Students appear here as they sign in." : "Try a different search, or clear the filters."}</p>
           </div>
         ) : (
-          <button type="button" onClick={() => setShowAi(true)}
-            className="flex w-full items-center justify-between rounded-2xl bg-card px-4 py-3 text-left text-sm font-medium shadow-soft transition-colors hover:bg-secondary/60">
-            <span>Ask the AI attendance assistant</span><span className="text-muted-foreground">Open</span>
-          </button>
-        )}
-      </motion.div>
-
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }}
-        className="mt-5 rounded-2xl bg-card shadow-soft">
-
-        {/* ── Filters ── */}
-        <div className="grid grid-cols-2 gap-3 border-b border-border/60 p-4 sm:p-5 lg:grid-cols-3 xl:grid-cols-7">
-          <div className="col-span-2 flex items-end gap-2 lg:col-span-1">
-            <div className="min-w-0 flex-1">
-              <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Search name / matric</Label>
-              <Input value={matric} onChange={(e) => setMatric(e.target.value)} placeholder="Jane or CSC/19/…" className="mt-1 text-sm sm:text-base" />
-            </div>
-            <Button type="button" variant="outline" onClick={() => setShowFilters((v) => !v)} className="shrink-0 lg:hidden" aria-expanded={showFilters}>
-              {showFilters ? "Hide filters" : "Filters"}
-            </Button>
-          </div>
-          <div className={showFilters ? "contents" : "hidden lg:contents"}>
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Level</Label>
-            <Select value={level} onValueChange={setLevel}>
-              <SelectTrigger className="mt-1 text-sm sm:text-base"><SelectValue placeholder="All levels" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All levels</SelectItem>
-                {["100","200","300","400","500","600"].map((l) => <SelectItem key={l} value={l}>{l} Level</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Course</Label>
-            <Select value={course} onValueChange={setCourse}>
-              <SelectTrigger className="mt-1 text-sm sm:text-base"><SelectValue placeholder="All courses" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All courses</SelectItem>
-                {courses.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Department</Label>
-            <Select value={dept} onValueChange={setDept}>
-              <SelectTrigger className="mt-1 text-sm sm:text-base"><SelectValue placeholder="All departments" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All departments</SelectItem>
-                {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Gender</Label>
-            <Select value={gender} onValueChange={setGender}>
-              <SelectTrigger className="mt-1 text-sm sm:text-base"><SelectValue placeholder="All genders" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All genders</SelectItem>
-                <SelectItem value="male">Male</SelectItem>
-                <SelectItem value="female">Female</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground sm:text-sm flex items-center gap-1">
-              <Link2 className="h-3 w-3" /> Link used
-            </Label>
-            <Select value={linkFilter} onValueChange={setLinkFilter}>
-              <SelectTrigger className="mt-1 text-sm sm:text-base"><SelectValue placeholder="All links" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All links</SelectItem>
-                <SelectItem value="__none__">No link (direct form)</SelectItem>
-                {usedLinks.map((l: AttendanceLink) => (
-                  <SelectItem key={l.id} value={l.id}>{l.title} ({l.courseCode})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground sm:text-sm flex items-center gap-1">
-              <KeyRound className="h-3 w-3" /> Class code
-            </Label>
-            <Select value={classCodeFilter} onValueChange={setClassCodeFilter}>
-              <SelectTrigger className="mt-1 text-sm sm:text-base"><SelectValue placeholder="All" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="__none__">No code yet</SelectItem>
-                {usedClassCodes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 px-4 pt-3 text-xs text-muted-foreground sm:px-5">
-          <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#12b886] opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#12b886]" /></span>
-          Live · new check-ins appear here automatically · checked {lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-        </div>
-
-        {/* ── Phone: one card per check-in ── */}
-        <ul className="divide-y divide-border/60 md:hidden">
-          {filtered.length === 0 ? (
-            <li className="px-4 py-12 text-center text-sm text-muted-foreground">No records match these filters.</li>
-          ) : filtered.map((r) => {
-            const st = checkStatus(r.customFields);
-            return (
-              <li key={r.id} className={`flex items-center gap-3 px-4 py-3 transition-colors duration-700 ${freshIds.has(r.id) ? "bg-[#12b886]/15" : ""}`}>
-                {r.customFields?.photo
-                  ? <img src={r.customFields.photo} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" />
-                  : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-secondary text-xs font-semibold text-muted-foreground">{r.fullName.split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{r.fullName}</p>
-                  <p className="truncate font-mono text-xs text-muted-foreground">{r.matricNumber}{r.assignedClassCode ? ` · ${r.assignedClassCode}` : ""}</p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
-                    <span className={st.tone === "green" ? "font-medium text-primary" : st.tone === "amber" ? "font-medium text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>{st.label}</span>
-                    <span className="text-muted-foreground">{r.distanceMeters ? `${r.distanceMeters} m · ` : ""}{new Date(r.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center">
-                  <button onClick={() => openEdit(r)} aria-label={`Edit ${r.fullName}`} className="rounded-lg p-2.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => deleteRecord(r.id)} aria-label={`Delete ${r.fullName}`} className="rounded-lg p-2.5 text-muted-foreground hover:bg-red-50 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* ── Table (tablet and up) ── */}
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full text-sm sm:text-base">
-            <thead className="bg-secondary text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 whitespace-nowrap">Photo</th>
-                <th className="px-4 py-3 whitespace-nowrap">Check</th>
-                <th className="px-4 py-3 whitespace-nowrap">Name</th>
-                <th className="px-4 py-3 whitespace-nowrap">Matric</th>
-                <th className="px-4 py-3 whitespace-nowrap">Dept</th>
-                <th className="px-4 py-3 whitespace-nowrap">Level</th>
-                <th className="px-4 py-3 whitespace-nowrap">Course</th>
-                <th className="px-4 py-3 whitespace-nowrap">Topic</th>
-                <th className="px-4 py-3 whitespace-nowrap">Gender</th>
-                <th className="px-4 py-3 whitespace-nowrap">Phone</th>
-                <th className="px-4 py-3 whitespace-nowrap">Class code</th>
-                <th className="px-4 py-3 whitespace-nowrap">Link used</th>
-                <th className="px-4 py-3 whitespace-nowrap">C1</th>
-                <th className="px-4 py-3 whitespace-nowrap">C2</th>
-                <th className="px-4 py-3 whitespace-nowrap">C3</th>
-                <th className="px-4 py-3 whitespace-nowrap">Time</th>
-                <th className="px-4 py-3 whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={17} className="px-4 py-14 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center gap-2">
-                      <ClipboardList className="h-10 w-10 opacity-20" />
-                      <p className="text-base font-medium">No records match these filters</p>
-                      <p className="text-sm">Try adjusting your filters or open the attendance form</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((r) => {
-                  const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
-                  const linkTitle = r.linkId ? linkMap.get(r.linkId) : null;
-                  return (
-                    <tr key={r.id} className={`border-t transition-colors duration-700 hover:bg-secondary/40 ${freshIds.has(r.id) ? "bg-[#12b886]/15" : ""}`}>
-                      <td className="px-4 py-2">
-                        {r.customFields?.photo ? (
-                          <button type="button"
-                             onClick={() => {
-                               const w = window.open("", "_blank");
-                               if (w) w.document.write(`<title>${r.fullName}</title><img src="${r.customFields.photo}" style="max-width:100%">`);
-                             }}
-                             title={[r.customFields.photoAddress, r.customFields.photoTakenAt && new Date(r.customFields.photoTakenAt).toLocaleString()].filter(Boolean).join(" · ")}>
-                            <img src={r.customFields.photo} alt={`Photo of ${r.fullName}`} className="h-12 w-16 rounded object-cover border" />
-                          </button>
-                        ) : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs">
-                        {r.customFields?.serverChecked ? (
-                          <span className="inline-flex flex-col gap-0.5">
-                            <span className="font-semibold text-primary">Verified</span>
-                            <span className="text-muted-foreground">
-                              {r.distanceMeters} m · GPS ±{Math.round(Number(r.customFields.gpsAccuracy) || 0)} m
-                            </span>
-                          </span>
-                        ) : r.deviceId === "manual" ? (
-                          <span className="text-muted-foreground">Manual</span>
-                        ) : (
-                          <span className="font-medium text-amber-600 dark:text-amber-400" title="Saved before server checks were enabled">Unverified</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-medium whitespace-nowrap">{r.fullName}</td>
-                      <td className="px-4 py-3 font-mono text-xs sm:text-sm whitespace-nowrap">{r.matricNumber}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{r.department}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {r.level ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{r.level} Lvl</span> : "—"}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">{r.courseCode}</td>
-                      <td className="px-4 py-3 whitespace-nowrap max-w-[140px] truncate" title={r.topic}>{r.topic || "—"}</td>
-                      <td className="px-4 py-3 capitalize whitespace-nowrap">{r.gender}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{r.phone || "—"}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {r.assignedClassCode ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-xs font-mono font-semibold text-violet-700 dark:text-violet-400">
-                            <KeyRound className="h-3 w-3" />{r.assignedClassCode}
-                          </span>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {linkTitle ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">
-                            <Link2 className="h-3 w-3" />{linkTitle}
-                          </span>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
+          <ul className="divide-y divide-border/50">
+            {shown.map((r) => {
+              const s = statusOf(r);
+              const st = checkStatus(r.customFields);
+              const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
+              return (
+                <li key={r.id}>
+                  <button type="button" onClick={() => setSelectedId(r.id)}
+                    className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 text-left transition-colors duration-500 hover:bg-secondary/50 sm:px-5 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] ${freshIds.has(r.id) ? "bg-[#12b886]/12" : ""}`}>
+                    <span className="flex min-w-0 items-center gap-3">
+                      {r.customFields?.photo
+                        ? <img src={r.customFields.photo} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
+                        : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary text-xs font-semibold text-muted-foreground">{initials(r.fullName)}</span>}
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold">{r.fullName}</span>
+                        <span className="block truncate font-mono text-[12px] text-muted-foreground">{r.matricNumber}{r.assignedClassCode ? ` · ${r.assignedClassCode}` : ""}</span>
+                        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold md:hidden ${pillClass(s)}`}>{st.label}</span>
+                      </span>
+                    </span>
+                    <span className="hidden min-w-0 md:block">
+                      <span className="block truncate text-sm font-medium">{r.courseCode || "—"}</span>
+                      <span className="block truncate text-[12px] text-muted-foreground">{r.level ? `${r.level} Level` : ""}{r.department ? ` · ${r.department}` : ""}</span>
+                    </span>
+                    <span className="hidden md:block">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[12px] font-semibold ${pillClass(s)}`}>{st.label}</span>
+                      {r.distanceMeters ? <span className="ml-2 text-[12px] text-muted-foreground tabular-nums">{r.distanceMeters} m</span> : null}
+                    </span>
+                    <span className="hidden gap-1 md:flex">
                       {TEST_TYPES.map((t) => {
                         const res = byType[t];
                         return (
-                          <td key={t} className="px-4 py-3 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              {res ? (
-                                res.cheated ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                    <XCircle className="h-3 w-3" /> Cheated
-                                  </span>
-                                ) : (
-                                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${res.score / res.total >= 0.5 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}>
-                                    <CheckCircle2 className="h-3 w-3" />{res.score}/{res.total}
-                                  </span>
-                                )
-                              ) : <span className="text-xs text-muted-foreground">—</span>}
-                              {res && (
-                                <button onClick={() => setEditingTestResult(res)}
-                                  className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                                  title={`Edit ${t} result`}>
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
+                          <span key={t} title={res ? `${t}: ${res.cheated ? "cheated" : `${res.score}/${res.total}`}` : `${t}: not taken`}
+                            className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold tabular-nums ${!res ? "bg-secondary/60 text-muted-foreground/60" : res.cheated ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : res.score / res.total >= 0.5 ? "bg-[#12b886]/12 text-[#0b7a59] dark:text-[#5fe3b0]" : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"}`}>
+                            {res ? (res.cheated ? "✕" : `${res.score}/${res.total}`) : t}
+                          </span>
                         );
                       })}
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs sm:text-sm">
-                        {new Date(r.submittedAt).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => openEdit(r)} title="Edit record"
-                            className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => deleteRecord(r.id)} title="Delete record"
-                            className="rounded-md p-1.5 text-muted-foreground hover:bg-red-50 hover:text-destructive transition-colors">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {filtered.length > 0 && (
-          <div className="border-t px-4 py-3 flex items-center justify-between sm:px-5">
-            <span className="text-xs text-muted-foreground sm:text-sm">Showing {filtered.length} of {records.length} records</span>
-            <Button size="sm" variant="ghost" onClick={() => exportCSV(filtered, testResultMap, linkMap)} className="gap-1.5 text-xs sm:text-sm">
-              <Download className="h-3.5 w-3.5" /> Download CSV
-            </Button>
-          </div>
+                    </span>
+                    <span className="w-auto text-right text-[12px] tabular-nums text-muted-foreground md:w-28">
+                      {new Date(r.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      <span className="block">{new Date(r.submittedAt).toLocaleDateString([], { day: "numeric", month: "short" })}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         )}
-      </motion.div>
+        {shown.length > 0 && (
+          <p className="px-5 py-3 text-[12px] text-muted-foreground">Showing {shown.length} of {records.length} records. Tap a student for details.</p>
+        )}
+      </div>
+
+      {/* ── Detail drawer ── */}
+      <AnimatePresence>
+        {selected && (
+          <SideSheet title={selected.fullName} subtitle={selected.matricNumber} onClose={() => setSelectedId(null)}>
+            {selected.customFields?.photo && (
+              <img src={selected.customFields.photo} alt={`Check-in photo of ${selected.fullName}`} className="w-full rounded-2xl object-cover" />
+            )}
+            <span className={`inline-flex w-fit rounded-full px-3 py-1 text-[13px] font-semibold ${pillClass(statusOf(selected))}`}>{checkStatus(selected.customFields).label}</span>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-secondary/50 p-4 text-sm">
+              {([
+                ["Course", selected.courseCode || "—"],
+                ["Level", selected.level ? `${selected.level} Level` : "—"],
+                ["Department", selected.department || "—"],
+                ["Gender", selected.gender ? selected.gender[0].toUpperCase() + selected.gender.slice(1) : "—"],
+                ["Phone", selected.phone || "—"],
+                ["Distance", selected.distanceMeters ? `${selected.distanceMeters} m from you` : "—"],
+                ["Class code", selected.assignedClassCode || "—"],
+                ["Link", selected.linkId ? linkMap.get(selected.linkId) ?? "—" : "—"],
+                ["Topic", selected.topic || "—"],
+                ["Signed", new Date(selected.submittedAt).toLocaleString()],
+              ] as const).map(([k, v]) => (
+                <div key={k} className="min-w-0">
+                  <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{k}</dt>
+                  <dd className="mt-0.5 break-words font-medium">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            {selected.customFields?.photoAddress && (
+              <p className="text-[13px] text-muted-foreground"><MapPin className="mr-1 inline h-3.5 w-3.5" />{selected.customFields.photoAddress}</p>
+            )}
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Tests</p>
+              <div className="grid grid-cols-3 gap-2">
+                {TEST_TYPES.map((t) => {
+                  const res = (testResultMap.get(selected.matricNumber.toLowerCase()) ?? {})[t];
+                  return (
+                    <button key={t} type="button" disabled={!res} onClick={() => res && setEditingTestResult(res)}
+                      className="rounded-xl bg-secondary/50 p-3 text-left transition-colors enabled:hover:bg-secondary disabled:opacity-60">
+                      <span className="block text-[12px] text-muted-foreground">{t}</span>
+                      <span className="block font-display text-lg font-bold tabular-nums">{res ? (res.cheated ? "Cheated" : `${res.score}/${res.total}`) : "—"}</span>
+                      {res && <span className="text-[11px] text-muted-foreground">Tap to edit</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="mt-auto grid grid-cols-2 gap-2 pt-2">
+              <Button variant="outline" onClick={() => { const r = selected; setSelectedId(null); openEdit(r); }} className="h-11 rounded-full"><Pencil className="mr-1.5 h-4 w-4" /> Edit</Button>
+              <Button variant="outline" onClick={() => { const id = selected.id; setSelectedId(null); deleteRecord(id); }} className="h-11 rounded-full text-destructive hover:text-destructive"><Trash2 className="mr-1.5 h-4 w-4" /> Delete</Button>
+            </div>
+          </SideSheet>
+        )}
+      </AnimatePresence>
+
+      {/* ── AI assistant drawer ── */}
+      <AnimatePresence>
+        {showAi && (
+          <SideSheet title="Ask about your records" subtitle="Runs on this device" onClose={() => setShowAi(false)}>
+            <VoiceAssistant records={records} />
+          </SideSheet>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {modalMode && (
@@ -882,5 +810,42 @@ function RecordsPage() {
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
+  return (
+    <div className="min-w-0">
+      <Label className="text-[12px] font-medium text-muted-foreground">{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="mt-1 h-10 rounded-xl border-0 bg-secondary/60 text-sm"><SelectValue /></SelectTrigger>
+        <SelectContent>{options.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/** Panel that slides in from the right (full screen on phones). */
+function SideSheet({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <motion.div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <motion.aside role="dialog" aria-label={title} initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 40, opacity: 0 }} transition={{ duration: 0.22 }}
+        className="flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto bg-background p-5 pb-8 shadow-2xl sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-2xl font-bold">{title}</h2>
+            {subtitle && <p className="truncate font-mono text-[13px] text-muted-foreground">{subtitle}</p>}
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+        {children}
+      </motion.aside>
+    </motion.div>
   );
 }
