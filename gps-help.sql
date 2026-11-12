@@ -151,7 +151,7 @@ declare
   v_name text; v_dept text; v_level text; v_gender text; v_phone text;
   v_gps      jsonb;
   v_prefixes text;
-  -- Set only inside approve_help_request() (lecturer scanned the student in class)
+  -- Set only inside decide_help_request() (lecturer scanned the student in class)
   v_help     boolean := coalesce(current_setting('attendly.help_ok', true), '') = '1';
 begin
   if v_token is null or v_device = '' or v_matric = '' then
