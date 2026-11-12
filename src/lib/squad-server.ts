@@ -10,24 +10,37 @@ function getEnv(key: string): string {
   );
 }
 
-const IS_PROD = () => (getEnv("SQUAD_ENV") || "sandbox") === "production";
+export function secretKey() {
+  // Never VITE_*: those names can end up in the browser bundle.
+  // Clean up common paste mistakes: spaces, quotes, a leading "Bearer ".
+  const k = (process.env.SQUAD_SECRET_KEY || "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+  if (!k || k.includes("REPLACE_WITH")) {
+    console.warn("Squad secret key not configured. Payment features will be disabled.");
+    return "";
+  }
+  return k;
+}
+
+/**
+ * Sandbox keys only work on Squad's sandbox API and live keys only on the live
+ * API; a mismatch gives "API key is empty or invalid". The key's own prefix
+ * decides, and SQUAD_ENV is only used when the prefix doesn't say.
+ */
+const IS_PROD = () => {
+  const k = secretKey();
+  if (/^sandbox_/i.test(k)) return false;
+  if (/^sk_/i.test(k)) return true;
+  return (getEnv("SQUAD_ENV") || "sandbox").trim().toLowerCase() === "production";
+};
 
 function baseUrl() {
   return IS_PROD()
     ? "https://api-d.squadco.com"
     : "https://sandbox-api-d.squadco.com";
-}
-
-export function secretKey() {
-  const k =
-    // Never VITE_*: those names can end up in the browser bundle
-    process.env.SQUAD_SECRET_KEY ||
-    "";
-  if (!k || k.includes("REPLACE_WITH") || k.trim() === "") {
-    console.warn("Squad secret key not configured. Payment features will be disabled.");
-    return "";
-  }
-  return k;
 }
 
 export function platformAccount() {
