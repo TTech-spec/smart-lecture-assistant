@@ -214,7 +214,7 @@ begin
   v_custom := coalesce(p->'customFields', '{}'::jsonb);
   if jsonb_typeof(v_custom) <> 'object' then v_custom := '{}'::jsonb; end if;
   v_custom := (select coalesce(jsonb_object_agg(key, value), '{}'::jsonb) from jsonb_each(v_custom)
-                where key in ('photo', 'photoAddress', 'photoTemperatureC', 'photoWeather', 'photoTakenAt'));
+                where key in ('photo', 'photoThumb', 'photoAddress', 'photoTemperatureC', 'photoWeather', 'photoTakenAt'));
   v_custom := v_custom || jsonb_build_object(
     'gpsAccuracy', v_acc, 'roomCodeOk', true, 'serverChecked', true, 'checkedAt', now(),
     'faceDistance', v_face, 'registered', st.matric_number is not null,

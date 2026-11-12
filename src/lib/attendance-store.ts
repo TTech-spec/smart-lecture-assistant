@@ -1201,13 +1201,26 @@ type AllData = {
   links: AttendanceLink[];
 };
 
-/** Every attendance record, 1,000 at a time (Supabase returns at most 1,000 rows per request). */
-async function fetchAllRecordRows(): Promise<{ data: Row[] | null }> {
+/**
+ * How far back the app loads records at first. Older ones load on request
+ * ("Load older" on Records), so a big school doesn't download years of
+ * check-ins every time a lecturer opens the dashboard.
+ */
+export const RECORD_WINDOW_DAYS = 60;
+let recordsLoadedSince: string | null = null;
+export function getRecordsLoadedSince(): string | null { return recordsLoadedSince; }
+
+/** Records in a time range, 1,000 at a time (Supabase returns at most 1,000 rows per request). */
+async function fetchAllRecordRows(sinceIso?: string | null, beforeIso?: string | null): Promise<{ data: Row[] | null }> {
   if (!supabase) return { data: null };
+  const since = sinceIso === undefined ? new Date(Date.now() - RECORD_WINDOW_DAYS * 86_400_000).toISOString() : sinceIso;
+  if (sinceIso === undefined) recordsLoadedSince = since;
   const all: Row[] = [];
   for (let from = 0; from < 100_000; from += 1000) {
-    const { data, error } = await supabase.from("attendance_records").select("*")
-      .order("submitted_at", { ascending: false }).range(from, from + 999);
+    let q = supabase.from("attendance_records").select("*");
+    if (since) q = q.gte("submitted_at", since);
+    if (beforeIso) q = q.lt("submitted_at", beforeIso);
+    const { data, error } = await q.order("submitted_at", { ascending: false }).range(from, from + 999);
     if (error) return { data: all.length ? all : null };
     all.push(...(data as Row[]));
     if (!data || data.length < 1000) break;
@@ -1765,4 +1778,37 @@ export async function decideHelpRequest(id: string, approve: boolean): Promise<{
   if (error) return { error: /not_authorised/.test(error.message) ? "not_lecturer" : "offline" };
   const r = data as { error?: string };
   return r?.error ? { error: r.error } : { ok: true };
+}
+
+
+/**
+ * Load the next older block of records (another RECORD_WINDOW_DAYS) and add
+ * them to the store. Returns how many were added, or null if offline.
+ */
+export async function loadOlderRecords(): Promise<{ added: number; since: string } | null> {
+  if (!supabase || typeof window === "undefined") return null;
+  const before = recordsLoadedSince ?? new Date(Date.now() - RECORD_WINDOW_DAYS * 86_400_000).toISOString();
+  const since = new Date(new Date(before).getTime() - RECORD_WINDOW_DAYS * 86_400_000).toISOString();
+  const { data } = await fetchAllRecordRows(since, before);
+  if (!data) return null;
+  recordsLoadedSince = since;
+  const current = loadRecords();
+  const known = new Set(current.map((r) => r.id));
+  const older = data.map(recordFromDb).filter((r) => !known.has(r.id));
+  if (older.length) {
+    writeRecords([...current, ...older]);
+    window.dispatchEvent(new Event("att:records"));
+  }
+  return { added: older.length, since };
+}
+
+/** Load every record ever (for a full export). */
+export async function loadAllRecordsEver(): Promise<number | null> {
+  if (!supabase || typeof window === "undefined") return null;
+  const { data } = await fetchAllRecordRows(null, null);
+  if (!data) return null;
+  recordsLoadedSince = null;
+  writeRecords(data.map(recordFromDb));
+  window.dispatchEvent(new Event("att:records"));
+  return data.length;
 }

@@ -3,7 +3,7 @@ import { friendlyError } from "@/lib/friendly-error";
 import { useMemo, useState, useEffect } from "react";
 import {
   RefreshCw, Trash2, Download, FileText, ClipboardList,
-  Plus, Pencil, X, CheckCircle2, XCircle, Link2, KeyRound, Search, SlidersHorizontal, Sparkles, MapPin,
+  Plus, Pencil, X, CheckCircle2, XCircle, Link2, KeyRound, Search, SlidersHorizontal, Sparkles, MapPin, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,7 +17,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  saveRecords, addRecord, syncRecord, watchRecords, deleteRecordById, clearAllRecords,
+  saveRecords, addRecord, syncRecord, watchRecords, loadOlderRecords, loadAllRecordsEver, getRecordsLoadedSince, loadRecords, RECORD_WINDOW_DAYS, deleteRecordById, clearAllRecords,
   loadTestSubmissions, loadSettings, saveTestSubmissions, syncTestSubmission,
   type AttendanceRecord, type AttendanceLink, type Gender,
   type TestSubmission, type TestType,
@@ -355,6 +355,23 @@ function RecordsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "review" | "other">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Records load the last 60 days first; older ones on request
+  const [loadedSince, setLoadedSince] = useState<string | null>(() => getRecordsLoadedSince() ?? new Date(Date.now() - RECORD_WINDOW_DAYS * 86_400_000).toISOString());
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  async function loadOlder() {
+    setLoadingOlder(true);
+    const r = await loadOlderRecords();
+    setLoadingOlder(false);
+    if (!r) { toast.error("We couldn't reach the server. Check your connection and try again."); return; }
+    setLoadedSince(r.since);
+    toast.success(r.added ? `Loaded ${r.added} older check-in${r.added > 1 ? "s" : ""}.` : `No check-ins between those dates.`);
+  }
+  async function exportEverything() {
+    const n = await loadAllRecordsEver();
+    if (n == null) { toast.error("We couldn't reach the server. Check your connection and try again."); return; }
+    setLoadedSince(null);
+    exportCSV(loadRecords().sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)), testResultMap, linkMap);
+  }
 
   // Live: new check-ins appear without refreshing, highlighted for a few seconds
   const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
@@ -603,6 +620,7 @@ function RecordsPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => exportCSV(shown, testResultMap, linkMap)}><FileText className="mr-2 h-4 w-4" /> CSV ({shown.length})</DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportJSON(shown, testResultMap)}><FileText className="mr-2 h-4 w-4" /> JSON ({shown.length})</DropdownMenuItem>
+              <DropdownMenuItem onClick={exportEverything}><FileText className="mr-2 h-4 w-4" /> CSV, all time</DropdownMenuItem>
               <DropdownMenuItem onClick={clearAll} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Clear all records…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -702,7 +720,7 @@ function RecordsPage() {
                     className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 text-left transition-colors duration-500 hover:bg-secondary/50 sm:px-5 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)_auto] ${freshIds.has(r.id) ? "bg-[#12b886]/12" : ""}`}>
                     <span className="flex min-w-0 items-center gap-3">
                       {r.customFields?.photo
-                        ? <img src={r.customFields.photo} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
+                        ? <img src={r.customFields.photoThumb || r.customFields.photo} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
                         : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary text-xs font-semibold text-muted-foreground">{initials(r.fullName)}</span>}
                       <span className="min-w-0">
                         <span className="block truncate font-semibold">{r.fullName}</span>
@@ -739,9 +757,18 @@ function RecordsPage() {
             })}
           </ul>
         )}
-        {shown.length > 0 && (
-          <p className="px-5 py-3 text-[12px] text-muted-foreground">Showing {shown.length} of {records.length} records. Tap a student for details.</p>
-        )}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 px-5 py-3 text-[12px] text-muted-foreground">
+          <span>
+            {shown.length > 0 ? `Showing ${shown.length} of ${records.length}. ` : ""}
+            {loadedSince ? `Check-ins since ${new Date(loadedSince).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })}.` : "All check-ins loaded."}
+          </span>
+          {loadedSince && (
+            <button type="button" disabled={loadingOlder} onClick={loadOlder}
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-secondary/70 px-4 text-[13px] font-medium text-foreground hover:bg-secondary disabled:opacity-60">
+              {loadingOlder ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Load older
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Detail drawer ── */}

@@ -25,7 +25,6 @@ import { parsePdfQuestions } from "@/lib/pdf-parser";
 import { getCurrentPosition } from "@/lib/geo";
 import { changeLecturerPassword } from "@/lib/lecturer-auth";
 import { useStore } from "@/hooks/use-store";
-import { VoiceAssistant } from "@/components/VoiceAssistant";
 import { lecturerPayOutstanding, lecturerPaymentsSummary } from "@/lib/payments-server";
 import { supabase } from "@/lib/supabase";
 
@@ -43,6 +42,7 @@ const cardVariants = {
 };
 
 function AdminDashboard() {
+  const [tab, setTab] = useState<"settings" | "tests" | "stats" | "history">("settings");
   const { settings, records, sessions, tests } = useStore();
   const [now, setNow] = useState(() => new Date());
 
@@ -60,7 +60,7 @@ function AdminDashboard() {
   const minsLeft = minutesRemaining(settings, now);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-6">
+    <main className="mx-auto max-w-7xl px-4 pb-32 pt-6 sm:px-6 sm:pt-8 lg:pb-16">
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -68,7 +68,7 @@ function AdminDashboard() {
         className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4"
       >
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Today's session</h1>
+          <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight sm:text-[32px]">Tests & settings</h1>
           <p className="mt-1 text-sm sm:text-base text-muted-foreground">
             Pin the class location, set the rules, watch sign-ins come in.
           </p>
@@ -88,29 +88,34 @@ function AdminDashboard() {
         </motion.div>
       </motion.div>
 
-      <div className="mt-8 grid gap-6 grid-cols-1 md:grid-cols-3">
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1, duration: 0.4 }}>
+      {/* Phones and tablets: one section at a time */}
+      <div className="sticky top-0 z-20 -mx-4 mt-6 bg-[#f6f8f8]/95 px-4 py-2 backdrop-blur lg:hidden dark:bg-background/95">
+        <div className="flex gap-1.5 overflow-x-auto rounded-full bg-secondary/70 p-1 [scrollbar-width:none]">
+          {([["settings", "Class settings"], ["tests", "Tests"], ["stats", "Stats & earnings"], ["history", "History"]] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => { setTab(k); window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-pressed={tab === k}
+              className={`h-9 shrink-0 rounded-full px-4 text-sm font-medium transition-colors ${tab === k ? "bg-card text-foreground shadow-soft" : "text-muted-foreground"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-6 lg:mt-8 lg:grid-cols-3">
+        <div className={tab === "settings" ? "" : "hidden lg:block"}>
           <SettingsCard />
-        </motion.div>
+        </div>
 
-        <div className="md:col-span-2 grid gap-6">
-          <StatsRow records={todays} allRecords={records} settings={settings} />
-
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.4 }}>
+        <div className="grid min-w-0 gap-6 lg:col-span-2">
+          <div className={`grid gap-6 ${tab === "stats" ? "" : "hidden lg:grid"}`}>
+            <StatsRow records={todays} allRecords={records} settings={settings} />
             <EarningsDisplay />
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.4 }}>
-            <VoiceAssistant records={records} />
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.4 }}>
+          </div>
+          <div className={tab === "tests" ? "" : "hidden lg:block"}>
             <TestManager tests={tests} />
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.4 }}>
+          </div>
+          <div className={tab === "history" ? "" : "hidden lg:block"}>
             <SessionsPanel sessions={sessions} records={records} settings={settings} />
-          </motion.div>
+          </div>
         </div>
       </div>
     </main>

@@ -39,6 +39,7 @@ import {
 import { getCurrentPosition, type Coords } from "@/lib/geo";
 import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
 import { QrCode } from "@/components/QrCode";
+import { uploadCheckinPhoto, withTimeout } from "@/lib/checkin-photos";
 import { analyseFace, faceDistance, FACE_MATCH_THRESHOLD, preloadFaceModels } from "@/lib/face";
 import { StampedSelfie, type GpsStats } from "@/components/StampedSelfie";
 import type { StampInfo } from "@/lib/photo-stamp";
@@ -131,6 +132,8 @@ function AttendTokenPage() {
   const [stage, setStage] = useState<1 | 2 | 3>(1);
   // GPS help: the lecturer scans a code on this phone
   const lastInputRef = useRef<SubmitAttendanceInput | null>(null);
+  // Upload the selfie as soon as it's taken, so submitting stays instant
+  const uploadRef = useRef<{ dataUrl: string; job: Promise<{ photo: string; photoThumb: string } | null> } | null>(null);
   const [helpId, setHelpId] = useState<string | null>(null);
   const [helpState, setHelpState] = useState<"waiting" | "declined" | "expired" | "failed">("waiting");
   const [helpBusy, setHelpBusy] = useState(false);
@@ -194,6 +197,12 @@ function AttendTokenPage() {
     }, 450);
     return () => { cancelled = true; clearTimeout(t); };
   }, [form.matricNumber]);
+
+  useEffect(() => {
+    if (photo && uploadRef.current?.dataUrl !== photo.dataUrl) {
+      uploadRef.current = { dataUrl: photo.dataUrl, job: uploadCheckinPhoto(photo.dataUrl) };
+    }
+  }, [photo]);
 
   function goNext(e: React.FormEvent) {
     e.preventDefault();
@@ -298,6 +307,7 @@ function AttendTokenPage() {
     setSubmitting(true);
     try {
       const pos = photo.pos;
+      const stored = uploadRef.current?.dataUrl === photo.dataUrl ? await withTimeout(uploadRef.current.job, 8000) : null;
       const input: SubmitAttendanceInput = {
         id: crypto.randomUUID(),
         token,
@@ -317,7 +327,8 @@ function AttendTokenPage() {
         faceDistance: face?.distance ?? null,
         gps: photo.gps,
         customFields: {
-          photo: photo.dataUrl,
+          photo: stored?.photo ?? photo.dataUrl,
+          ...(stored ? { photoThumb: stored.photoThumb } : {}),
           photoAddress: photo.info.address,
           photoTemperatureC: photo.info.temperatureC != null ? String(photo.info.temperatureC) : "",
           photoWeather: photo.info.weather,

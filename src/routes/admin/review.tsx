@@ -63,7 +63,7 @@ function ReviewPage() {
                   search={{ id: r.id }}
                   className={`flex items-center gap-3 rounded-2xl border bg-card p-3.5 transition-colors ${active ? "border-[#12b886] ring-[3px] ring-[#12b886]/10" : "border-[rgba(27,36,57,0.08)] hover:border-[rgba(27,36,57,0.2)]"}`}
                 >
-                  <Avatar src={r.customFields?.photo} name={r.fullName} size={40} />
+                  <Avatar src={r.customFields?.photoThumb || r.customFields?.photo} name={r.fullName} size={40} />
                   <div className="min-w-0 flex-grow">
                     <p className="truncate text-sm font-semibold">{r.fullName}</p>
                     <p className="truncate text-xs text-amber-700 dark:text-amber-400">{checkStatus(r.customFields).label} · {r.courseCode}</p>

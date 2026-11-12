@@ -159,7 +159,7 @@ function OverviewPage() {
             <div className="mt-2 divide-y divide-[rgba(27,36,57,0.06)]">
               {review.map((r) => (
                 <div key={r.id} className="flex items-center gap-3 py-2.5">
-                  <Avatar src={r.customFields?.photo} name={r.fullName} size={36} />
+                  <Avatar src={r.customFields?.photoThumb || r.customFields?.photo} name={r.fullName} size={36} />
                   <div className="min-w-0 flex-grow">
                     <p className="truncate text-sm font-medium">{r.fullName}</p>
                     <p className="text-xs text-amber-700 dark:text-amber-400">{checkStatus(r.customFields).label}</p>
@@ -227,7 +227,7 @@ function OverviewPage() {
                     const st = checkStatus(r.customFields);
                     return (
                       <tr key={r.id} className="border-t border-[rgba(27,36,57,0.06)]">
-                        <td className="px-1 py-2.5"><span className="flex items-center gap-2.5"><Avatar src={r.customFields?.photo} name={r.fullName} size={28} /><span className="font-medium">{r.fullName}</span></span></td>
+                        <td className="px-1 py-2.5"><span className="flex items-center gap-2.5"><Avatar src={r.customFields?.photoThumb || r.customFields?.photo} name={r.fullName} size={28} /><span className="font-medium">{r.fullName}</span></span></td>
                         <td className="font-mono text-xs text-muted-foreground">{r.matricNumber}</td>
                         <td><StatusPill tone={st.tone}>{st.label}</StatusPill></td>
                         <td className="text-muted-foreground">{r.distanceMeters ? `${r.distanceMeters} m` : "—"}</td>

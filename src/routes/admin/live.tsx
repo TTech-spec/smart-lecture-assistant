@@ -128,7 +128,7 @@ function Feed({ records, attempts, onBlock }: { records: AttendanceRecord[]; att
           const flagged = needsReview(it.r);
           return (
             <div key={`r${it.r.id}`} className="flex items-center gap-3 py-2.5">
-              <Avatar src={it.r.customFields?.photo} name={it.r.fullName} size={32} />
+              <Avatar src={it.r.customFields?.photoThumb || it.r.customFields?.photo} name={it.r.fullName} size={32} />
               <div className="min-w-0 flex-grow">
                 <p className="truncate text-sm font-medium">{it.r.fullName}</p>
                 <p className={`text-xs ${flagged ? "text-amber-700 dark:text-amber-400" : "text-[#0f8a66]"}`}>
