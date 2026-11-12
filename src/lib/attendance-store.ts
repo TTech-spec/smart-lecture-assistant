@@ -41,6 +41,8 @@ export type AdminSettings = {
   classLat: number | null;
   classLng: number | null;
   radiusMeters: number;
+  /** Comma-separated starts of campus internet addresses, e.g. "102.89.,41.58." (optional) */
+  campusIpPrefixes?: string;
   windowMinutes: number;
   windowOpenedAt: string | null;
   courseCode: string;
@@ -1294,6 +1296,8 @@ export type SubmitAttendanceInput = {
   accuracy: number | null;
   /** Distance between the selfie and the registered face (lower = closer); null if not registered */
   faceDistance: number | null;
+  /** How the GPS behaved while the selfie camera was open (for fake-GPS flags) */
+  gps?: { n: number; coordDistinct: number; accDistinct: number; spreadM: number };
   customFields: Record<string, string>;
 };
 

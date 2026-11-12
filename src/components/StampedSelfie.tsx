@@ -6,7 +6,7 @@ import { currentWeather, reverseGeocode, stampPhoto, type StampInfo } from "@/li
 
 type Props = {
   /** Called with the stamped JPEG (data URL) and the info used, or null when retaking. */
-  onChange: (photo: { dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement } | null) => void;
+  onChange: (photo: { dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement; gps: GpsStats } | null) => void;
   /** Fallback one-shot location reader (used if live tracking is unavailable). */
   getPosition: () => Promise<Coords>;
 };
@@ -18,6 +18,20 @@ type Weather = { temperatureC: number | null; weather: string };
  * student's live address, time and weather are shown over the preview and
  * update as they move; the same details are stamped onto the captured photo.
  */
+/** How the raw GPS readings behaved while the camera was open (fake-GPS apps tend to be perfectly still). */
+export type GpsStats = { n: number; coordDistinct: number; accDistinct: number; spreadM: number };
+
+function gpsStats(samples: { pos: Coords }[]): GpsStats {
+  const n = samples.length;
+  if (!n) return { n: 0, coordDistinct: 0, accDistinct: 0, spreadM: 0 };
+  const coords = new Set(samples.map((x) => `${x.pos.lat.toFixed(7)},${x.pos.lng.toFixed(7)}`));
+  const accs = new Set(samples.map((x) => Math.round((x.pos.accuracy ?? 0) * 10)));
+  const lat = samples.reduce((t, x) => t + x.pos.lat, 0) / n;
+  const lng = samples.reduce((t, x) => t + x.pos.lng, 0) / n;
+  const spreadM = Math.max(...samples.map((x) => distanceMeters({ lat, lng }, x.pos)));
+  return { n, coordDistinct: coords.size, accDistinct: accs.size, spreadM: Math.round(spreadM * 10) / 10 };
+}
+
 export function StampedSelfie({ onChange, getPosition }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -142,6 +156,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     frame.height = v.videoHeight;
     frame.getContext("2d")!.drawImage(v, 0, 0);
     const posAtCapture = livePos;
+    const gps = gpsStats(samplesRef.current);
     const addrAtCapture = liveAddress;
     const weatherAtCapture = liveWeather;
     stopAll();
@@ -156,7 +171,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       const dataUrl = await stampPhoto(frame, pos, info);
       setPreview(dataUrl);
       setState("done");
-      onChange({ dataUrl, info, pos, frame });
+      onChange({ dataUrl, info, pos, frame, gps });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read your location.");
       setState("idle");

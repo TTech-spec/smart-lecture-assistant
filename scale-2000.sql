@@ -6,6 +6,12 @@
 --  * Indexes so each check-in's duplicate checks stay instant as records grow.
 --  * The attempt lock no longer locks a whole campus Wi-Fi network: phones and
 --    matric numbers still lock after 5 failures, a shared IP only after 60.
+--  * Suspicious-location flags (never block, only send to "To review"):
+--      gps_too_still   GPS never moved or changed accuracy (fake-GPS apps)
+--      gps_round       coordinates with 4 or fewer decimals (typed-in spot)
+--      same_spot       exactly the same coordinates as another student
+--      on_pin          exactly on the lecturer's pin
+--      off_campus_net  not on a campus internet address (only when set)
 -- ============================================================
 
 create index if not exists idx_records_device_course_day on attendance_records (device_id, course_code, day_key);
@@ -46,6 +52,8 @@ declare
   v_custom   jsonb;
   v_flags    text[] := '{}';
   v_name text; v_dept text; v_level text; v_gender text; v_phone text;
+  v_gps      jsonb;
+  v_prefixes text;
 begin
   if v_token is null or v_device = '' or v_matric = '' then
     raise exception 'invalid';
@@ -124,6 +132,31 @@ begin
     return jsonb_build_object('error', 'out_of_range:' || least(round(v_dist), 2000000000)::bigint || ':' || v_radius);
   end if;
 
+  -- ── Suspicious-location checks (flag only) ──
+  v_gps := case when jsonb_typeof(p->'gps') = 'object' then p->'gps' else '{}'::jsonb end;
+  if coalesce((v_gps->>'n')::int, 0) >= 4
+     and coalesce((v_gps->>'coordDistinct')::int, 0) = 1
+     and coalesce((v_gps->>'accDistinct')::int, 0) = 1 then
+    v_flags := array_append(v_flags, 'gps_too_still');
+  end if;
+  if abs(v_lat * 10000 - round(v_lat * 10000)) < 1e-6 and abs(v_lng * 10000 - round(v_lng * 10000)) < 1e-6 then
+    v_flags := array_append(v_flags, 'gps_round');
+  end if;
+  if exists (select 1 from attendance_records o
+              where o.link_id = l.id and o.device_id <> v_device
+                and abs(o.lat - v_lat) < 1e-7 and abs(o.lng - v_lng) < 1e-7) then
+    v_flags := array_append(v_flags, 'same_spot');
+  end if;
+  if v_dist < 0.5 then
+    v_flags := array_append(v_flags, 'on_pin');
+  end if;
+  select data->>'campusIpPrefixes' into v_prefixes from admin_settings where id = 'default';
+  if coalesce(trim(v_prefixes), '') <> '' and v_ip is not null
+     and not exists (select 1 from unnest(string_to_array(v_prefixes, ',')) pre
+                      where trim(pre) <> '' and v_ip like trim(pre) || '%') then
+    v_flags := array_append(v_flags, 'off_campus_net');
+  end if;
+
   if exists (select 1 from attendance_records
               where device_id = v_device and course_code = l.course_code and day_key = v_day) then
     raise exception 'duplicate_device';
@@ -176,6 +209,7 @@ begin
   v_custom := v_custom || jsonb_build_object(
     'gpsAccuracy', v_acc, 'roomCodeOk', true, 'serverChecked', true, 'checkedAt', now(),
     'faceDistance', v_face, 'registered', st.matric_number is not null,
+    'gps', v_gps, 'ip', v_ip,
     'flags', array_to_string(v_flags, ','));
 
   insert into attendance_records (

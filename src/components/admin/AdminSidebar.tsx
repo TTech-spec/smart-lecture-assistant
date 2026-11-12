@@ -13,7 +13,7 @@ type Item = { to: string; label: string; icon: React.ReactNode; exact?: boolean;
 export function needsReview(r: AttendanceRecord): boolean {
   const flags = String(r.customFields?.flags ?? "");
   const decided = r.customFields?.reviewed;
-  return !decided && /face_mismatch|no_face_check|different_phone|matric_changed/.test(flags);
+  return !decided && /face_mismatch|no_face_check|different_phone|matric_changed|gps_too_still|gps_round|same_spot|on_pin|off_campus_net/.test(flags);
 }
 
 export function AdminSidebar({

@@ -35,7 +35,7 @@ import {
 import { getCurrentPosition, type Coords } from "@/lib/geo";
 import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
 import { analyseFace, faceDistance, FACE_MATCH_THRESHOLD, preloadFaceModels } from "@/lib/face";
-import { StampedSelfie } from "@/components/StampedSelfie";
+import { StampedSelfie, type GpsStats } from "@/components/StampedSelfie";
 import type { StampInfo } from "@/lib/photo-stamp";
 
 export const Route = createFileRoute("/attend/$token")({
@@ -113,7 +113,7 @@ function AttendTokenPage() {
   // Device-level block: set to true if this phone already submitted today
   const [deviceBlocked, setDeviceBlocked] = useState(false);
   // Live stamped selfie (required before submit)
-  const [photo, setPhoto] = useState<{ dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement } | null>(null);
+  const [photo, setPhoto] = useState<{ dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement; gps: GpsStats } | null>(null);
   // Registered profile for the typed matric (details come from it, not the form)
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -305,6 +305,7 @@ function AttendTokenPage() {
         lng: pos.source === "gps" ? pos.lng : null,
         accuracy: pos.source === "gps" ? (pos.accuracy ?? null) : null,
         faceDistance: face?.distance ?? null,
+        gps: photo.gps,
         customFields: {
           photo: photo.dataUrl,
           photoAddress: photo.info.address,

@@ -134,7 +134,7 @@ function MyAttendancePage() {
 }
 
 function CheckInRow({ r }: { r: MyCheckIn }) {
-  const flagged = /face_mismatch|no_face_check|different_phone|matric_changed/.test(r.flags) && r.reviewed !== "approved";
+  const flagged = /face_mismatch|no_face_check|different_phone|matric_changed|gps_too_still|gps_round|same_spot|on_pin|off_campus_net/.test(r.flags) && r.reviewed !== "approved";
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-[rgba(27,36,57,0.08)] bg-card p-3.5">
       {r.photo

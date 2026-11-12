@@ -369,6 +369,14 @@ function SettingsCard() {
           <RadiusHint meters={draft.radiusMeters} />
         </div>
 
+        <div className="sm:col-span-2">
+          <Label className="text-sm">Campus internet addresses (optional)</Label>
+          <Input value={draft.campusIpPrefixes ?? ""} onChange={(e) => update("campusIpPrefixes", e.target.value.replace(/[^0-9a-fA-F.:, ]/g, ""))} placeholder="e.g. 102.89., 41.58.10." />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Check-ins from other networks are flagged for review, not blocked. Ask your IT unit for the campus Wi-Fi address range, or copy the start of the "Network" address shown on flagged check-ins in To review. Leave empty to turn this check off.
+          </p>
+        </div>
+
         <div>
           <Label className="text-sm">Form open for (minutes, 0 = no limit)</Label>
           <Input type="number" min={0} max={720} value={draft.windowMinutes ?? 15} onChange={(e) => update("windowMinutes", Math.max(0, Number(e.target.value) || 0))} />

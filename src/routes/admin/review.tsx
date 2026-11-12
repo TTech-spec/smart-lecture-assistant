@@ -100,14 +100,24 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
   const flags = String(cf.flags ?? "");
   const faceDist = cf.faceDistance != null && cf.faceDistance !== "" ? Number(cf.faceDistance) : null;
   const matchPct = faceDist != null ? Math.max(0, Math.round((1 - faceDist / 1.2) * 100)) : null;
+  const LOC_REASONS: Record<string, string> = {
+    gps_too_still: "GPS never moved while the camera was open (common with fake-GPS apps)",
+    gps_round: "Coordinates look typed in (too few decimals)",
+    same_spot: "Exactly the same coordinates as another student",
+    on_pin: "Exactly on your pin (real phones land a few metres away)",
+    off_campus_net: `Not on a campus internet address${cf.ip ? ` (network ${cf.ip})` : ""}`,
+  };
+  const locReasons = Object.keys(LOC_REASONS).filter((k) => flags.includes(k)).map((k) => LOC_REASONS[k]);
   const checks = [
     { label: "Class code", ok: Boolean(cf.roomCodeOk), value: cf.roomCodeOk ? "Correct" : "Not checked" },
-    { label: "Location", ok: Boolean(cf.serverChecked), value: r.distanceMeters ? `${r.distanceMeters} m away` : "No location" },
+    { label: "Location", ok: Boolean(cf.serverChecked) && locReasons.length === 0, value: locReasons.length ? `Suspicious · ${r.distanceMeters ?? 0} m away` : r.distanceMeters ? `${r.distanceMeters} m away` : "No location" },
     { label: "Phone", ok: !flags.includes("different_phone"), value: flags.includes("different_phone") ? "Different phone" : "Registered phone" },
     { label: "Face", ok: !flags.includes("face_mismatch") && !flags.includes("no_face_check"), value: flags.includes("no_face_check") ? "Not checked" : matchPct != null ? `${matchPct}% match` : "—" },
   ];
   const edits = (Array.isArray(cf.edits) ? cf.edits : []) as { at: string; from: Record<string, string>; to: Record<string, string> }[];
-  const hint = flags.includes("matric_changed")
+  const hint = locReasons.length
+    ? `The location may be faked: ${locReasons.join("; ")}. Look at the selfie background: is it your lecture hall? If yes, approve; if it's a room or outdoors elsewhere, reject.`
+    : flags.includes("matric_changed")
     ? "The student changed the matric number on this check-in after submitting. Make sure the person in the selfie is the student with the new matric number — a swap to an absent friend's number would show here."
     : flags.includes("face_mismatch") && !flags.includes("different_phone")
     ? "The class code, location and phone all check out. A low face match is usually bad lighting — if the two photos are clearly the same person, approve it."
