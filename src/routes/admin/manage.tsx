@@ -1139,9 +1139,16 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                     </>)}
                   </div>
                 ))}
-                <Button type="button" variant="outline" size="sm" onClick={addQuestion}>
-                  <Plus className="mr-2 h-3.5 w-3.5" /> Add question
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={addQuestion}>
+                    <Plus className="mr-2 h-3.5 w-3.5" /> Add multiple-choice question
+                  </Button>
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => setQuestions((qs) => [...qs, { ...emptyQuestion(), kind: "theory", marks: 5 }])}>
+                    <Plus className="mr-2 h-3.5 w-3.5" /> Add theory question
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Optional: add a theory question or two if you want to catch students using AI. Their typing is recorded and you can check each answer when marking.</p>
               </div>
 
               <div className="flex gap-2 pt-2">
