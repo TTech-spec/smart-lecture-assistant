@@ -1,4 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useTestIntegrity, NO_COPY_CLASS } from "@/hooks/use-test-integrity";
+import { IntegrityNote } from "@/components/IntegrityNote";
+import type { TestIntegrity } from "@/lib/attendance-store";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
@@ -166,7 +169,7 @@ function TestFlow({ test }: { test: TestConfig }) {
     setStage("cheated");
   }
 
-  async function handleSubmit(finalAnswers: (number | null)[], cheated = false) {
+  async function handleSubmit(finalAnswers: (number | null)[], cheated = false, integrity?: TestIntegrity) {
     const deviceId = getDeviceId();
 
     // Re-check the device lock at submit time in case another tab/session on
@@ -194,6 +197,7 @@ function TestFlow({ test }: { test: TestConfig }) {
       total: test.questions.length,
       submittedAt: new Date().toISOString(),
       cheated,
+      ...(integrity ? { integrity } : {}),
       testType: test.testType || "C1",
       deviceId,
     };
@@ -619,10 +623,13 @@ function TakingTest({
   answers: (number | null)[];
   setAnswers: React.Dispatch<React.SetStateAction<(number | null)[]>>;
   onCheated: () => void;
-  onSubmit: (answers: (number | null)[]) => void;
+  onSubmit: (answers: (number | null)[], cheated?: boolean, integrity?: TestIntegrity) => void;
 }) {
   const [current, setCurrent] = useState(0);
   const [order] = useState(() => shuffledIndices(test.questions.length));
+  // Each student also sees the options of every question in their own order
+  const [optionOrder] = useState(() => test.questions.map((qq) => shuffledIndices(qq.options.length)));
+  const { counts: integrity, ref: integrityRef } = useTestIntegrity();
   const [secondsLeft, setSecondsLeft] = useState(test.durationMinutes * 60);
   const cheatedRef = useRef(false);
   const answersRef = useRef(answers);
@@ -635,7 +642,7 @@ function TakingTest({
         if (s <= 1) {
           clearInterval(interval);
           toast.warning("Time's up! Your answers have been submitted.");
-          onSubmit(answersRef.current);
+          onSubmit(answersRef.current, false, integrityRef.current);
           return 0;
         }
         return s - 1;
@@ -674,11 +681,12 @@ function TakingTest({
     if (unanswered > 0) {
       if (!window.confirm(`You have ${unanswered} unanswered question${unanswered !== 1 ? "s" : ""}. Submit anyway?`)) return;
     }
-    onSubmit(answers);
+    onSubmit(answers, false, integrityRef.current);
   }
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${NO_COPY_CLASS}`}>
+      <IntegrityNote counts={integrity} />
       <div className="rounded-2xl border bg-card p-4 shadow-soft">
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm text-muted-foreground">Question {current + 1} of {test.questions.length}</span>
@@ -697,12 +705,13 @@ function TakingTest({
         <motion.div key={current} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.25 }} className="rounded-2xl border bg-card p-6 shadow-soft space-y-5">
           <p className="text-lg font-semibold leading-relaxed">{q.text}</p>
           <div className="space-y-3">
-            {q.options.map((opt, i) => {
-              const selected = answers[order[current]] === i;
+            {optionOrder[order[current]].map((optIdx, pos) => {
+              const opt = q.options[optIdx];
+              const selected = answers[order[current]] === optIdx;
               return (
-                <button key={i} type="button" onClick={() => selectAnswer(i)}
+                <button key={optIdx} type="button" onClick={() => selectAnswer(optIdx)}
                   className={`w-full rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all duration-150 ${selected ? "border-primary bg-primary/10 text-primary shadow-soft" : "border-border bg-secondary/50 text-foreground hover:border-primary/40 hover:bg-secondary"}`}>
-                  <span className="mr-3 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold">{String.fromCharCode(65 + i)}</span>
+                  <span className="mr-3 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold">{String.fromCharCode(65 + pos)}</span>
                   {opt}
                 </button>
               );

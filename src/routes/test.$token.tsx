@@ -1,4 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import type { TestIntegrity } from "@/lib/attendance-store";
+import { useTestIntegrity, NO_COPY_CLASS } from "@/hooks/use-test-integrity";
+import { IntegrityNote } from "@/components/IntegrityNote";
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
@@ -187,7 +190,7 @@ function TestTokenPage() {
     setStage("cheated");
   }
 
-  async function handleSubmit(finalAnswers: (number | null)[], cheated = false) {
+  async function handleSubmit(finalAnswers: (number | null)[], cheated = false, integrity?: TestIntegrity) {
     const deviceId = getDeviceId();
 
     // Re-check the device lock at submit time in case another tab/session on
@@ -217,6 +220,7 @@ function TestTokenPage() {
       cheated,
       testType: test!.testType || "C1",
       deviceId,
+      ...(integrity ? { integrity } : {}),
     };
 
     addTestSubmission(submission);
@@ -473,10 +477,14 @@ function TakingTest({
   answers: (number | null)[];
   setAnswers: (answers: (number | null)[]) => void;
   onCheated: () => void;
-  onSubmit: (answers: (number | null)[], cheated?: boolean) => void;
+  onSubmit: (answers: (number | null)[], cheated?: boolean, integrity?: TestIntegrity) => void;
 }) {
+  const { counts: integrity, ref: integrityRef } = useTestIntegrity();
+  const submit = (a: (number | null)[]) => onSubmit(a, false, integrityRef.current);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [order] = useState(() => shuffledIndices(test.questions.length));
+  // Each student also sees the options of every question in their own order
+  const [optionOrder] = useState(() => test.questions.map((q) => shuffledIndices(q.options.length)));
   const [timeLeft, setTimeLeft] = useState(test.durationMinutes * 60);
   const [tabCount, setTabCount] = useState(0);
 
@@ -485,7 +493,7 @@ function TakingTest({
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          onSubmit(answers);
+          submit(answers);
           return 0;
         }
         return prev - 1;
@@ -519,7 +527,7 @@ function TakingTest({
     if (currentQuestion < test.questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
-      onSubmit(answers);
+      submit(answers);
     }
   }
 
@@ -533,7 +541,8 @@ function TakingTest({
   const progress = ((currentQuestion + 1) / test.questions.length) * 100;
 
   return (
-    <div className="rounded-2xl border bg-card p-6 shadow-soft">
+    <div className={`rounded-2xl border bg-card p-6 shadow-soft ${NO_COPY_CLASS}`}>
+      <IntegrityNote counts={integrity} />
       {/* Timer and progress */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm">
@@ -561,12 +570,12 @@ function TakingTest({
       <div className="mb-6">
         <h3 className="mb-4 text-lg font-semibold">{question.text}</h3>
         <div className="space-y-3">
-          {question.options.map((option, index) => (
+          {optionOrder[order[currentQuestion]].map((optIdx, index) => { const option = question.options[optIdx]; return (
             <button
-              key={index}
-              onClick={() => handleAnswerSelect(index)}
+              key={optIdx}
+              onClick={() => handleAnswerSelect(optIdx)}
               className={`w-full rounded-lg border p-4 text-left transition-all ${
-                answers[order[currentQuestion]] === index
+                answers[order[currentQuestion]] === optIdx
                   ? "border-primary bg-primary/10"
                   : "border-border hover:bg-secondary"
               }`}
@@ -578,7 +587,7 @@ function TakingTest({
                 <span className="text-sm">{option}</span>
               </div>
             </button>
-          ))}
+          ); })}
         </div>
       </div>
 

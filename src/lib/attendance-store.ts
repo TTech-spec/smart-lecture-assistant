@@ -166,7 +166,11 @@ export type TestSubmission = {
   cheated: boolean;
   testType: TestType;
   deviceId: string;
+  /** What the test page noticed: left the screen, split screen / floating window, copy attempts */
+  integrity?: TestIntegrity;
 };
+
+export type TestIntegrity = { focusLost: number; splitScreen: number; copyAttempts: number };
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const REC_KEY      = "att.records.v1";
@@ -319,6 +323,7 @@ function submissionToDb(s: TestSubmission): Row {
     cheated: s.cheated,
     test_type: s.testType,
     device_id: s.deviceId,
+    ...(s.integrity ? { integrity: s.integrity } : {}),
   };
 }
 
@@ -336,6 +341,7 @@ function submissionFromDb(row: Row): TestSubmission {
     cheated: Boolean(row.cheated),
     testType: (row.test_type as TestType) || "C1",
     deviceId: row.device_id || "",
+    integrity: (row.integrity as TestIntegrity | null) ?? undefined,
   };
 }
 
@@ -946,7 +952,14 @@ export function addTestSubmission(s: TestSubmission) {
   const all = loadTestSubmissions();
   all.push(s);
   saveTestSubmissions(all);
-  sync(supabase?.from("test_submissions").upsert(submissionToDb(s)));
+  if (!supabase) return;
+  // If test-integrity.sql hasn't been run yet, save the result without the flags
+  supabase.from("test_submissions").upsert(submissionToDb(s)).then(({ error }) => {
+    if (error && /integrity/.test(error.message)) {
+      const { integrity: _skip, ...rest } = submissionToDb(s);
+      sync(supabase?.from("test_submissions").upsert(rest));
+    }
+  });
 }
 
 export function syncTestSubmission(s: TestSubmission) {
