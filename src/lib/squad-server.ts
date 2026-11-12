@@ -33,7 +33,7 @@ export function secretKey() {
 export function platformAccount() {
   return {
     accountNumber: getEnv("SQUAD_PLATFORM_ACCOUNT_NUMBER"),
-    bankCode: getEnv("SQUAD_PLATFORM_BANK_CODE") || "058", // GTBank default
+    bankCode: getEnv("SQUAD_PLATFORM_BANK_CODE") || "000013", // GTBank (NIP code) default
   };
 }
 

@@ -18,7 +18,7 @@ import {
   loadMaterials, addMaterial, deleteMaterial, syncMaterialsFromSupabase,
   uploadMaterialFile, deleteMaterialFile, type Material, type MaterialFileType, type MaterialAccessType,
 } from "@/lib/materials-store";
-import { calcFees, NG_BANKS } from "@/lib/squad";
+import { calcFees, NG_BANKS, OTHER_BANK } from "@/lib/squad";
 
 type MaterialsSearch = {
   accessType?: MaterialAccessType;
@@ -126,8 +126,8 @@ function MaterialsAdmin() {
       if (!draft.lecturerAccountNumber.trim()) {
         return toast.error("Please enter your bank account number so students' payments can be sent to you.");
       }
-      if (!draft.lecturerBankCode) {
-        return toast.error("Please select your bank.");
+      if (!/^\d{3,6}$/.test(draft.lecturerBankCode.trim())) {
+        return toast.error(draft.lecturerBankCode.trim() ? "Bank code should be 3 to 6 digits." : "Please select your bank.");
       }
       if (!draft.lecturerAccountName.trim()) {
         return toast.error("Please enter your account name.");
@@ -160,7 +160,7 @@ function MaterialsAdmin() {
         uploadedAt: new Date().toISOString(),
         ...(draft.accessType === "paid" && {
           lecturerAccountNumber: draft.lecturerAccountNumber.trim(),
-          lecturerBankCode: draft.lecturerBankCode,
+          lecturerBankCode: draft.lecturerBankCode.trim(),
           lecturerAccountName: draft.lecturerAccountName.trim(),
         }),
       });
@@ -520,7 +520,9 @@ function MaterialsAdmin() {
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                           <Label htmlFor="mat-bank">Your Bank <span className="text-destructive">*</span></Label>
-                          <Select value={draft.lecturerBankCode} onValueChange={(v) => upd("lecturerBankCode", v)}>
+                          <Select
+                            value={draft.lecturerBankCode === "" ? "" : NG_BANKS.some((b) => b.code === draft.lecturerBankCode) ? draft.lecturerBankCode : OTHER_BANK}
+                            onValueChange={(v) => { upd("lecturerBankCode", v === OTHER_BANK ? " " : v); }}>
                             <SelectTrigger id="mat-bank" className="mt-1.5 bg-white dark:bg-background">
                               <SelectValue placeholder="Select bank" />
                             </SelectTrigger>
@@ -528,8 +530,22 @@ function MaterialsAdmin() {
                               {NG_BANKS.map((b) => (
                                 <SelectItem key={b.code} value={b.code}>{b.name}</SelectItem>
                               ))}
+                              <SelectItem value={OTHER_BANK}>Other bank (enter its code)</SelectItem>
                             </SelectContent>
                           </Select>
+                          {draft.lecturerBankCode !== "" && !NG_BANKS.some((b) => b.code === draft.lecturerBankCode) && (
+                            <div className="mt-2">
+                              <Input
+                                id="mat-bank-code"
+                                value={draft.lecturerBankCode.trim()}
+                                onChange={(e) => upd("lecturerBankCode", e.target.value.replace(/\D/g, "").slice(0, 6) || " ")}
+                                placeholder="Bank code, e.g. 090405"
+                                inputMode="numeric"
+                                className="bg-white dark:bg-background font-mono tracking-wider"
+                              />
+                              <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">Use the 6-digit code from Squad's bank list. A wrong code makes the payout fail.</p>
+                            </div>
+                          )}
                         </div>
                         <div>
                           <Label htmlFor="mat-acct">Account Number <span className="text-destructive">*</span></Label>

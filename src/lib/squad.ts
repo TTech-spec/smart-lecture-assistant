@@ -112,27 +112,41 @@ export function generateTransactionRef(): string {
 }
 
 // ── Nigerian bank list (for the lecturer bank selector) ───────────────────────
+/**
+ * Banks for payouts, using the 6-digit NIBSS (NIP) institution codes that
+ * transfer APIs such as Squad expect. Lecturers can also type any other code
+ * via "Other bank". Check against Squad's own bank list before going live.
+ */
 export const NG_BANKS: { code: string; name: string }[] = [
-  { code: "044", name: "Access Bank" },
-  { code: "063", name: "Access Bank (Diamond)" },
-  { code: "050", name: "Ecobank" },
-  { code: "214", name: "FCMB" },
-  { code: "070", name: "Fidelity Bank" },
-  { code: "011", name: "First Bank" },
-  { code: "058", name: "Guaranty Trust Bank (GTBank)" },
-  { code: "030", name: "Heritage Bank" },
-  { code: "082", name: "Keystone Bank" },
-  { code: "221", name: "Stanbic IBTC Bank" },
-  { code: "232", name: "Sterling Bank" },
-  { code: "033", name: "UBA" },
-  { code: "032", name: "Union Bank" },
-  { code: "215", name: "Unity Bank" },
-  { code: "035", name: "Wema Bank" },
-  { code: "057", name: "Zenith Bank" },
-  { code: "50211", name: "Kuda MFB" },
-  { code: "566", name: "VFD MFB" },
-  { code: "303", name: "LOTUS Bank" },
-  { code: "000016", name: "Opay" },
-  { code: "000014", name: "Palmpay" },
-  { code: "000013", name: "GTBank Mobile Money" },
+  { code: "000014", name: "Access Bank" },
+  { code: "000005", name: "Access Bank (Diamond)" },
+  { code: "000010", name: "Ecobank" },
+  { code: "000003", name: "FCMB" },
+  { code: "000007", name: "Fidelity Bank" },
+  { code: "000016", name: "First Bank" },
+  { code: "000027", name: "Globus Bank" },
+  { code: "000013", name: "Guaranty Trust Bank (GTBank)" },
+  { code: "000020", name: "Heritage Bank" },
+  { code: "000006", name: "Jaiz Bank" },
+  { code: "000002", name: "Keystone Bank" },
+  { code: "090267", name: "Kuda MFB" },
+  { code: "000029", name: "Lotus Bank" },
+  { code: "090405", name: "Moniepoint MFB" },
+  { code: "100004", name: "OPay" },
+  { code: "100002", name: "Paga" },
+  { code: "100033", name: "PalmPay" },
+  { code: "000008", name: "Polaris Bank" },
+  { code: "000031", name: "PremiumTrust Bank" },
+  { code: "000023", name: "Providus Bank" },
+  { code: "000012", name: "Stanbic IBTC Bank" },
+  { code: "000001", name: "Sterling Bank" },
+  { code: "000025", name: "Titan Trust Bank" },
+  { code: "000004", name: "UBA" },
+  { code: "000018", name: "Union Bank" },
+  { code: "000011", name: "Unity Bank" },
+  { code: "090110", name: "VFD MFB" },
+  { code: "000017", name: "Wema Bank (ALAT)" },
+  { code: "000015", name: "Zenith Bank" },
 ];
+
+export const OTHER_BANK = "__other__";
