@@ -24,6 +24,7 @@ import {
 } from "@/lib/attendance-store";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
+import { AskAiChat, type AiRow } from "@/components/AskAiChat";
 import { checkStatus } from "@/components/admin/ui";
 import { supabase } from "@/lib/supabase";
 
@@ -568,6 +569,15 @@ function RecordsPage() {
     linkFilter !== "all" && { label: linkFilter === "__none__" ? "No link" : linkMap.get(linkFilter) ?? "Link", clear: () => setLinkFilter("all") },
     classCodeFilter !== "all" && { label: classCodeFilter === "__none__" ? "No class code" : classCodeFilter, clear: () => setClassCodeFilter("all") },
   ].filter(Boolean) as { label: string; clear: () => void }[];
+  const aiRows: AiRow[] = useMemo(() => [...records].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)).map((r) => {
+    const t = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
+    return {
+      name: r.fullName, matric: r.matricNumber, dept: r.department, level: r.level, gender: r.gender,
+      course: r.courseCode, status: checkStatus(r.customFields).label, distance: r.distanceMeters || undefined,
+      at: r.submittedAt, classCode: r.assignedClassCode || undefined,
+      tests: TEST_TYPES.map((k) => (t[k] ? `${k} ${t[k]!.cheated ? "cheated" : `${t[k]!.score}/${t[k]!.total}`}` : "")).filter(Boolean).join(", ") || undefined,
+    };
+  }), [records, testResultMap]);
   const selected = selectedId ? records.find((r) => r.id === selectedId) ?? null : null;
   const initials = (n: string) => n.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const pillClass = (s: "ok" | "review" | "other") =>
@@ -791,8 +801,12 @@ function RecordsPage() {
       {/* ── AI assistant drawer ── */}
       <AnimatePresence>
         {showAi && (
-          <SideSheet title="Ask about your records" subtitle="Runs on this device" onClose={() => setShowAi(false)}>
-            <VoiceAssistant records={records} />
+          <SideSheet title="Ask AI" subtitle="About your attendance records" onClose={() => setShowAi(false)}>
+            <AskAiChat rows={aiRows} />
+            <details className="rounded-2xl bg-secondary/40 p-3 text-sm">
+              <summary className="cursor-pointer font-medium text-muted-foreground">Voice assistant (works offline)</summary>
+              <div className="mt-3"><VoiceAssistant records={records} /></div>
+            </details>
           </SideSheet>
         )}
       </AnimatePresence>
