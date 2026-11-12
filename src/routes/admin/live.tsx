@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -220,7 +221,7 @@ function BlockPanel({ link, records, allRecords, registerBlock }: {
       setMatric(""); setReason("");
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not block the student.");
+      toast.error(friendlyError(e, "Could not block the student."));
     } finally { setBusy(null); }
   }, [link.id, allRecords, load]);
 
@@ -233,7 +234,7 @@ function BlockPanel({ link, records, allRecords, registerBlock }: {
       toast.success(`${m} unblocked. They can sign this session again.`);
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not unblock the student.");
+      toast.error(friendlyError(e, "Could not unblock the student."));
     } finally { setBusy(null); }
   }
 

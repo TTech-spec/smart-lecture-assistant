@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useMemo, useState, useEffect } from "react";
 import {
   RefreshCw, Trash2, Download, FileText, ClipboardList,
@@ -501,7 +502,7 @@ function RecordsPage() {
         await addRecord(newRec);
         toast.success("Record added and synced to database.");
       } catch (err) {
-        toast.error(`Could not save: ${err instanceof Error ? err.message : "Database error"}`);
+        toast.error(friendlyError(err, "We couldn't save that record. Please try again."));
         return;
       }
     } else if (editingRecord) {

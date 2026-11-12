@@ -1288,7 +1288,7 @@ function parseCheckInError(raw: string): CheckInError {
   const m = raw.match(/(not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|no_location|invalid|blocked)(?::(\d+))?(?::(\d+))?/);
   if (!m) {
     if (/function .*submit_attendance.* does not exist|schema cache/i.test(raw)) {
-      return new CheckInError("not_configured", "Check-in is not set up yet. Ask your lecturer to run security-hardening.sql.");
+      return new CheckInError("not_configured", "Check-in isn't switched on yet. Please let your lecturer know.");
     }
     return new CheckInError("unknown", raw);
   }
@@ -1393,7 +1393,7 @@ export async function registerStudent(input: {
     const m = error.message.match(/(invalid|matric_taken|device_taken|face_exists)(?::([^\s"]+))?/);
     if (m) throw new RegisterError(m[1] as RegisterErrorCode, error.message, m[2]);
     if (/does not exist|schema cache/i.test(error.message)) {
-      throw new RegisterError("not_configured", "Registration is not set up yet. Ask your lecturer to run students-migration.sql.");
+      throw new RegisterError("not_configured", "Registration isn't switched on yet. Please let your lecturer know.");
     }
     throw new RegisterError("unknown", error.message);
   }
@@ -1541,7 +1541,7 @@ export async function updateMyDetails(input: { matricNumber: string; newMatricNu
   if (error) {
     const m = error.message.match(/(invalid|not_owner|matric_taken|matric_conflict|too_many_edits)/);
     if (m) throw new EditError(m[1] as EditErrorCode, error.message);
-    if (/does not exist|schema cache|Could not find/i.test(error.message)) throw new EditError("not_configured", "Editing isn't set up yet. Ask your lecturer to run student-edits.sql.");
+    if (/does not exist|schema cache|Could not find/i.test(error.message)) throw new EditError("not_configured", "This page isn't switched on yet. Please let your lecturer know.");
     throw new EditError("unknown", error.message);
   }
   const r = data as { matricNumber: string };

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useMemo, useState } from "react";
 import {
   Link2, Plus, X, Copy, Ban, ChevronDown, ChevronUp,
@@ -178,7 +179,7 @@ function GenerateLinkForm({
         toast.success(`Location verified (±${Math.round(pos.accuracy ?? 0)} m).`);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not read your location.");
+      toast.error(friendlyError(err, "Could not read your location."));
     } finally {
       setLocating(false);
     }
@@ -261,14 +262,15 @@ function GenerateLinkForm({
       setVenueId("");
       setPinMoved(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      if (msg.toLowerCase().includes("does not exist") || msg.toLowerCase().includes("relation")) {
+      const raw = err instanceof Error ? err.message.toLowerCase() : "";
+      const msg = friendlyError(err, "We couldn't create the check-in link. Please try again.");
+      if (raw.includes("does not exist") || raw.includes("relation")) {
         toast.error(
           "Database table missing. Run attendance-links-migration.sql in your Supabase SQL Editor first, then try again.",
           { duration: 8000 }
         );
       } else {
-        toast.error(`Could not save link: ${msg}`);
+        toast.error(msg);
       }
     } finally {
       setCreating(false);

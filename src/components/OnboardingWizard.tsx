@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { friendlyError } from "@/lib/friendly-error";
 import { useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -93,7 +94,7 @@ export function OnboardingWizard({ initialTheme, initialDevAccess, initialDevAcc
       await changeLecturerPassword(current, next);
       toast.success("Password updated.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not change password.");
+      toast.error(friendlyError(err, "Could not change password."));
     }
   }
 

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ function StudentsPage() {
       setStudents(await fetchStudents());
       setError(null);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Could not load students.";
+      const msg = friendlyError(e, "Could not load students.");
       setError(/does not exist|schema cache/i.test(msg) ? "Run students-migration.sql in Supabase to enable registration." : msg);
     } finally {
       setLoading(false);
@@ -44,7 +45,7 @@ function StudentsPage() {
       setStudents((all) => all.filter((x) => x.matricNumber !== st.matricNumber));
       toast.success("Registration removed. The student can register again.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not remove.");
+      toast.error(friendlyError(e, "Could not remove."));
     }
   }
 

@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useState } from "react";
 import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X, Link2, Settings2, Download, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -62,7 +63,7 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
       toast.success("Welcome back, lecturer.");
       onSuccess();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not sign in.");
+      toast.error(friendlyError(err, "Could not sign in."));
     } finally {
       setBusy(false);
     }

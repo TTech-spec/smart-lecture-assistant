@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { friendlyError } from "@/lib/friendly-error";
 import { Loader2, CreditCard, AlertCircle, CheckCircle2, Info, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,16 +154,7 @@ export function PaymentModal({
       setStep("processing");
     } catch (err) {
       console.error("Payment initiation error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to start payment.";
-      
-      // Provide more helpful error messages for common issues
-      if (/Squad secret key not configured|SUPABASE_SERVICE_ROLE_KEY/.test(errorMessage)) {
-        toast.error("Payment system not configured. Please contact support.");
-      } else if (errorMessage.includes("Squad API error")) {
-        toast.error("Payment service temporarily unavailable. Please try again later.");
-      } else {
-        toast.error(errorMessage);
-      }
+      toast.error(friendlyError(err, "We couldn't start the payment. Please try again."));
       setLoading(false);
     }
   }

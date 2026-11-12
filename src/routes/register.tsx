@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, MapPin, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +12,7 @@ import { FaceScan, type FaceScanResult } from "@/components/FaceScan";
 import { preloadFaceModels } from "@/lib/face";
 import { APP_VERSION } from "@/lib/version";
 import {
-  getDeviceId, getRegisteredMatric, loadSettings, registerStudent, RegisterError, type Gender,
+  fetchStudentProfile, getDeviceId, getRegisteredMatric, loadSettings, registerStudent, RegisterError, type Gender,
 } from "@/lib/attendance-store";
 
 export const Route = createFileRoute("/register")({
@@ -28,6 +30,9 @@ const empty: Form = { fullName: "", matricNumber: "", department: "", level: "",
 
 function RegisterPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  // Step 1 is split into short screens: name → matric → course → contact
+  const [screen, setScreen] = useState<1 | 2 | 3 | 4>(1);
+  const [checkingMatric, setCheckingMatric] = useState(false);
   const [form, setForm] = useState<Form>(empty);
   const [saving, setSaving] = useState(false);
   const [savedName, setSavedName] = useState("");
@@ -42,15 +47,33 @@ function RegisterPage() {
 
   const update = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
-  function next(e: React.FormEvent) {
+  async function next(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.fullName.trim()) return toast.error("Enter your full name.");
-    if (!form.matricNumber.trim()) return toast.error("Enter your matric number.");
-    if (!form.department.trim()) return toast.error("Enter your department.");
-    if (!form.level) return toast.error("Select your level.");
-    if (!form.phone.trim()) return toast.error("Enter your phone number.");
-    if (!form.gender) return toast.error("Select your gender.");
+    if (screen === 1) {
+      if (form.fullName.trim().split(/\s+/).length < 2) return toast.error("Enter your first and last name.");
+      return setScreen(2);
+    }
+    if (screen === 2) {
+      const m = form.matricNumber.trim();
+      if (m.length < 5) return toast.error("Enter your full matric number, e.g. CSC/2021/001.");
+      setCheckingMatric(true);
+      const existing = await fetchStudentProfile(m).catch(() => null);
+      setCheckingMatric(false);
+      if (existing) return toast.error("This matric number is already registered. If it's yours and you changed phones, speak to your lecturer.");
+      return setScreen(3);
+    }
+    if (screen === 3) {
+      if (!form.department.trim()) return toast.error("Choose your department.");
+      if (!form.level) return toast.error("Choose your level.");
+      return setScreen(4);
+    }
+    if (!/^\+?\d[\d\s-]{9,}$/.test(form.phone.trim())) return toast.error("Enter a valid phone number, e.g. 08012345678.");
+    if (!form.gender) return toast.error("Choose your gender.");
     setStep(2);
+  }
+
+  function back() {
+    if (screen > 1) setScreen((s) => (s - 1) as 1 | 2 | 3 | 4);
   }
 
   const onFace = useCallback(async (r: FaceScanResult) => {
@@ -71,8 +94,9 @@ function RegisterPage() {
       setStep(3);
     } catch (err) {
       if (err instanceof RegisterError) setFailure(err);
-      else toast.error(err instanceof Error ? err.message : "Could not save your registration.");
+      else toast.error(friendlyError(err, "We couldn't save your registration. Please try again."));
       setStep(1);
+      setScreen(1);
     } finally {
       setSaving(false);
     }
@@ -81,7 +105,7 @@ function RegisterPage() {
   if (failure) {
     const v = describeFailure(failure);
     return (
-      <Shell step={1}>
+      <Shell screen={screen}>
         <h1 className="font-display text-[28px] font-bold leading-8 tracking-tight">{v.title}</h1>
         <p className="mt-3 text-base leading-6 text-muted-foreground">{v.body}</p>
         <div className="flex-grow" />
@@ -93,7 +117,7 @@ function RegisterPage() {
 
   if (step === 3) {
     return (
-      <Shell step={3}>
+      <Shell screen={6}>
         <div className="mt-6 flex flex-col items-center text-center">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <CheckCircle2 className="h-10 w-10" />
@@ -119,7 +143,7 @@ function RegisterPage() {
 
   if (step === 2) {
     return (
-      <Shell step={2} dark>
+      <Shell screen={5} dark>
         <h1 className="font-display text-[28px] font-bold leading-8 tracking-tight text-white">Position your face in the oval</h1>
         <div className="mt-4">
           {saving ? (
@@ -131,71 +155,120 @@ function RegisterPage() {
           )}
         </div>
         <div className="flex-grow" />
-        <Button variant="ghost" className="h-12 w-full rounded-full text-base text-gray-300 hover:bg-white/10 hover:text-white" onClick={() => setStep(1)}>Back</Button>
+        <Button variant="ghost" className="h-12 w-full rounded-full text-base text-gray-300 hover:bg-white/10 hover:text-white" onClick={() => { setStep(1); setScreen(4); }}>Back</Button>
       </Shell>
     );
   }
 
+  const titles: Record<number, [string, string]> = {
+    1: ["What's your name?", "Use the name on your school ID card."],
+    2: ["Your matric number", "You'll use this to sign every class."],
+    3: ["Your department and level", "So your lecturer sees the right class list."],
+    4: ["How can we reach you?", "Your phone number stays private to your lecturer."],
+  };
+  const [title, sub] = titles[screen];
+  const primary = "h-[52px] w-full rounded-full bg-foreground text-base font-semibold text-background hover:bg-foreground/85";
+
   return (
-    <Shell step={1}>
-      <h1 className="font-display text-[28px] font-bold leading-8 tracking-tight">Create your student profile</h1>
-      <p className="mt-2 text-base leading-6 text-muted-foreground">
-        Do this once. After that, you check in with your matric number and the class code.
-      </p>
-      {already && (
-        <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-[13px] leading-[18px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+    <Shell screen={screen}>
+      {screen === 1 && already && (
+        <p className="mb-4 rounded-2xl bg-amber-50 p-4 text-[13px] leading-[18px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
           This phone is already registered to <strong>{already}</strong>. Each phone can hold one student.
         </p>
       )}
-      <form onSubmit={next} className="mt-6 flex flex-col gap-4">
-        <Field label="Full name"><Input value={form.fullName} onChange={(e) => update("fullName", e.target.value)} placeholder="Jane Doe" className="h-12 rounded-xl text-base" /></Field>
-        <Field label="Matric number"><Input value={form.matricNumber} onChange={(e) => update("matricNumber", e.target.value)} placeholder="CSC/2021/001" className="h-12 rounded-xl text-base" /></Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Department">
-            {departments.length > 0 ? (
-              <Select value={form.department} onValueChange={(v) => update("department", v)}>
-                <SelectTrigger className="h-12 rounded-xl text-base"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-              </Select>
-            ) : (
-              <Input value={form.department} onChange={(e) => update("department", e.target.value)} placeholder="Computer Science" className="h-12 rounded-xl text-base" />
+      <form onSubmit={next} className="flex flex-grow flex-col">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div key={screen} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.22 }}
+            className="flex flex-col gap-4">
+            <div>
+              <h1 className="font-display text-[28px] font-bold leading-8 tracking-tight">{title}</h1>
+              <p className="mt-2 text-base leading-6 text-muted-foreground">{sub}</p>
+            </div>
+
+            {screen === 1 && (
+              <Field label="Full name">
+                <Input id="reg-name" autoFocus value={form.fullName} onChange={(e) => update("fullName", e.target.value)} placeholder="e.g. Adaeze Okafor" autoComplete="name" className="h-12 rounded-xl text-base" />
+              </Field>
             )}
-          </Field>
-          <Field label="Level">
-            <Select value={form.level} onValueChange={(v) => update("level", v)}>
-              <SelectTrigger className="h-12 rounded-xl text-base"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{["100", "200", "300", "400", "500", "600"].map((l) => <SelectItem key={l} value={l}>{l} Level</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>
+
+            {screen === 2 && (
+              <Field label="Matric number">
+                <Input id="reg-matric" autoFocus value={form.matricNumber} onChange={(e) => update("matricNumber", e.target.value.toUpperCase())} placeholder="CSC/2021/001" autoCapitalize="characters" autoComplete="off" className="h-12 rounded-xl font-mono text-base tracking-wide" />
+              </Field>
+            )}
+
+            {screen === 3 && (<>
+              <Field label="Department">
+                {departments.length > 0 ? (
+                  <Select value={form.department} onValueChange={(v) => update("department", v)}>
+                    <SelectTrigger id="reg-dept" className="h-12 rounded-xl text-base"><SelectValue placeholder="Choose your department" /></SelectTrigger>
+                    <SelectContent>{departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                  </Select>
+                ) : (
+                  <Input id="reg-dept" autoFocus value={form.department} onChange={(e) => update("department", e.target.value)} placeholder="e.g. Computer Science" className="h-12 rounded-xl text-base" />
+                )}
+              </Field>
+              <Field label="Level">
+                <div className="grid grid-cols-3 gap-2">
+                  {["100", "200", "300", "400", "500", "600"].map((l) => (
+                    <button key={l} type="button" onClick={() => update("level", l)} aria-pressed={form.level === l}
+                      className={`h-12 rounded-xl border text-base font-medium transition-colors ${form.level === l ? "border-2 border-primary bg-primary/10 text-primary" : "border-border bg-card hover:bg-secondary"}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </>)}
+
+            {screen === 4 && (<>
+              <Field label="Phone number">
+                <Input id="reg-phone" autoFocus type="tel" inputMode="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="08012345678" autoComplete="tel" className="h-12 rounded-xl text-base" />
+              </Field>
+              <Field label="Gender">
+                <div className="grid grid-cols-3 gap-2">
+                  {(["male", "female", "other"] as Gender[]).map((g) => (
+                    <button key={g} type="button" onClick={() => update("gender", g)} aria-pressed={form.gender === g}
+                      className={`h-12 rounded-xl border text-base font-medium capitalize transition-colors ${form.gender === g ? "border-2 border-primary bg-primary/10 text-primary" : "border-border bg-card hover:bg-secondary"}`}>
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <div className="rounded-2xl bg-secondary/70 p-4 text-[13px] leading-5">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Check your details</p>
+                <p><span className="text-muted-foreground">Name:</span> <strong>{form.fullName}</strong></p>
+                <p><span className="text-muted-foreground">Matric:</span> <strong className="font-mono">{form.matricNumber.trim().toUpperCase()}</strong></p>
+                <p><span className="text-muted-foreground">Class:</span> <strong>{form.department} · {form.level} Level</strong></p>
+              </div>
+              <p className="flex gap-2 text-[13px] leading-[18px] text-muted-foreground">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />Next you'll scan your face. We store it as numbers, not photos, and only use it to confirm it's you at check-in.
+              </p>
+            </>)}
+          </motion.div>
+        </AnimatePresence>
+
+        <div className="flex-grow" />
+        <div className="mt-8 flex flex-col gap-2">
+          <Button type="submit" disabled={checkingMatric} className={primary}>
+            {checkingMatric ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking…</> : screen === 4 ? <>Continue to face scan <ArrowRight className="ml-1 h-4 w-4" /></> : <>Continue <ArrowRight className="ml-1 h-4 w-4" /></>}
+          </Button>
+          {screen > 1 && (
+            <Button type="button" variant="ghost" onClick={back} className="h-12 w-full rounded-full text-base">Back</Button>
+          )}
         </div>
-        <Field label="Phone number"><Input type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="080…" className="h-12 rounded-xl text-base" /></Field>
-        <Field label="Gender">
-          <div className="grid grid-cols-3 gap-2">
-            {(["male", "female", "other"] as Gender[]).map((g) => (
-              <button
-                key={g} type="button" onClick={() => update("gender", g)}
-                className={`h-12 rounded-xl border text-base font-medium capitalize transition-colors ${
-                  form.gender === g ? "border-primary bg-primary/10 text-primary border-2" : "border-border bg-card"}`}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-        </Field>
-        <p className="flex gap-2 text-[13px] leading-[18px] text-muted-foreground">
-          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />Your face data is stored as numbers, not photos, and is used only to confirm it's you at check-in.
-        </p>
-        <Button type="submit" className="mt-2 h-[52px] w-full rounded-full bg-foreground text-base font-semibold text-background hover:bg-foreground/85">Continue to face scan <ArrowRight className="ml-1 h-4 w-4" /></Button>
-        <p className="text-center text-[13px] leading-[18px] text-muted-foreground">
-          Already registered? Open the attendance link your lecturer shared to check in.
-        </p>
+        {screen === 1 && (
+          <p className="mt-4 text-center text-[13px] leading-[18px] text-muted-foreground">
+            Already registered? Open the attendance link your lecturer shared to check in.
+          </p>
+        )}
       </form>
     </Shell>
   );
 }
 
-function Shell({ step, dark, children }: { step: 1 | 2 | 3; dark?: boolean; children: React.ReactNode }) {
-  const labels = ["Your details", "Face scan", "Done"];
+function Shell({ screen, dark, children }: { screen: number; dark?: boolean; children: React.ReactNode }) {
+  const labels = ["Your name", "Matric number", "Department & level", "Contact", "Face scan", "Done"];
+  const step = screen <= 4 ? 1 : screen === 5 ? 2 : 3;
   const steps = [
     { t: "Your details", d: "Name, matric number, department and level." },
     { t: "Face scan", d: "A short live scan. We keep numbers, not photos." },
@@ -228,11 +301,11 @@ function Shell({ step, dark, children }: { step: 1 | 2 | 3; dark?: boolean; chil
             <ArrowLeft className="h-4 w-4" /> Home
           </Link>
           <p className={`mt-6 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] ${dark ? "text-gray-400" : "text-muted-foreground"}`}>
-            <span className="h-2 w-2 rounded-full bg-primary" /> Step {step} of 3 · {labels[step - 1]}
+            <span className="h-2 w-2 rounded-full bg-primary" /> Step {screen} of 6 · {labels[screen - 1]}
           </p>
-          <div className="mt-3 grid grid-cols-3 gap-1.5">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className={`h-[5px] rounded-full ${i <= step ? "bg-primary" : dark ? "bg-[#283349]" : "bg-border"}`} />
+          <div className="mt-3 grid grid-cols-6 gap-1.5">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className={`h-[5px] rounded-full transition-colors duration-300 ${i <= screen ? "bg-primary" : dark ? "bg-[#283349]" : "bg-border"}`} />
             ))}
           </div>
           <div className="mt-6 flex flex-grow flex-col">{children}</div>

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Camera, CheckCircle2, Clock, Loader2, Lock, MapPin, Pencil } from "lucide-react";
 import { toast } from "sonner";
@@ -37,7 +38,7 @@ function MyAttendancePage() {
       setLookedUp(m.trim().toUpperCase());
     } catch (e) {
       setError(e instanceof Error && e.message === "not_configured"
-        ? "This page isn't set up yet. Ask your lecturer to run student-edits.sql."
+        ? "This page isn't switched on yet. Please let your lecturer know."
         : "Couldn't load your check-ins. Check your connection and try again.");
     } finally {
       setLoading(false);
@@ -183,7 +184,7 @@ function EditForm({ matric, name, department, onCancel, onSaved }: {
         matric_conflict: "That matric number is already marked present for the same class. Ask your lecturer if this is a mistake.",
         too_many_edits: "You've made several changes today. Try again tomorrow or ask your lecturer.",
         invalid: "Check that all three fields are filled in.",
-        not_configured: err instanceof Error ? err.message : "Editing isn't set up yet.",
+        not_configured: friendlyError(err, "Editing isn't set up yet."),
         unknown: "Couldn't save. Check your connection and try again.",
       }[code], { duration: 7000 });
     } finally {

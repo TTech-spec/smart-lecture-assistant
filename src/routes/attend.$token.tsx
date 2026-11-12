@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2, XCircle, Loader2, ArrowLeft, MapPin, ChevronDown, KeyRound, Copy,
@@ -13,6 +14,7 @@ import {
 import {
   fetchLinkByToken,
   fetchStudentProfile,
+  lookupStudentRemote,
   getRegisteredMatric,
   submitAttendance,
   CheckInError,
@@ -113,6 +115,8 @@ function AttendTokenPage() {
   // Registered profile for the typed matric (details come from it, not the form)
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  // Not registered, but signed a class before: details found from that record
+  const [pastMatch, setPastMatch] = useState<{ fullName: string; level: string } | null>(null);
   // Face comparison of the selfie against the registered face
   const [face, setFace] = useState<{ state: "checking" | "match" | "mismatch" | "noface"; distance?: number } | null>(null);
   const [roomCode, setRoomCode] = useState("");
@@ -149,19 +153,27 @@ function AttendTokenPage() {
   // Look up the registered profile as the matric is typed (debounced)
   useEffect(() => {
     const m = form.matricNumber.trim();
-    if (m.length < 5) { setProfile(null); return; }
+    if (m.length < 5) { setProfile(null); setPastMatch(null); setProfileLoading(false); return; }
     let cancelled = false;
     setProfileLoading(true);
     const t = setTimeout(async () => {
-      const p = await fetchStudentProfile(m);
+      const p = await fetchStudentProfile(m).catch(() => null);
       if (cancelled) return;
       setProfile(p);
-      setProfileLoading(false);
       if (p) {
+        setPastMatch(null);
+        setProfileLoading(false);
         preloadFaceModels(); // ready by the time the selfie is taken
         setForm((f) => ({ ...f, fullName: p.fullName, department: p.department, phone: p.phone, level: p.level, gender: p.gender }));
+        return;
       }
-    }, 500);
+      // Not registered: fill in what we know from a class they signed before
+      const past = await lookupStudentRemote(m).catch(() => null);
+      if (cancelled) return;
+      setProfileLoading(false);
+      setPastMatch(past ? { fullName: past.fullName, level: past.level } : null);
+      if (past) setForm((f) => ({ ...f, fullName: f.fullName || past.fullName, level: f.level || past.level }));
+    }, 450);
     return () => { cancelled = true; clearTimeout(t); };
   }, [form.matricNumber]);
 
@@ -282,8 +294,7 @@ function AttendTokenPage() {
         if (err.code === "duplicate_device") setDeviceBlocked(true);
         else setFailure(err);
       } else {
-        const msg = err instanceof Error ? err.message : "Could not save attendance.";
-        toast.error(`Error: ${msg}`);
+        toast.error(friendlyError(err, "We couldn't save your attendance. Please try again."));
       }
     } finally {
       setSubmitting(false);
@@ -504,16 +515,43 @@ function AttendTokenPage() {
                 placeholder="CSC/2021/001"
                 autoCapitalize="characters"
               />
-              {profileLoading && <p className="mt-1 text-xs text-muted-foreground">Looking up your profile…</p>}
-              {profile && (
-                <div className="mt-2 flex items-center gap-3 rounded-xl bg-primary/10 px-3 py-2 text-sm">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-                  <span>Welcome back, <strong>{profile.fullName}</strong> · {profile.level} Level · {profile.department}</span>
+              {profileLoading && (
+                <p className="mt-2 flex items-center gap-2 text-[13px] text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Finding your details…
+                </p>
+              )}
+              {profile && !profileLoading && (
+                <div className="mt-3 overflow-hidden rounded-2xl border border-primary/30 bg-primary/5">
+                  <div className="flex items-center gap-2 border-b border-primary/20 px-4 py-2.5 text-sm font-semibold text-primary">
+                    <CheckCircle2 className="h-4 w-4" /> Welcome back, {profile.fullName.split(" ")[0]}
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-4 py-3 text-sm">
+                    {[
+                      ["Full name", profile.fullName],
+                      ["Matric number", profile.matricNumber],
+                      ["Department", profile.department || "—"],
+                      ["Level", profile.level ? `${profile.level} Level` : "—"],
+                      ["Gender", profile.gender ? profile.gender[0].toUpperCase() + profile.gender.slice(1) : "—"],
+                    ].map(([k, v]) => (
+                      <div key={k} className={k === "Full name" ? "col-span-2" : ""}>
+                        <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{k}</dt>
+                        <dd className="mt-0.5 font-medium">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="border-t border-primary/20 px-4 py-2 text-[12px] text-muted-foreground">
+                    Not you? <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={() => update("matricNumber", "")}>Use a different matric number</button>
+                  </p>
                 </div>
               )}
-              {!profile && !profileLoading && form.matricNumber.trim().length >= 5 && (
-                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                  Not registered yet — fill in your details below. <Link to="/register" className="underline">Register once</Link> to skip this next time.
+              {!profile && !profileLoading && pastMatch && (
+                <p className="mt-2 rounded-xl bg-accent/60 px-3 py-2 text-[13px] leading-5">
+                  We found <strong>{pastMatch.fullName}</strong> from a class you signed before and filled it in below. Check it, then add anything missing.
+                </p>
+              )}
+              {!profile && !profileLoading && !pastMatch && form.matricNumber.trim().length >= 5 && (
+                <p className="mt-2 text-[13px] leading-5 text-amber-700 dark:text-amber-400">
+                  We don't have this matric number yet. Fill in your details below, and <Link to="/register" className="font-medium underline">register once</Link> so they fill in by themselves next time.
                 </p>
               )}
             </Field>
@@ -607,7 +645,7 @@ function AttendTokenPage() {
 
             </>)}
 
-            <Field label="Room code — look at the projector" className="sm:col-span-2">
+            <Field label="Class code — look at the projector" className="sm:col-span-2">
               <Input
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 4))}

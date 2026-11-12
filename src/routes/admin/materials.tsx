@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useState, useMemo } from "react";
 import {
   Upload, BookOpen, Globe, Lock, FileText, Video, File,
@@ -210,8 +211,7 @@ function MaterialsAdmin() {
       // The file may have already landed in storage before this step failed —
       // remove it so a failed save never leaves an orphaned file students can't see.
       if (uploadedPath) await deleteMaterialFile(uploadedPath, draft.accessType === "paid");
-      const msg = err instanceof Error ? err.message : "Failed to save material";
-      toast.error(`Upload failed and was not published — nothing was saved. Check your connection and try again. (${msg})`, { duration: 8000 });
+      toast.error(`Your file wasn't published, so nothing was saved. ${friendlyError(err, "Check your internet connection and try again.")}`, { duration: 8000 });
     } finally {
       setSaving(false);
     }

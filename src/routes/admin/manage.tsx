@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapPin, Lock, Unlock, Users, Loader2,
@@ -183,7 +184,7 @@ function SettingsCard() {
         toast.success(acc ? `Class location pinned (±${acc} m accuracy).` : "Class location pinned.");
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not read GPS.");
+      toast.error(friendlyError(e, "Could not read GPS."));
     } finally {
       setPinning(false);
     }
@@ -237,7 +238,7 @@ function SettingsCard() {
       await changeLecturerPassword(current, next);
       toast.success("Password updated.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not change password.");
+      toast.error(friendlyError(err, "Could not change password."));
     }
   }
 
@@ -659,7 +660,7 @@ function EarningsDisplay() {
       if (r.ok) { setSummary(r); setError(null); }
       else setError(r.message === "not_lecturer" ? "This account isn't on the lecturers list." : r.message);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
+      const msg = friendlyError(e, "");
       setError(/SUPABASE_SERVICE_ROLE_KEY/.test(msg)
         ? "Payments aren't set up yet: add SUPABASE_SERVICE_ROLE_KEY to your hosting's secrets."
         : "Couldn't load earnings. Check your connection and try again.");
