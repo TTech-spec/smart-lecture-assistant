@@ -18,6 +18,7 @@
 -- ============================================================
 
 create extension if not exists pgcrypto with schema extensions;
+set search_path = public, extensions;
 
 -- ── Lecturer-location columns (same as lecturer-location-migration.sql) ─────
 alter table attendance_links add column if not exists anchor_lat double precision;
@@ -52,7 +53,7 @@ create trigger trg_attendance_links_secret
 
 -- Backfill secrets for links that already exist
 insert into attendance_link_secrets (link_id, code_secret)
-select id, encode(extensions.gen_random_bytes(32), 'hex') from attendance_links
+select id, encode(gen_random_bytes(32), 'hex') from attendance_links
 on conflict (link_id) do nothing;
 
 -- ── Failed-attempt log (rate limiting + lecturer review) ────────────────────

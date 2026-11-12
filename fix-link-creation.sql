@@ -13,7 +13,9 @@ create extension if not exists pgcrypto with schema extensions;
 alter function attendance_links_make_secret() set search_path = public, extensions;
 alter function room_code_for(text, bigint)     set search_path = public, extensions;
 
+set search_path = public, extensions;
+
 -- Give every existing link a secret (links made while this was broken have none)
 insert into attendance_link_secrets (link_id, code_secret)
-select id, encode(extensions.gen_random_bytes(32), 'hex') from attendance_links
+select id, encode(gen_random_bytes(32), 'hex') from attendance_links
 on conflict (link_id) do nothing;
