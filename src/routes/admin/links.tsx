@@ -1060,7 +1060,7 @@ function LinksPage() {
       <AnimatePresence>
         {qrLink && (
           <QrModal
-            url={qrLink.linkType === "test" ? buildTestUrl(qrLink.token) : buildAttendUrl(qrLink.token)}
+            url={qrLink.url}
             title={qrLink.title}
             onClose={() => setQrLink(null)}
           />
