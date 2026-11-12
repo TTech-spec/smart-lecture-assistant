@@ -168,7 +168,7 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
   );
 
   return (
-    <div className="min-h-screen bg-[#fbfcfc] lg:flex" style={getThemeVars(themeId)}>
+    <div className="admin-soft min-h-screen bg-[#f6f8f8] pb-28 lg:flex lg:pb-0" style={getThemeVars(themeId)}>
       {/* Desktop sidebar */}
       <div className="sticky top-0 hidden h-screen shrink-0 lg:block">{sidebar()}</div>
 

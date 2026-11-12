@@ -186,3 +186,19 @@
 @utility shadow-glow {
   box-shadow: var(--shadow-glow);
 }
+
+/* Admin area: cleaner surfaces. Bordered cards and panels drop their outline
+   for a soft shadow; boxes nested inside a card become flat tinted areas. */
+.admin-soft :where(div, section, article, aside, li, form)[class~="border"][class*="rounded"] {
+  border-color: transparent;
+  box-shadow: 0 1px 2px oklch(0.15 0.04 240 / 0.04), 0 6px 20px -10px oklch(0.15 0.04 240 / 0.10);
+}
+.admin-soft :where(div, section, article, aside, li, form)[class~="border"][class*="rounded"]
+  :where(div, section, li)[class~="border"][class*="rounded"] {
+  box-shadow: none;
+  background-color: oklch(0.97 0.006 200 / 0.7);
+}
+.dark .admin-soft :where(div, section, article, aside, li, form)[class~="border"][class*="rounded"]
+  :where(div, section, li)[class~="border"][class*="rounded"] {
+  background-color: oklch(1 0 0 / 0.04);
+}

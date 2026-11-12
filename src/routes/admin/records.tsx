@@ -24,6 +24,7 @@ import {
 } from "@/lib/attendance-store";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
+import { checkStatus } from "@/components/admin/ui";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/admin/records")({
@@ -348,6 +349,11 @@ function RecordsPage() {
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [editingTestResult, setEditingTestResult] = useState<TestSubmission | null>(null);
 
+  // Phones: the assistant and the extra filters fold away until asked for
+  const wide = typeof window !== "undefined" && window.innerWidth >= 1024;
+  const [showAi, setShowAi] = useState(wide);
+  const [showFilters, setShowFilters] = useState(wide);
+
   // Live: new check-ins appear without refreshing, highlighted for a few seconds
   const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
   const [lastSync, setLastSync] = useState<Date>(() => new Date());
@@ -539,7 +545,7 @@ function RecordsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+    <main className="mx-auto max-w-7xl px-4 pb-32 pt-6 sm:px-6 sm:pt-8 lg:pb-16">
       {/* ── Header ── */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
         className="flex flex-wrap items-start justify-between gap-4">
@@ -578,18 +584,34 @@ function RecordsPage() {
 
       {/* ── Voice assistant ── */}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.4 }} className="mt-5">
-        <VoiceAssistant records={records} />
+        {showAi ? (
+          <div>
+            <VoiceAssistant records={records} />
+            <button type="button" onClick={() => setShowAi(false)} className="mt-2 text-xs font-medium text-muted-foreground hover:text-foreground lg:hidden">Hide assistant</button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setShowAi(true)}
+            className="flex w-full items-center justify-between rounded-2xl bg-card px-4 py-3 text-left text-sm font-medium shadow-soft transition-colors hover:bg-secondary/60">
+            <span>Ask the AI attendance assistant</span><span className="text-muted-foreground">Open</span>
+          </button>
+        )}
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }}
-        className="mt-5 rounded-2xl border bg-card shadow-soft">
+        className="mt-5 rounded-2xl bg-card shadow-soft">
 
         {/* ── Filters ── */}
-        <div className="grid gap-3 border-b p-4 sm:p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Search name / matric</Label>
-            <Input value={matric} onChange={(e) => setMatric(e.target.value)} placeholder="Jane or CSC/19/…" className="mt-1 text-sm sm:text-base" />
+        <div className="grid grid-cols-2 gap-3 border-b border-border/60 p-4 sm:p-5 lg:grid-cols-3 xl:grid-cols-7">
+          <div className="col-span-2 flex items-end gap-2 lg:col-span-1">
+            <div className="min-w-0 flex-1">
+              <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Search name / matric</Label>
+              <Input value={matric} onChange={(e) => setMatric(e.target.value)} placeholder="Jane or CSC/19/…" className="mt-1 text-sm sm:text-base" />
+            </div>
+            <Button type="button" variant="outline" onClick={() => setShowFilters((v) => !v)} className="shrink-0 lg:hidden" aria-expanded={showFilters}>
+              {showFilters ? "Hide filters" : "Filters"}
+            </Button>
           </div>
+          <div className={showFilters ? "contents" : "hidden lg:contents"}>
           <div>
             <Label className="text-xs font-medium text-muted-foreground sm:text-sm">Level</Label>
             <Select value={level} onValueChange={setLevel}>
@@ -660,15 +682,44 @@ function RecordsPage() {
               </SelectContent>
             </Select>
           </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 px-4 pt-3 text-xs text-muted-foreground sm:px-5">
           <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#12b886] opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#12b886]" /></span>
           Live · new check-ins appear here automatically · checked {lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
         </div>
 
-        {/* ── Table ── */}
-        <div className="overflow-x-auto">
+        {/* ── Phone: one card per check-in ── */}
+        <ul className="divide-y divide-border/60 md:hidden">
+          {filtered.length === 0 ? (
+            <li className="px-4 py-12 text-center text-sm text-muted-foreground">No records match these filters.</li>
+          ) : filtered.map((r) => {
+            const st = checkStatus(r.customFields);
+            return (
+              <li key={r.id} className={`flex items-center gap-3 px-4 py-3 transition-colors duration-700 ${freshIds.has(r.id) ? "bg-[#12b886]/15" : ""}`}>
+                {r.customFields?.photo
+                  ? <img src={r.customFields.photo} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" />
+                  : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-secondary text-xs font-semibold text-muted-foreground">{r.fullName.split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{r.fullName}</p>
+                  <p className="truncate font-mono text-xs text-muted-foreground">{r.matricNumber}{r.assignedClassCode ? ` · ${r.assignedClassCode}` : ""}</p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
+                    <span className={st.tone === "green" ? "font-medium text-primary" : st.tone === "amber" ? "font-medium text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>{st.label}</span>
+                    <span className="text-muted-foreground">{r.distanceMeters ? `${r.distanceMeters} m · ` : ""}{new Date(r.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center">
+                  <button onClick={() => openEdit(r)} aria-label={`Edit ${r.fullName}`} className="rounded-lg p-2.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-4 w-4" /></button>
+                  <button onClick={() => deleteRecord(r.id)} aria-label={`Delete ${r.fullName}`} className="rounded-lg p-2.5 text-muted-foreground hover:bg-red-50 hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* ── Table (tablet and up) ── */}
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm sm:text-base">
             <thead className="bg-secondary text-left text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
