@@ -20,8 +20,8 @@ function baseUrl() {
 
 export function secretKey() {
   const k =
+    // Never VITE_*: those names can end up in the browser bundle
     process.env.SQUAD_SECRET_KEY ||
-    process.env.VITE_SQUAD_SECRET_KEY ||
     "";
   if (!k || k.includes("REPLACE_WITH") || k.trim() === "") {
     console.warn("Squad secret key not configured. Payment features will be disabled.");
