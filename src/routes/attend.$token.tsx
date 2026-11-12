@@ -699,7 +699,7 @@ function AttendTokenPage() {
                 }
               </Button>
               <p className="mt-2 text-center text-xs text-muted-foreground">
-                Your room code, location and photo are checked on the server before attendance is saved.
+                Your class code, location and photo are checked on the server before attendance is saved.
               </p>
             </div>
           </form>
