@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence, MotionConfig, animate as animateValue, useInView, type Variants } from "framer-motion";
 import * as THREE from "three";
 import { toast } from "sonner";
-import { getActiveTest, loadSettings, lookupStudentRemote, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, fetchActiveTestFromSupabase, fetchSettingsFromSupabase, pollActiveTest, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
+import { getActiveTest, loadSettings, lookupStudentRemote, hasUsedClassCode, markClassCodeUsed, findStudentByMatric, updateStudentClassCode, generateStudentClassCode, getStudentCode, claimClassCode, fetchActiveTestFromSupabase, fetchSettingsFromSupabase, pollActiveTest, type TestConfig, type AdminSettings } from "@/lib/attendance-store";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
@@ -278,73 +278,23 @@ function Landing() {
 
     setCodeChecking(true);
     try {
-      // First check localStorage (same device that submitted attendance)
-      let student = findStudentByMatric(codeMatric);
-
-      // If not found locally, fall back to Supabase (different device or cleared storage)
-      let serverCode: string | null = null;
-      if (supabase) {
-        const remote = await lookupStudentRemote(codeMatric);
-        if (remote) {
-          serverCode = remote.classCode;
-          if (!student) {
-            student = {
-              id: "", fullName: remote.fullName, matricNumber: remote.matricNumber,
-              department: "", phone: "", courseCode: "", topic: "", level: remote.level,
-              gender: "other", submittedAt: "", dayKey: "", deviceId: "",
-              distanceMeters: 0, lat: 0, lng: 0, sessionId: "", customFields: {},
-            };
-          }
-        }
-      }
-
-      if (!student) {
-        toast.error("You must mark attendance first before you can get a class code. Please sign attendance and try again.");
-        return;
-      }
-
-      // Verify the name and level match the attendance record
-      if (student.fullName.toLowerCase() !== codeName.trim().toLowerCase()) {
-        toast.error("The name you entered doesn't match your attendance record. Please use the same name you used to sign attendance.");
-        return;
-      }
-
-      if (student.level !== codeLevel) {
-        toast.error("The level you entered doesn't match your attendance record. Please use the same level you used to sign attendance.");
-        return;
-      }
-
-      if (serverCode) {
-        // The server assigned this code at check-in — always show that one
-        markClassCodeUsed(codeMatric);
-        setStudentCode(serverCode);
+      const r = await claimClassCode(codeMatric, codeName, codeLevel);
+      if (r.ok) {
+        setStudentCode(r.code);
         setCodeRevealed(true);
-        toast.success("Here is your class code.");
+        toast.success(r.existing ? "Here's your class code again." : "Your personal class code is ready.");
         return;
       }
-
-      if (hasUsedClassCode(codeMatric)) {
-        // Already assigned — just show them their code again
-        const existing = getStudentCode(codeMatric);
-        if (existing) {
-          setStudentCode(existing);
-          setCodeRevealed(true);
-          toast.success("Here is your previously assigned class code.");
-        } else {
-          toast.error("You have already received your class code on another device. Contact your lecturer if you need it again.");
-        }
-        return;
-      }
-
-      // Generate a unique code for this student based on the global code prefix
-      const uniqueCode = await generateStudentClassCode(codeMatric, settings.classCode, settings.classCodeFormat);
-
-      // Update the student's attendance record with their unique code
-      updateStudentClassCode(codeMatric, uniqueCode);
-      markClassCodeUsed(codeMatric);
-      setStudentCode(uniqueCode);
-      setCodeRevealed(true);
-      toast.success("Your personal class code has been assigned!");
+      const messages: Record<string, string> = {
+        invalid: "Enter your matric number and full name.",
+        not_signed: "We couldn't find an attendance record for that matric number. Sign attendance first, then get your code.",
+        name_mismatch: "That name doesn't match the one on your attendance record. Use the same name you signed in with.",
+        level_mismatch: "That level doesn't match your attendance record. Choose the level you signed in with.",
+        disabled: "Your lecturer hasn't switched class codes on yet. Try again when they do.",
+        not_configured: "Class codes aren't switched on yet. Please let your lecturer know.",
+        offline: "We couldn't reach the server. Check your internet connection and try again.",
+      };
+      toast.error(messages[r.reason] ?? messages.offline);
     } finally {
       setCodeChecking(false);
     }

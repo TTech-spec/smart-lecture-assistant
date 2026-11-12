@@ -1574,3 +1574,29 @@ export async function unblockStudent(linkId: string, matric: string): Promise<vo
   const { error } = await supabase.from("session_blocks").delete().eq("link_id", linkId).eq("matric", matric.trim().toUpperCase());
   if (error) throw new Error(error.message);
 }
+
+// ── Personal class code, issued by the server (class-codes.sql) ─────────────
+export type ClaimCodeResult =
+  | { ok: true; code: string; existing: boolean }
+  | { ok: false; reason: "invalid" | "not_signed" | "name_mismatch" | "level_mismatch" | "disabled" | "not_configured" | "offline" };
+
+/** Get (or create) this student's class code. Same code every time, on any phone. */
+export async function claimClassCode(matric: string, name: string, level: string): Promise<ClaimCodeResult> {
+  if (!supabase) return { ok: false, reason: "offline" };
+  const { data, error } = await supabase.rpc("claim_class_code", { p_matric: matric.trim(), p_name: name.trim(), p_level: level.trim() });
+  if (error) {
+    if (/does not exist|schema cache|Could not find the function/i.test(error.message)) return { ok: false, reason: "not_configured" };
+    return { ok: false, reason: "offline" };
+  }
+  const r = data as { code?: string; existing?: boolean; error?: string };
+  if (r?.code) {
+    try {
+      const map = JSON.parse(localStorage.getItem(STUDENT_CODES_KEY) || "{}") as Record<string, string>;
+      map[matric.trim().toLowerCase()] = r.code;
+      localStorage.setItem(STUDENT_CODES_KEY, JSON.stringify(map));
+    } catch { /* storage unavailable */ }
+    markClassCodeUsed(matric);
+    return { ok: true, code: r.code, existing: Boolean(r.existing) };
+  }
+  return { ok: false, reason: (r?.error as "invalid") ?? "offline" };
+}

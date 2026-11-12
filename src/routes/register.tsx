@@ -63,7 +63,7 @@ function RegisterPage() {
       return setScreen(3);
     }
     if (screen === 3) {
-      if (!form.department.trim()) return toast.error("Choose your department.");
+      if (form.department.trim().length < 2) return toast.error("Type your department.");
       if (!form.level) return toast.error("Choose your level.");
       return setScreen(4);
     }
@@ -199,13 +199,24 @@ function RegisterPage() {
 
             {screen === 3 && (<>
               <Field label="Department">
-                {departments.length > 0 ? (
-                  <Select value={form.department} onValueChange={(v) => update("department", v)}>
-                    <SelectTrigger id="reg-dept" className="h-12 rounded-xl text-base"><SelectValue placeholder="Choose your department" /></SelectTrigger>
-                    <SelectContent>{departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-                  </Select>
-                ) : (
-                  <Input id="reg-dept" autoFocus value={form.department} onChange={(e) => update("department", e.target.value)} placeholder="e.g. Computer Science" className="h-12 rounded-xl text-base" />
+                <Input id="reg-dept" autoFocus list="reg-dept-list" value={form.department}
+                  onChange={(e) => update("department", e.target.value)}
+                  placeholder="Type your department, e.g. Computer Science" autoComplete="off" className="h-12 rounded-xl text-base" />
+                {departments.length > 0 && (
+                  <datalist id="reg-dept-list">{departments.map((d) => <option key={d} value={d} />)}</datalist>
+                )}
+                {departments.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {departments
+                      .filter((d) => !form.department.trim() || d.toLowerCase().includes(form.department.trim().toLowerCase()))
+                      .slice(0, 6)
+                      .map((d) => (
+                        <button key={d} type="button" onClick={() => update("department", d)}
+                          className={`rounded-full border px-3 py-1.5 text-[13px] transition-colors ${form.department === d ? "border-primary bg-primary/10 text-primary" : "hover:bg-secondary"}`}>
+                          {d}
+                        </button>
+                      ))}
+                  </div>
                 )}
               </Field>
               <Field label="Level">
