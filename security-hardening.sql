@@ -17,7 +17,7 @@
 -- Authentication → Users → "Add user" (email + password).
 -- ============================================================
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ── Lecturer-location columns (same as lecturer-location-migration.sql) ─────
 alter table attendance_links add column if not exists anchor_lat double precision;
@@ -37,7 +37,7 @@ alter table attendance_link_secrets enable row level security;
 -- SECURITY DEFINER functions below can.
 
 create or replace function attendance_links_make_secret()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public, extensions as $$
 begin
   insert into attendance_link_secrets (link_id, code_secret)
   values (new.id, encode(gen_random_bytes(32), 'hex'))
@@ -52,7 +52,7 @@ create trigger trg_attendance_links_secret
 
 -- Backfill secrets for links that already exist
 insert into attendance_link_secrets (link_id, code_secret)
-select id, encode(gen_random_bytes(32), 'hex') from attendance_links
+select id, encode(extensions.gen_random_bytes(32), 'hex') from attendance_links
 on conflict (link_id) do nothing;
 
 -- ── Failed-attempt log (rate limiting + lecturer review) ────────────────────
@@ -116,7 +116,7 @@ $$;
 -- Room code for a given secret and 30-second slot. 4 characters from an
 -- alphabet without O/I/0/1 so it is easy to read on a projector.
 create or replace function room_code_for(secret text, slot bigint)
-returns text language plpgsql immutable as $$
+returns text language plpgsql immutable set search_path = public, extensions as $$
 declare
   alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   mac bytea := hmac(slot::text, secret, 'sha256');

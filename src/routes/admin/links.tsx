@@ -264,7 +264,9 @@ function GenerateLinkForm({
     } catch (err) {
       const raw = err instanceof Error ? err.message.toLowerCase() : "";
       const msg = friendlyError(err, "We couldn't create the check-in link. Please try again.");
-      if (raw.includes("does not exist") || raw.includes("relation")) {
+      if (/gen_random_bytes|hmac|pgcrypto/.test(raw)) {
+        toast.error("The link couldn't get its class-code secret. Run fix-link-creation.sql in the Supabase SQL Editor once, then try again.", { duration: 10000 });
+      } else if (/relation "?attendance_links"? does not exist/.test(raw)) {
         toast.error(
           "Database table missing. Run attendance-links-migration.sql in your Supabase SQL Editor first, then try again.",
           { duration: 8000 }
