@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, MapPin, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,11 +82,11 @@ function RegisterPage() {
     const v = describeFailure(failure);
     return (
       <Shell step={1}>
-        <h1 className="text-2xl font-semibold">{v.title}</h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{v.body}</p>
+        <h1 className="font-display text-[28px] font-bold leading-8 tracking-tight">{v.title}</h1>
+        <p className="mt-3 text-base leading-6 text-muted-foreground">{v.body}</p>
         <div className="flex-grow" />
-        <Button className="h-12 w-full" onClick={() => setFailure(null)}>{v.action}</Button>
-        <Button asChild variant="ghost" className="mt-2 w-full"><Link to="/">Back to home</Link></Button>
+        <Button className="h-[52px] w-full rounded-full bg-foreground text-base font-semibold text-background hover:bg-foreground/85" onClick={() => setFailure(null)}>{v.action}</Button>
+        <Button asChild variant="ghost" className="mt-2 h-12 w-full rounded-full text-base"><Link to="/">Back to home</Link></Button>
       </Shell>
     );
   }
@@ -98,21 +98,21 @@ function RegisterPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <CheckCircle2 className="h-10 w-10" />
           </div>
-          <h1 className="mt-5 text-2xl font-semibold">You're registered{savedName ? `, ${savedName}` : ""}</h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          <h1 className="mt-5 font-display text-[28px] font-bold leading-8 tracking-tight">You're registered{savedName ? `, ${savedName}` : ""}</h1>
+          <p className="mt-2 text-base leading-6 text-muted-foreground">
             Your face is linked to <strong className="text-foreground">{form.matricNumber.trim().toUpperCase()}</strong> on this phone.
             From now on, check-in takes about 20 seconds.
           </p>
         </div>
-        <div className="mt-6 space-y-2 rounded-xl bg-secondary/60 p-4 text-sm text-muted-foreground">
-          <p className="font-semibold text-foreground">How check-in works from now</p>
+        <div className="mt-6 space-y-3 rounded-2xl bg-accent/60 p-5 text-[15px] leading-6 text-muted-foreground">
+          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-foreground">How check-in works from now</p>
           <p><span className="mr-2 font-bold text-primary">1</span>Open the link your lecturer shares or scan the QR on the projector.</p>
-          <p><span className="mr-2 font-bold text-primary">2</span>Type your matric number and the 4-letter room code on the projector.</p>
+          <p><span className="mr-2 font-bold text-primary">2</span>Type your matric number and the class code on the projector.</p>
           <p><span className="mr-2 font-bold text-primary">3</span>Take a quick selfie — it's matched to today's face scan.</p>
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground">Changed phones? Register again and your lecturer will approve the reset.</p>
         <div className="flex-grow" />
-        <Button asChild variant="outline" className="h-12 w-full"><Link to="/">Done</Link></Button>
+        <Button asChild className="h-[52px] w-full rounded-full bg-foreground text-base font-semibold text-background hover:bg-foreground/85"><Link to="/">Done</Link></Button>
       </Shell>
     );
   }
@@ -120,7 +120,7 @@ function RegisterPage() {
   if (step === 2) {
     return (
       <Shell step={2} dark>
-        <h1 className="text-2xl font-semibold text-white">Position your face in the oval</h1>
+        <h1 className="font-display text-[28px] font-bold leading-8 tracking-tight text-white">Position your face in the oval</h1>
         <div className="mt-4">
           {saving ? (
             <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-300">
@@ -131,50 +131,50 @@ function RegisterPage() {
           )}
         </div>
         <div className="flex-grow" />
-        <Button variant="ghost" className="w-full text-gray-300 hover:text-white" onClick={() => setStep(1)}>Back</Button>
+        <Button variant="ghost" className="h-12 w-full rounded-full text-base text-gray-300 hover:bg-white/10 hover:text-white" onClick={() => setStep(1)}>Back</Button>
       </Shell>
     );
   }
 
   return (
     <Shell step={1}>
-      <h1 className="text-2xl font-semibold">Create your student profile</h1>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-        Do this once. Afterwards you only need your matric number and the room code to check in.
+      <h1 className="font-display text-[28px] font-bold leading-8 tracking-tight">Create your student profile</h1>
+      <p className="mt-2 text-base leading-6 text-muted-foreground">
+        Do this once. After that, you check in with your matric number and the class code.
       </p>
       {already && (
-        <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+        <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-[13px] leading-[18px] text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
           This phone is already registered to <strong>{already}</strong>. Each phone can hold one student.
         </p>
       )}
-      <form onSubmit={next} className="mt-5 flex flex-col gap-3">
-        <Field label="Full name"><Input value={form.fullName} onChange={(e) => update("fullName", e.target.value)} placeholder="Jane Doe" className="h-11" /></Field>
-        <Field label="Matric number"><Input value={form.matricNumber} onChange={(e) => update("matricNumber", e.target.value)} placeholder="CSC/2021/001" className="h-11" /></Field>
-        <div className="grid grid-cols-2 gap-3">
+      <form onSubmit={next} className="mt-6 flex flex-col gap-4">
+        <Field label="Full name"><Input value={form.fullName} onChange={(e) => update("fullName", e.target.value)} placeholder="Jane Doe" className="h-12 rounded-xl text-base" /></Field>
+        <Field label="Matric number"><Input value={form.matricNumber} onChange={(e) => update("matricNumber", e.target.value)} placeholder="CSC/2021/001" className="h-12 rounded-xl text-base" /></Field>
+        <div className="grid grid-cols-2 gap-4">
           <Field label="Department">
             {departments.length > 0 ? (
               <Select value={form.department} onValueChange={(v) => update("department", v)}>
-                <SelectTrigger className="h-11"><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectTrigger className="h-12 rounded-xl text-base"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
               </Select>
             ) : (
-              <Input value={form.department} onChange={(e) => update("department", e.target.value)} placeholder="Computer Science" className="h-11" />
+              <Input value={form.department} onChange={(e) => update("department", e.target.value)} placeholder="Computer Science" className="h-12 rounded-xl text-base" />
             )}
           </Field>
           <Field label="Level">
             <Select value={form.level} onValueChange={(v) => update("level", v)}>
-              <SelectTrigger className="h-11"><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectTrigger className="h-12 rounded-xl text-base"><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>{["100", "200", "300", "400", "500", "600"].map((l) => <SelectItem key={l} value={l}>{l} Level</SelectItem>)}</SelectContent>
             </Select>
           </Field>
         </div>
-        <Field label="Phone number"><Input type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="080…" className="h-11" /></Field>
+        <Field label="Phone number"><Input type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="080…" className="h-12 rounded-xl text-base" /></Field>
         <Field label="Gender">
           <div className="grid grid-cols-3 gap-2">
             {(["male", "female", "other"] as Gender[]).map((g) => (
               <button
                 key={g} type="button" onClick={() => update("gender", g)}
-                className={`h-11 rounded-xl border text-sm font-medium capitalize transition-colors ${
+                className={`h-12 rounded-xl border text-base font-medium capitalize transition-colors ${
                   form.gender === g ? "border-primary bg-primary/10 text-primary border-2" : "border-border bg-card"}`}
               >
                 {g}
@@ -182,11 +182,11 @@ function RegisterPage() {
             ))}
           </div>
         </Field>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Your face data is stored as numbers, not photos, and is used only to confirm it's you at check-in.
+        <p className="flex gap-2 text-[13px] leading-[18px] text-muted-foreground">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />Your face data is stored as numbers, not photos, and is used only to confirm it's you at check-in.
         </p>
-        <Button type="submit" className="mt-2 h-12 w-full text-base">Continue to face scan</Button>
-        <p className="text-center text-sm text-muted-foreground">
+        <Button type="submit" className="mt-2 h-[52px] w-full rounded-full bg-foreground text-base font-semibold text-background hover:bg-foreground/85">Continue to face scan <ArrowRight className="ml-1 h-4 w-4" /></Button>
+        <p className="text-center text-[13px] leading-[18px] text-muted-foreground">
           Already registered? Open the attendance link your lecturer shared to check in.
         </p>
       </form>
@@ -196,20 +196,48 @@ function RegisterPage() {
 
 function Shell({ step, dark, children }: { step: 1 | 2 | 3; dark?: boolean; children: React.ReactNode }) {
   const labels = ["Your details", "Face scan", "Done"];
+  const steps = [
+    { t: "Your details", d: "Name, matric number, department and level." },
+    { t: "Face scan", d: "A short live scan. We keep numbers, not photos." },
+    { t: "Check in anywhere in class", d: "Matric number, class code and a quick selfie." },
+  ];
   return (
-    <div className={`min-h-screen ${dark ? "bg-[#121a2b] text-white" : "bg-gradient-hero"}`}>
-      <div className="mx-auto flex min-h-screen max-w-md flex-col px-6 py-8">
-        <Link to="/" className={`inline-flex items-center gap-2 text-sm ${dark ? "text-gray-400 hover:text-white" : "text-muted-foreground hover:text-foreground"}`}>
-          <ArrowLeft className="h-4 w-4" /> Home
-        </Link>
-        <div className="mt-5 flex gap-1.5">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className={`h-[3px] flex-1 rounded ${i <= step ? "bg-primary" : dark ? "bg-[#283349]" : "bg-border"}`} />
-          ))}
+    <div className={`min-h-[100svh] ${dark ? "bg-[#121a2b] text-white" : "bg-background"}`}>
+      <div className="mx-auto grid min-h-[100svh] max-w-6xl lg:grid-cols-[1fr_1.05fr] lg:gap-12 lg:p-6">
+        <aside className="sticky top-6 hidden h-[calc(100svh-48px)] flex-col justify-between rounded-[32px] bg-primary p-10 text-primary-foreground lg:flex">
+          <Link to="/" className="flex items-center gap-2.5 font-display text-xl font-bold">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-background text-primary"><MapPin className="h-4 w-4" /></span>
+            Attendly
+          </Link>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.1em] opacity-80">EKSU · One-time registration</p>
+            <h2 className="mt-3 font-display text-5xl font-bold leading-[1.02] tracking-tight">Register once.<br />Sign in every class.</h2>
+            <ol className="mt-8 space-y-4">
+              {steps.map((s, i) => (
+                <li key={s.t} className={`flex gap-4 ${i + 1 > step ? "opacity-60" : ""}`}>
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold ${i + 1 <= step ? "bg-foreground text-background" : "border border-current"}`}>{i + 1}</span>
+                  <div><p className="text-base font-semibold">{s.t}</p><p className="text-sm opacity-80">{s.d}</p></div>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <p className="text-xs opacity-70">Version {APP_VERSION}</p>
+        </aside>
+        <div className="mx-auto flex w-full max-w-md flex-col px-6 py-8 lg:py-10">
+          <Link to="/" className={`inline-flex items-center gap-2 text-sm ${dark ? "text-gray-400 hover:text-white" : "text-muted-foreground hover:text-foreground"}`}>
+            <ArrowLeft className="h-4 w-4" /> Home
+          </Link>
+          <p className={`mt-6 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] ${dark ? "text-gray-400" : "text-muted-foreground"}`}>
+            <span className="h-2 w-2 rounded-full bg-primary" /> Step {step} of 3 · {labels[step - 1]}
+          </p>
+          <div className="mt-3 grid grid-cols-3 gap-1.5">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className={`h-[5px] rounded-full ${i <= step ? "bg-primary" : dark ? "bg-[#283349]" : "bg-border"}`} />
+            ))}
+          </div>
+          <div className="mt-6 flex flex-grow flex-col">{children}</div>
+          <p className={`mt-6 text-center text-[11px] lg:hidden ${dark ? "text-gray-500" : "text-muted-foreground/70"}`}>Version {APP_VERSION}</p>
         </div>
-        <p className={`mt-2 text-xs font-semibold ${dark ? "text-gray-400" : "text-muted-foreground"}`}>Step {step} of 3 · {labels[step - 1]}</p>
-        <div className="mt-2 flex flex-grow flex-col">{children}</div>
-        <p className={`mt-6 text-center text-[11px] ${dark ? "text-gray-500" : "text-muted-foreground/70"}`}>Version {APP_VERSION}</p>
       </div>
     </div>
   );
@@ -218,8 +246,8 @@ function Shell({ step, dark, children }: { step: 1 | 2 | 3; dark?: boolean; chil
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <Label className="text-sm">{label}</Label>
-      <div className="mt-1">{children}</div>
+      <Label className="text-sm font-medium">{label}</Label>
+      <div className="mt-2">{children}</div>
     </div>
   );
 }
