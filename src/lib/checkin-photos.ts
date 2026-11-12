@@ -5,6 +5,7 @@
  * back to keeping the photo inside the record as before.
  */
 import { supabase } from "@/lib/supabase";
+import { signCloudinaryUpload } from "@/lib/cloudinary-server";
 
 const BUCKET = "checkin-photos";
 const MAX_BYTES = 400 * 1024;
@@ -27,10 +28,50 @@ function toJpeg(img: HTMLImageElement, maxW: number, quality: number): Promise<B
   return new Promise((resolve) => c.toBlob(resolve, "image/jpeg", quality));
 }
 
-export async function uploadCheckinPhoto(dataUrl: string): Promise<{ photo: string; photoThumb: string } | null> {
-  if (!supabase || !dataUrl.startsWith("data:image")) return null;
+/**
+ * Cloudinary first (signed by our server for an open check-in link); the
+ * thumbnail is a Cloudinary transformation of the same file. Falls back to
+ * Supabase Storage, then to null (photo stays inside the record).
+ */
+export async function uploadCheckinPhoto(dataUrl: string, linkToken?: string): Promise<{ photo: string; photoThumb: string } | null> {
+  if (!dataUrl.startsWith("data:image")) return null;
+  let img: HTMLImageElement;
+  try { img = await loadImage(dataUrl); } catch { return null; }
+  if (linkToken) {
+    const viaCloudinary = await uploadToCloudinary(img, linkToken).catch(() => null);
+    if (viaCloudinary) return viaCloudinary;
+  }
+  return uploadToSupabase(img);
+}
+
+async function uploadToCloudinary(img: HTMLImageElement, token: string): Promise<{ photo: string; photoThumb: string } | null> {
+  const sig = await signCloudinaryUpload({ data: { token } });
+  if (!sig.ok) return null;
+  let full = await toJpeg(img, 1280, 0.75);
+  if (full && full.size > 900 * 1024) full = await toJpeg(img, 960, 0.6);
+  if (!full) return null;
+  const form = new FormData();
+  form.append("file", full, "selfie.jpg");
+  form.append("api_key", sig.apiKey);
+  form.append("timestamp", String(sig.timestamp));
+  form.append("signature", sig.signature);
+  form.append("folder", sig.folder);
+  form.append("public_id", sig.publicId);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(sig.cloudName)}/image/upload`, { method: "POST", body: form });
+  if (!res.ok) return null;
+  const json = (await res.json()) as { secure_url?: string };
+  const url = json.secure_url;
+  if (!url || !url.includes("/image/upload/")) return null;
+  // Delivery transformations: auto format/quality, and a small face-centred thumbnail
+  return {
+    photo: url.replace("/image/upload/", "/image/upload/f_auto,q_auto/"),
+    photoThumb: url.replace("/image/upload/", "/image/upload/c_thumb,g_face,w_200,h_200,f_auto,q_auto/"),
+  };
+}
+
+async function uploadToSupabase(img: HTMLImageElement): Promise<{ photo: string; photoThumb: string } | null> {
+  if (!supabase) return null;
   try {
-    const img = await loadImage(dataUrl);
     let full = await toJpeg(img, 1280, 0.72);
     if (full && full.size > MAX_BYTES) full = await toJpeg(img, 960, 0.6);
     const thumb = await toJpeg(img, 200, 0.7);

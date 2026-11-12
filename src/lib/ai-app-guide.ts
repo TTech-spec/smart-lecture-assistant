@@ -57,6 +57,7 @@ FIXES FOR COMMON PROBLEMS
 - Can't see admin pages after security-fixes.sql: add your account: insert into lecturers (user_id) select id from auth.users where email = 'YOUR EMAIL'.
 - "Payment system not configured": on Vercel set SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL and SQUAD_SECRET_KEY (never with a VITE_ prefix), then redeploy. "API key is empty or invalid": use the Squad SECRET key (sandbox_sk_ or sk_), not the public key. OPay bank code is 100004.
 - Paid upload fails: run payments-secure.sql (creates the private materials-paid storage).
+- Check-in selfies: stored on Cloudinary when CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET are set on Vercel (redeploy after adding); otherwise Supabase Storage (photo-storage.sql), otherwise inside the record.
 - Ask AI says not set up: set the "openrouterai" key on Vercel and redeploy; OpenRouter needs credit.
 - Changes not showing: wait for the Vercel deploy to finish, then hard refresh (Ctrl+Shift+R) or close all tabs on a phone. The version is shown at the bottom of the Register page.
 - Face scan stuck: good light on the face, hold the phone at eye level, remove glasses or caps, try again.

@@ -200,7 +200,7 @@ function AttendTokenPage() {
 
   useEffect(() => {
     if (photo && uploadRef.current?.dataUrl !== photo.dataUrl) {
-      uploadRef.current = { dataUrl: photo.dataUrl, job: uploadCheckinPhoto(photo.dataUrl) };
+      uploadRef.current = { dataUrl: photo.dataUrl, job: uploadCheckinPhoto(photo.dataUrl, token) };
     }
   }, [photo]);
 
