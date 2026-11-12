@@ -599,7 +599,7 @@ export function saveLinks(links: AttendanceLink[]) {
   window.dispatchEvent(new Event("att:links"));
 }
 
-export async function addLink(l: AttendanceLink): Promise<void> {
+async function addLinkInner(l: AttendanceLink): Promise<void> {
   // Save locally first so the lecturer sees it immediately
   const all = loadLinks();
   all.push(l);
@@ -637,6 +637,19 @@ export async function addLink(l: AttendanceLink): Promise<void> {
       // Any other error — surface it
       throw new Error(error.message);
     }
+  }
+}
+
+/**
+ * Save a new link. If the database refuses it, take it back off this device
+ * too, so a QR code is never shown for a link students can't open.
+ */
+export async function addLink(l: AttendanceLink): Promise<void> {
+  try {
+    await addLinkInner(l);
+  } catch (e) {
+    saveLinks(loadLinks().filter((x) => x.id !== l.id));
+    throw e;
   }
 }
 
