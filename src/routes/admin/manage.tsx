@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Textarea } from "@/components/ui/textarea";
 import { LeafletMap } from "@/components/LeafletMap";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -860,6 +861,9 @@ type QuestionDraft = {
   text: string;
   options: [string, string, string, string];
   correctIndex: 0 | 1 | 2 | 3;
+  kind?: "objective" | "theory";
+  marks?: number;
+  modelAnswer?: string;
 };
 
 function emptyQuestion(): QuestionDraft {
@@ -944,7 +948,8 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       if (!q.text.trim()) return toast.error(`Question ${i + 1} has no text.`);
-      if (q.options.some((o) => !o.trim())) return toast.error(`Question ${i + 1} has empty options.`);
+      if (q.kind !== "theory" && q.options.some((o) => !o.trim())) return toast.error(`Question ${i + 1} has empty options.`);
+      if (q.kind === "theory" && !(q.marks && q.marks >= 1)) return toast.error(`Question ${i + 1} needs marks (1 or more).`);
     }
     // Insert AI trap at a random middle position so it doesn't stand out
     let allQuestions = [...questions];
@@ -964,6 +969,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
         text: q.text.trim(),
         options: q.options.map((o) => o.trim()) as [string, string, string, string],
         correctIndex: q.correctIndex,
+        ...(q.kind === "theory" ? { kind: "theory" as const, marks: q.marks, modelAnswer: q.modelAnswer?.trim() || "" } : {}),
       })),
       testType,
     };
@@ -1092,7 +1098,33 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
+                    <div className="inline-flex rounded-full border bg-card p-0.5 text-xs font-medium">
+                      {([["objective", "Multiple choice"], ["theory", "Theory (written)"]] as const).map(([k, label]) => (
+                        <button key={k} type="button"
+                          onClick={() => updateQuestion(qi, k === "theory" ? { kind: "theory", marks: q.marks ?? 5 } : { kind: "objective" })}
+                          className={`rounded-full px-3 py-1 transition-colors ${(q.kind ?? "objective") === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {q.kind === "theory" ? (
+                      <Textarea value={q.text} onChange={(e) => updateQuestion(qi, { text: e.target.value })} placeholder="Enter the theory question…" className="text-sm min-h-16" />
+                    ) : (
                     <Input value={q.text} onChange={(e) => updateQuestion(qi, { text: e.target.value })} placeholder="Enter question text…" className="text-sm h-9" />
+                    )}
+                    {q.kind === "theory" ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs">Marks</Label>
+                          <Input type="number" min={1} max={100} value={q.marks ?? 5}
+                            onChange={(e) => updateQuestion(qi, { marks: parseInt(e.target.value, 10) || 0 })} className="h-9 w-20 text-sm" />
+                        </div>
+                        <Textarea value={q.modelAnswer ?? ""} onChange={(e) => updateQuestion(qi, { modelAnswer: e.target.value })}
+                          placeholder="Marking guide: the points a good answer should cover (students never see this; the AI uses it to suggest a mark)"
+                          className="text-sm min-h-20" />
+                        <p className="text-xs text-muted-foreground">Students type their answer. Pasting is blocked and how they typed it is recorded. You mark it on the Records page, with an AI suggestion.</p>
+                      </div>
+                    ) : (<>
                     <div className="grid gap-2 grid-cols-2">
                       {q.options.map((opt, oi) => (
                         <div key={oi} className="flex items-center gap-2">
@@ -1104,6 +1136,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                       ))}
                     </div>
                     <p className="text-xs text-muted-foreground">Click the radio button next to the correct answer.</p>
+                    </>)}
                   </div>
                 ))}
                 <Button type="button" variant="outline" size="sm" onClick={addQuestion}>
@@ -1181,6 +1214,9 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                                 </span>
                               )}
                             </div>
+                            {q.kind === "theory" ? (
+                              <p className="mt-2 text-xs text-muted-foreground">Theory · {q.marks ?? 5} marks{q.modelAnswer ? ` · Guide: ${q.modelAnswer}` : ""}</p>
+                            ) : (
                             <ul className="mt-2 space-y-1">
                               {q.options.map((opt, oi) => (
                                 <li key={oi} className={`text-xs px-2 py-1 rounded ${oi === q.correctIndex ? "bg-green-100 text-green-700 font-semibold dark:bg-green-900/30 dark:text-green-400" : "text-muted-foreground"}`}>
@@ -1188,6 +1224,7 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                                 </li>
                               ))}
                             </ul>
+                            )}
                           </div>
                         );
                       })}

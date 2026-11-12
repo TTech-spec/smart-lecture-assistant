@@ -116,3 +116,66 @@ export const askAttendanceAi = createServerFn({ method: "POST" })
       return { ok: false, message: "Couldn't reach the AI service. Check your connection and try again." };
     }
   });
+
+/**
+ * Suggests a mark for one theory answer and how likely it is to be AI-written.
+ * The lecturer always has the final say; this is only a suggestion.
+ */
+export const markTheoryAnswer = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({
+    accessToken: z.string().min(10),
+    question: z.string().min(1).max(3000),
+    guide: z.string().max(4000).default(""),
+    marks: z.number().int().min(1).max(100),
+    answer: z.string().max(12000),
+    typingSeconds: z.number().min(0).max(100000),
+    keystrokes: z.number().int().min(0).max(1000000),
+    bigInserts: z.number().int().min(0).max(10000),
+    pasteAttempts: z.number().int().min(0).max(10000),
+  }).parse(d))
+  .handler(async ({ data }): Promise<{ ok: true; suggested: number; aiLikely: "low" | "medium" | "high"; note: string } | { ok: false; message: string }> => {
+    const key = openRouterKey();
+    if (!key) return { ok: false, message: "AI isn't set up yet: add your OpenRouter key on Vercel as \"openrouterai\" and redeploy." };
+    if (!(await isLecturer(data.accessToken))) return { ok: false, message: "Sign in as a lecturer to use AI marking." };
+    if (!data.answer.trim()) return { ok: true, suggested: 0, aiLikely: "low", note: "No answer was written." };
+
+    const chars = data.answer.length;
+    const system = [
+      "You help a Nigerian university lecturer mark one written (theory) test answer.",
+      "1) Suggest a mark out of the maximum, using the marking guide if given, otherwise your own knowledge of the subject. Be fair to answers in simple or non-native English: mark the ideas, not the grammar.",
+      "2) Judge how likely the answer was written by an AI tool (ChatGPT etc.) instead of the student. Signs: polished generic textbook wording, perfect structure with headings or numbered points, American spelling, phrases like 'In conclusion' or 'plays a crucial role', far more than the question needs, facts not taught at this level.",
+      "Also use the typing record: a person types roughly 1 to 4 characters per second on a phone. Much faster than that, few keystrokes for a long answer, or large blocks appearing at once suggest the text came from elsewhere. Blocked paste attempts mean they tried to paste.",
+      "Reply with ONLY JSON: {\"suggested\": number, \"aiLikely\": \"low\"|\"medium\"|\"high\", \"note\": \"one or two plain sentences for the lecturer explaining the mark and the AI judgement\"}",
+    ].join(" ");
+    const user = [
+      `QUESTION (${data.marks} marks):\n${data.question}`,
+      `MARKING GUIDE:\n${data.guide.trim() || "(none given)"}`,
+      `STUDENT ANSWER:\n${data.answer}`,
+      `TYPING RECORD: ${chars} characters, ${data.keystrokes} keys pressed, ${Math.round(data.typingSeconds)} seconds typing, ${data.bigInserts} large blocks appeared at once, ${data.pasteAttempts} blocked paste attempts.`,
+    ].join("\n\n");
+
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "Attendly" },
+        body: JSON.stringify({
+          model: model(), max_tokens: 400, temperature: 0,
+          messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as { choices?: { message?: { content?: string } }[] } | null;
+      if (!res.ok) {
+        if (res.status === 402) return { ok: false, message: "Your OpenRouter account is out of credit." };
+        return { ok: false, message: `The AI couldn't mark this (status ${res.status}).` };
+      }
+      const raw = json?.choices?.[0]?.message?.content ?? "";
+      const m = raw.match(/\{[\s\S]*\}/);
+      const parsed = m ? (JSON.parse(m[0]) as { suggested?: number; aiLikely?: string; note?: string }) : null;
+      if (!parsed) return { ok: false, message: "The AI's reply couldn't be read. Try again." };
+      const suggested = Math.max(0, Math.min(data.marks, Math.round(Number(parsed.suggested) || 0)));
+      const aiLikely = parsed.aiLikely === "high" || parsed.aiLikely === "medium" ? parsed.aiLikely : "low";
+      return { ok: true, suggested, aiLikely, note: String(parsed.note ?? "").slice(0, 600) };
+    } catch {
+      return { ok: false, message: "Couldn't reach the AI service. Try again." };
+    }
+  });

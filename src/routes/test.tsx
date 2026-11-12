@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTestIntegrity, NO_COPY_CLASS } from "@/hooks/use-test-integrity";
 import { IntegrityNote } from "@/components/IntegrityNote";
-import type { TestIntegrity } from "@/lib/attendance-store";
+import { isTheory, questionMarks, unmarkedTheory, type TestIntegrity, type TheoryAnswer } from "@/lib/attendance-store";
+import { TheoryAnswerBox, emptyTheoryAnswer } from "@/components/TheoryAnswerBox";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
@@ -169,7 +170,7 @@ function TestFlow({ test }: { test: TestConfig }) {
     setStage("cheated");
   }
 
-  async function handleSubmit(finalAnswers: (number | null)[], cheated = false, integrity?: TestIntegrity) {
+  async function handleSubmit(finalAnswers: (number | null)[], cheated = false, integrity?: TestIntegrity, theory?: Record<string, TheoryAnswer>) {
     const deviceId = getDeviceId();
 
     // Re-check the device lock at submit time in case another tab/session on
@@ -182,8 +183,10 @@ function TestFlow({ test }: { test: TestConfig }) {
       return;
     }
 
+    // Objective questions are marked now; theory answers wait for the lecturer
     const score = finalAnswers.reduce<number>((acc, ans, i) => {
-      return acc + (ans === test.questions[i].correctIndex ? 1 : 0);
+      const q = test.questions[i];
+      return acc + (!isTheory(q) && ans === q.correctIndex ? 1 : 0);
     }, 0);
 
     const submission: TestSubmission = {
@@ -194,10 +197,11 @@ function TestFlow({ test }: { test: TestConfig }) {
       level,
       answers: finalAnswers,
       score,
-      total: test.questions.length,
+      total: test.questions.reduce((t, q) => t + questionMarks(q), 0),
       submittedAt: new Date().toISOString(),
       cheated,
       ...(integrity ? { integrity } : {}),
+      ...(theory && Object.keys(theory).length ? { theory } : {}),
       testType: test.testType || "C1",
       deviceId,
     };
@@ -623,7 +627,7 @@ function TakingTest({
   answers: (number | null)[];
   setAnswers: React.Dispatch<React.SetStateAction<(number | null)[]>>;
   onCheated: () => void;
-  onSubmit: (answers: (number | null)[], cheated?: boolean, integrity?: TestIntegrity) => void;
+  onSubmit: (answers: (number | null)[], cheated?: boolean, integrity?: TestIntegrity, theory?: Record<string, TheoryAnswer>) => void;
 }) {
   const [current, setCurrent] = useState(0);
   const [order] = useState(() => shuffledIndices(test.questions.length));
@@ -633,6 +637,10 @@ function TakingTest({
   const [secondsLeft, setSecondsLeft] = useState(test.durationMinutes * 60);
   const cheatedRef = useRef(false);
   const answersRef = useRef(answers);
+  const [theory, setTheory] = useState<Record<string, TheoryAnswer>>({});
+  const theoryRef = useRef(theory);
+  theoryRef.current = theory;
+  const isDone = (qi: number) => isTheory(test.questions[qi]) ? (theory[qi]?.text.trim().length ?? 0) > 0 : answers[qi] !== null;
 
   useEffect(() => { answersRef.current = answers; }, [answers]);
 
@@ -642,7 +650,7 @@ function TakingTest({
         if (s <= 1) {
           clearInterval(interval);
           toast.warning("Time's up! Your answers have been submitted.");
-          onSubmit(answersRef.current, false, integrityRef.current);
+          onSubmit(answersRef.current, false, integrityRef.current, theoryRef.current);
           return 0;
         }
         return s - 1;
@@ -668,7 +676,7 @@ function TakingTest({
   }, [onCheated]);
 
   const q = test.questions[order[current]];
-  const totalAnswered = answers.filter((a) => a !== null).length;
+  const totalAnswered = test.questions.filter((_, i) => isDone(i)).length;
   const progress = (totalAnswered / test.questions.length) * 100;
   const timerDanger = secondsLeft <= 60;
 
@@ -677,11 +685,11 @@ function TakingTest({
   }
 
   function handleSubmitClick() {
-    const unanswered = answers.filter((a) => a === null).length;
+    const unanswered = test.questions.length - totalAnswered;
     if (unanswered > 0) {
       if (!window.confirm(`You have ${unanswered} unanswered question${unanswered !== 1 ? "s" : ""}. Submit anyway?`)) return;
     }
-    onSubmit(answers, false, integrityRef.current);
+    onSubmit(answers, false, integrityRef.current, theoryRef.current);
   }
 
   return (
@@ -704,6 +712,10 @@ function TakingTest({
       <AnimatePresence mode="wait">
         <motion.div key={current} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.25 }} className="rounded-2xl border bg-card p-6 shadow-soft space-y-5">
           <p className="text-lg font-semibold leading-relaxed">{q.text}</p>
+          {isTheory(q) ? (
+            <TheoryAnswerBox value={theory[order[current]] ?? emptyTheoryAnswer()} marks={questionMarks(q)}
+              onChange={(next) => setTheory((t) => ({ ...t, [order[current]]: next }))} />
+          ) : (
           <div className="space-y-3">
             {optionOrder[order[current]].map((optIdx, pos) => {
               const opt = q.options[optIdx];
@@ -717,6 +729,7 @@ function TakingTest({
               );
             })}
           </div>
+          )}
         </motion.div>
       </AnimatePresence>
 
@@ -727,7 +740,7 @@ function TakingTest({
         <div className="flex flex-1 flex-wrap justify-center gap-1.5">
           {test.questions.map((_, i) => (
             <button key={i} type="button" onClick={() => setCurrent(i)}
-              className={`h-7 w-7 rounded-full text-xs font-medium transition-all ${i === current ? "bg-primary text-primary-foreground shadow-glow scale-110" : answers[order[i]] !== null ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground hover:bg-secondary/80"}`}>
+              className={`h-7 w-7 rounded-full text-xs font-medium transition-all ${i === current ? "bg-primary text-primary-foreground shadow-glow scale-110" : isDone(order[i]) ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground hover:bg-secondary/80"}`}>
               {i + 1}
             </button>
           ))}
@@ -769,6 +782,7 @@ function CheatedScreen({ onForceSubmit }: { onForceSubmit: () => void }) {
 function ResultScreen({ test, submission }: { test: TestConfig; submission: TestSubmission }) {
   const percentage = Math.round((submission.score / submission.total) * 100);
   const passed = percentage >= 50;
+  const waiting = unmarkedTheory(submission);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -779,6 +793,11 @@ function ResultScreen({ test, submission }: { test: TestConfig; submission: Test
         </motion.div>
         <h1 className="text-3xl font-bold">{submission.score}/{submission.total}</h1>
         <p className="mt-1 text-xl font-semibold text-muted-foreground">{percentage}%</p>
+        {waiting > 0 && !submission.cheated && (
+          <p className="mt-2 text-sm font-medium text-amber-700 dark:text-amber-300">
+            So far: {waiting} written answer{waiting === 1 ? " is" : "s are"} waiting for your lecturer to mark.
+          </p>
+        )}
         {submission.cheated && <p className="mt-2 text-sm text-red-600 dark:text-red-400 font-medium">Test ended due to cheating violation</p>}
         <p className="mt-3 text-muted-foreground">
           {submission.studentName} &middot; {submission.matricNumber}
@@ -804,6 +823,12 @@ function ResultScreen({ test, submission }: { test: TestConfig; submission: Test
                   <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${notAnswered ? "bg-secondary text-muted-foreground" : isRight ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>{i + 1}</div>
                   <p className="font-medium leading-relaxed">{q.text}</p>
                 </div>
+                {isTheory(q) ? (
+                  <div className="ml-9 space-y-1">
+                    <p className="whitespace-pre-wrap rounded-lg border bg-secondary/40 px-3 py-2 text-sm">{submission.theory?.[i]?.text || <span className="italic text-muted-foreground">Not answered</span>}</p>
+                    <p className="text-xs text-muted-foreground">{submission.theory?.[i]?.marks != null ? `Marked: ${submission.theory[i].marks}/${questionMarks(q)}` : `Waiting for marking · ${questionMarks(q)} marks`}</p>
+                  </div>
+                ) : (
                 <div className="ml-9 space-y-2">
                   {q.options.map((opt, oi) => {
                     const isCorrectOpt = oi === correct;
@@ -822,6 +847,7 @@ function ResultScreen({ test, submission }: { test: TestConfig; submission: Test
                   })}
                   {notAnswered && <p className="text-xs text-muted-foreground italic">Not answered</p>}
                 </div>
+                )}
               </div>
             );
           })}

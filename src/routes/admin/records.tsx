@@ -20,8 +20,10 @@ import {
   saveRecords, addRecord, syncRecord, watchRecords, loadOlderRecords, loadAllRecordsEver, getRecordsLoadedSince, loadRecords, RECORD_WINDOW_DAYS, deleteRecordById, clearAllRecords,
   loadTestSubmissions, loadSettings, saveTestSubmissions, syncTestSubmission,
   type AttendanceRecord, type AttendanceLink, type Gender,
-  type TestSubmission, type TestType,
+  type TestSubmission, type TestType, type TestConfig, type TheoryAnswer,
+  isTheory, questionMarks, unmarkedTheory,
 } from "@/lib/attendance-store";
+import { markTheoryAnswer } from "@/lib/ai-server";
 import { useStore } from "@/hooks/use-store";
 import { VoiceAssistant } from "@/components/VoiceAssistant";
 import { AskAiChat, type AiRow } from "@/components/AskAiChat";
@@ -279,17 +281,33 @@ function RecordModal({ mode, initial, onSave, onClose }: {
 }
 
 // ── Test result edit modal ────────────────────────────────────────────────────
-function TestResultModal({ submission, onSave, onClose }: {
+function TestResultModal({ submission, test, onSave, onClose }: {
   submission: TestSubmission;
+  test?: TestConfig;
   onSave: (updated: TestSubmission) => void;
   onClose: () => void;
 }) {
   const [score, setScore] = useState(String(submission.score));
   const [total, setTotal] = useState(String(submission.total));
   const [cheated, setCheated] = useState(submission.cheated);
+  const [theory, setTheory] = useState<Record<string, TheoryAnswer>>(submission.theory ?? {});
+  const theoryQs = test ? test.questions.map((q, i) => ({ q, i })).filter(({ q }) => isTheory(q)) : [];
+  const hasTheory = theoryQs.length > 0;
+  // Objective part is recomputed from the answers; theory part is the lecturer's marks
+  const objectiveScore = test ? test.questions.reduce((a, q, i) => a + (!isTheory(q) && submission.answers[i] === q.correctIndex ? 1 : 0), 0) : 0;
+  const theoryScore = Object.values(theory).reduce((a, t) => a + (t.marks ?? 0), 0);
+
+  function setMark(i: number, patch: Partial<TheoryAnswer>) {
+    setTheory((t) => ({ ...t, [i]: { ...(t[i] ?? { text: "", typingMs: 0, keystrokes: 0, bigInserts: 0, pasteAttempts: 0 }), ...patch } }));
+  }
 
   function save(e: { preventDefault(): void }) {
     e.preventDefault();
+    if (hasTheory && test) {
+      const tot = test.questions.reduce((a, q) => a + questionMarks(q), 0);
+      onSave({ ...submission, theory, score: objectiveScore + theoryScore, total: tot, cheated });
+      return;
+    }
     const s = parseInt(score, 10); const t = parseInt(total, 10);
     if (isNaN(s) || s < 0) return toast.error("Score must be 0 or more.");
     if (isNaN(t) || t < 1) return toast.error("Total must be at least 1.");
@@ -303,7 +321,7 @@ function TestResultModal({ submission, onSave, onClose }: {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <motion.div initial={{ opacity: 0, scale: 0.93, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.93, y: 12 }} transition={{ duration: 0.22, ease: "circOut" }}
-        className="relative w-full max-w-sm rounded-2xl border bg-card p-6 shadow-soft">
+        className={`relative max-h-[90svh] w-full overflow-y-auto rounded-2xl border bg-card p-6 shadow-soft ${hasTheory ? "max-w-2xl" : "max-w-sm"}`}>
         <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
           <X className="h-4 w-4" />
         </button>
@@ -313,10 +331,23 @@ function TestResultModal({ submission, onSave, onClose }: {
           {submission.level && <> · {submission.level} Level</>}
         </p>
         <form onSubmit={save} className="space-y-4">
+          {hasTheory ? (
+            <>
+              <p className="rounded-xl bg-secondary p-3 text-sm">
+                Multiple choice: <strong>{objectiveScore}</strong> · Theory: <strong>{theoryScore}</strong> ·
+                Total <strong>{objectiveScore + theoryScore}/{test!.questions.reduce((a, q) => a + questionMarks(q), 0)}</strong>
+              </p>
+              {theoryQs.map(({ q, i }) => (
+                <TheoryMarker key={q.id} index={i} question={q.text} guide={q.modelAnswer ?? ""} max={questionMarks(q)}
+                  answer={theory[i]} onChange={(patch) => setMark(i, patch)} />
+              ))}
+            </>
+          ) : (
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-sm">Score</Label><Input className="mt-1" type="number" min={0} value={score} onChange={(e) => setScore(e.target.value)} autoFocus /></div>
             <div><Label className="text-sm">Total questions</Label><Input className="mt-1" type="number" min={1} value={total} onChange={(e) => setTotal(e.target.value)} /></div>
           </div>
+          )}
           <label className="flex cursor-pointer items-center gap-3 rounded-xl border bg-secondary p-3">
             <input type="checkbox" checked={cheated} onChange={(e) => setCheated(e.target.checked)} className="h-4 w-4 rounded accent-primary" />
             <div>
@@ -334,9 +365,70 @@ function TestResultModal({ submission, onSave, onClose }: {
   );
 }
 
+// ── One theory answer: typing record, AI suggestion, lecturer's mark ─────────
+function TheoryMarker({ index, question, guide, max, answer, onChange }: {
+  index: number; question: string; guide: string; max: number;
+  answer?: TheoryAnswer; onChange: (patch: Partial<TheoryAnswer>) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const a = answer ?? { text: "", typingMs: 0, keystrokes: 0, bigInserts: 0, pasteAttempts: 0 };
+  const secs = Math.round(a.typingMs / 1000);
+  const cps = secs > 0 ? a.text.length / secs : a.text.length > 0 ? Infinity : 0;
+  // Typed by hand on a phone: ~1–4 characters a second, roughly one key per character
+  const suspicious = a.text.length > 0 && (a.bigInserts > 0 || a.pasteAttempts > 0 || cps > 6 || a.keystrokes < a.text.length * 0.5);
+  const tone = { low: "bg-[#12b886]/12 text-[#0b7a59] dark:text-[#5fe3b0]", medium: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300", high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" };
+
+  async function askAi() {
+    setBusy(true);
+    try {
+      const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
+      const token = data.session?.access_token;
+      if (!token) { toast.error("Sign in again to use AI marking."); return; }
+      const r = await markTheoryAnswer({ data: { accessToken: token, question, guide, marks: max, answer: a.text,
+        typingSeconds: secs, keystrokes: a.keystrokes, bigInserts: a.bigInserts, pasteAttempts: a.pasteAttempts } });
+      if (!r.ok) { toast.error(r.message); return; }
+      onChange({ ai: { suggested: r.suggested, aiLikely: r.aiLikely, note: r.note }, ...(a.marks == null ? { marks: r.suggested } : {}) });
+    } catch {
+      toast.error("AI marking failed. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border p-3">
+      <p className="text-sm font-medium"><span className="text-muted-foreground">Q{index + 1}.</span> {question} <span className="text-xs text-muted-foreground">({max} marks)</span></p>
+      <p className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-secondary/60 p-2.5 text-sm">{a.text || <span className="italic text-muted-foreground">No answer</span>}</p>
+      {a.text && (
+        <p className={`text-xs ${suspicious ? "font-medium text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+          Typed in {secs}s · {a.keystrokes} keys for {a.text.length} characters
+          {a.bigInserts > 0 && ` · ${a.bigInserts} big block${a.bigInserts > 1 ? "s" : ""} appeared at once`}
+          {a.pasteAttempts > 0 && ` · tried to paste ${a.pasteAttempts}×`}
+          {suspicious && " · may not be typed by the student"}
+        </p>
+      )}
+      {a.ai && (
+        <div className="space-y-1 rounded-lg border bg-card p-2.5 text-xs">
+          <p><span className={`rounded-full px-2 py-0.5 font-semibold ${tone[a.ai.aiLikely]}`}>AI-written: {a.ai.aiLikely}</span> <span className="ml-1 text-muted-foreground">Suggested mark {a.ai.suggested}/{max}</span></p>
+          <p className="text-muted-foreground">{a.ai.note}</p>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Label className="text-xs">Mark</Label>
+        <Input type="number" min={0} max={max} value={a.marks ?? ""} placeholder="—" className="h-9 w-20"
+          onChange={(e) => { const v = e.target.value === "" ? null : Math.max(0, Math.min(max, parseInt(e.target.value, 10) || 0)); onChange({ marks: v }); }} />
+        <span className="text-xs text-muted-foreground">/ {max}</span>
+        <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={askAi} disabled={busy || !a.text}>
+          {busy ? "Checking…" : a.ai ? "Ask AI again" : "Suggest mark + AI check"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main records page ─────────────────────────────────────────────────────────
 function RecordsPage() {
-  const { records, testSubmissions: storeSubmissions, settings, links } = useStore();
+  const { records, testSubmissions: storeSubmissions, settings, links, tests } = useStore();
   // Also keep a local copy that we refresh directly from Supabase on mount
   const [localSubmissions, setLocalSubmissions] = useState<TestSubmission[]>(() => loadTestSubmissions());
   const [matric, setMatric] = useState("");
@@ -408,6 +500,8 @@ function RecordsPage() {
             cheated: Boolean(row.cheated),
             testType: (row.test_type as TestType) || "C1",
             deviceId: row.device_id || "",
+            integrity: row.integrity ?? undefined,
+            theory: row.theory ?? undefined,
           }));
           localStorage.setItem("att.test-submissions.v1", JSON.stringify(mapped));
           window.dispatchEvent(new Event("att:test-submissions"));
@@ -740,9 +834,9 @@ function RecordsPage() {
                       {TEST_TYPES.map((t) => {
                         const res = byType[t];
                         return (
-                          <span key={t} title={res ? `${t}: ${res.cheated ? "cheated" : `${res.score}/${res.total}`}` : `${t}: not taken`}
+                          <span key={t} title={res ? `${t}: ${res.cheated ? "cheated" : `${res.score}/${res.total}`}${unmarkedTheory(res) > 0 ? " (* theory answers to mark)" : ""}` : `${t}: not taken`}
                             className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold tabular-nums ${!res ? "bg-secondary/60 text-muted-foreground/60" : res.cheated ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : res.score / res.total >= 0.5 ? "bg-[#12b886]/12 text-[#0b7a59] dark:text-[#5fe3b0]" : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"}`}>
-                            {res ? (res.cheated ? "✕" : `${res.score}/${res.total}`) : t}
+                            {res ? (res.cheated ? "✕" : `${res.score}/${res.total}${unmarkedTheory(res) > 0 ? "*" : ""}`) : t}
                           </span>
                         );
                       })}
@@ -846,7 +940,7 @@ function RecordsPage() {
       </AnimatePresence>
       <AnimatePresence>
         {editingTestResult && (
-          <TestResultModal submission={editingTestResult}
+          <TestResultModal submission={editingTestResult} test={tests.find((t) => t.id === editingTestResult.testId)}
             onSave={handleSaveTestResult} onClose={() => setEditingTestResult(null)} />
         )}
       </AnimatePresence>

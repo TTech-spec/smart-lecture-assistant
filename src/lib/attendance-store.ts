@@ -123,6 +123,32 @@ export type TestQuestion = {
   text: string;
   options: [string, string, string, string];
   correctIndex: 0 | 1 | 2 | 3;
+  /** "theory" = the student types a written answer the lecturer marks */
+  kind?: "objective" | "theory";
+  /** Marks for a theory question (objective questions are worth 1) */
+  marks?: number;
+  /** What a good answer should contain (only the lecturer and the AI marker see it) */
+  modelAnswer?: string;
+};
+
+export const isTheory = (q: Pick<TestQuestion, "kind">) => q.kind === "theory";
+export const questionMarks = (q: Pick<TestQuestion, "kind" | "marks">) => (isTheory(q) ? Math.max(1, q.marks ?? 5) : 1);
+
+/** A typed theory answer plus how it was typed (to spot pasted / AI-written text) */
+export type TheoryAnswer = {
+  text: string;
+  /** Time spent typing in this box (ms) */
+  typingMs: number;
+  /** Keys pressed */
+  keystrokes: number;
+  /** Times a big block of text appeared at once (paste, autofill, dictation) */
+  bigInserts: number;
+  /** Paste attempts that were blocked */
+  pasteAttempts: number;
+  /** Lecturer's mark (null/undefined = not marked yet) */
+  marks?: number | null;
+  /** AI marking suggestion */
+  ai?: { suggested: number; aiLikely: "low" | "medium" | "high"; note: string };
 };
 
 export type TestType = "C1" | "C2" | "C3";
@@ -168,7 +194,14 @@ export type TestSubmission = {
   deviceId: string;
   /** What the test page noticed: left the screen, split screen / floating window, copy attempts */
   integrity?: TestIntegrity;
+  /** Theory answers, keyed by the question's position in the test */
+  theory?: Record<string, TheoryAnswer>;
 };
+
+/** Theory questions in this submission that the lecturer hasn't marked yet */
+export function unmarkedTheory(s: TestSubmission): number {
+  return Object.values(s.theory ?? {}).filter((a) => a.marks == null).length;
+}
 
 export type TestIntegrity = { focusLost: number; splitScreen: number; copyAttempts: number };
 
@@ -324,6 +357,7 @@ function submissionToDb(s: TestSubmission): Row {
     test_type: s.testType,
     device_id: s.deviceId,
     ...(s.integrity ? { integrity: s.integrity } : {}),
+    ...(s.theory ? { theory: s.theory } : {}),
   };
 }
 
@@ -342,6 +376,7 @@ function submissionFromDb(row: Row): TestSubmission {
     testType: (row.test_type as TestType) || "C1",
     deviceId: row.device_id || "",
     integrity: (row.integrity as TestIntegrity | null) ?? undefined,
+    theory: (row.theory as Record<string, TheoryAnswer> | null) ?? undefined,
   };
 }
 
@@ -955,6 +990,9 @@ export function addTestSubmission(s: TestSubmission) {
   if (!supabase) return;
   // If test-integrity.sql hasn't been run yet, save the result without the flags
   supabase.from("test_submissions").upsert(submissionToDb(s)).then(({ error }) => {
+    if (error && /theory/.test(error.message)) {
+      console.error("Theory answers need test-integrity.sql", error.message);
+    }
     if (error && /integrity/.test(error.message)) {
       const { integrity: _skip, ...rest } = submissionToDb(s);
       sync(supabase?.from("test_submissions").upsert(rest));

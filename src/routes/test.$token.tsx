@@ -1,8 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { isTheory, questionMarks, unmarkedTheory, type TheoryAnswer } from "@/lib/attendance-store";
+import { TheoryAnswerBox, emptyTheoryAnswer } from "@/components/TheoryAnswerBox";
 import type { TestIntegrity } from "@/lib/attendance-store";
 import { useTestIntegrity, NO_COPY_CLASS } from "@/hooks/use-test-integrity";
 import { IntegrityNote } from "@/components/IntegrityNote";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -190,7 +192,7 @@ function TestTokenPage() {
     setStage("cheated");
   }
 
-  async function handleSubmit(finalAnswers: (number | null)[], cheated = false, integrity?: TestIntegrity) {
+  async function handleSubmit(finalAnswers: (number | null)[], cheated = false, integrity?: TestIntegrity, theory?: Record<string, TheoryAnswer>) {
     const deviceId = getDeviceId();
 
     // Re-check the device lock at submit time in case another tab/session on
@@ -204,7 +206,8 @@ function TestTokenPage() {
     }
 
     const score = finalAnswers.reduce<number>((acc, ans, i) => {
-      return acc + (ans === test!.questions[i].correctIndex ? 1 : 0);
+      const q = test!.questions[i];
+      return acc + (!isTheory(q) && ans === q.correctIndex ? 1 : 0);
     }, 0);
 
     const submission: TestSubmission = {
@@ -215,12 +218,13 @@ function TestTokenPage() {
       level,
       answers: finalAnswers,
       score,
-      total: test!.questions.length,
+      total: test!.questions.reduce((t, q) => t + questionMarks(q), 0),
       submittedAt: new Date().toISOString(),
       cheated,
       testType: test!.testType || "C1",
       deviceId,
       ...(integrity ? { integrity } : {}),
+      ...(theory && Object.keys(theory).length ? { theory } : {}),
     };
 
     addTestSubmission(submission);
@@ -477,10 +481,13 @@ function TakingTest({
   answers: (number | null)[];
   setAnswers: (answers: (number | null)[]) => void;
   onCheated: () => void;
-  onSubmit: (answers: (number | null)[], cheated?: boolean, integrity?: TestIntegrity) => void;
+  onSubmit: (answers: (number | null)[], cheated?: boolean, integrity?: TestIntegrity, theory?: Record<string, TheoryAnswer>) => void;
 }) {
   const { counts: integrity, ref: integrityRef } = useTestIntegrity();
-  const submit = (a: (number | null)[]) => onSubmit(a, false, integrityRef.current);
+  const [theory, setTheory] = useState<Record<string, TheoryAnswer>>({});
+  const theoryRef = useRef(theory);
+  theoryRef.current = theory;
+  const submit = (a: (number | null)[]) => onSubmit(a, false, integrityRef.current, theoryRef.current);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [order] = useState(() => shuffledIndices(test.questions.length));
   // Each student also sees the options of every question in their own order
@@ -569,6 +576,10 @@ function TakingTest({
       {/* Question */}
       <div className="mb-6">
         <h3 className="mb-4 text-lg font-semibold">{question.text}</h3>
+        {isTheory(question) ? (
+          <TheoryAnswerBox value={theory[order[currentQuestion]] ?? emptyTheoryAnswer()} marks={questionMarks(question)}
+            onChange={(next) => setTheory((t) => ({ ...t, [order[currentQuestion]]: next }))} />
+        ) : (
         <div className="space-y-3">
           {optionOrder[order[currentQuestion]].map((optIdx, index) => { const option = question.options[optIdx]; return (
             <button
@@ -589,6 +600,7 @@ function TakingTest({
             </button>
           ); })}
         </div>
+        )}
       </div>
 
       {/* Navigation */}
@@ -603,7 +615,7 @@ function TakingTest({
         </Button>
         <Button
           onClick={handleNext}
-          disabled={answers[order[currentQuestion]] === null}
+          disabled={isTheory(question) ? !(theory[order[currentQuestion]]?.text.trim()) : answers[order[currentQuestion]] === null}
         >
           {currentQuestion === test.questions.length - 1 ? "Submit" : "Next"}
           <ChevronRight className="ml-2 h-4 w-4" />
@@ -641,9 +653,15 @@ function CheatedScreen({ onRetry }: { onRetry: () => void }) {
 function ResultScreen({ result, test }: { result: TestSubmission; test: TestConfig }) {
   const percentage = Math.round((result.score / result.total) * 100);
   const passed = percentage >= 50;
+  const waiting = unmarkedTheory(result);
 
   return (
     <div className="rounded-2xl border bg-card p-6 shadow-soft text-center">
+      {waiting > 0 && (
+        <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+          Score so far. {waiting} written answer{waiting === 1 ? " is" : "s are"} waiting for your lecturer to mark.
+        </p>
+      )}
       <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full ${
         passed ? "bg-[color:var(--color-success)]/20" : "bg-destructive/20"
       }`}>

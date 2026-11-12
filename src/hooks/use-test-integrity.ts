@@ -37,7 +37,9 @@ export function useTestIntegrity() {
       if (!shrunk && a < fullArea * 0.7) { shrunk = true; bump("splitScreen", "Split screen or a pop-up window was detected. This is recorded."); }
       else if (shrunk && a > fullArea * 0.9) shrunk = false;
     };
-    const block = (e: Event) => e.preventDefault();
+    // Students may still select and edit their own typed answers
+    const inAnswerBox = (e: Event) => (e.target as HTMLElement | null)?.closest?.("textarea") != null;
+    const block = (e: Event) => { if (!inAnswerBox(e)) e.preventDefault(); };
     const onCopy = (e: Event) => { e.preventDefault(); bump("copyAttempts", "Copying questions isn't allowed during the test."); };
 
     window.addEventListener("blur", onBlur);
