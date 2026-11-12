@@ -6,6 +6,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { finalizePayment, payOutstanding, PaymentError, startPayment } from "./payments-core";
 import { adminClient, platform, requireLecturer, squadClient, supabaseDb } from "./payments-adapters.server";
+import { squadFetch } from "./squad-server";
 
 const PAID_PREFIX = "storage:materials-paid/";
 
@@ -80,4 +81,29 @@ export const lecturerPayOutstanding = createServerFn({ method: "POST" })
     try { await requireLecturer(sb, data.accessToken); } catch (e) { return { ok: false as const, message: e instanceof Error ? e.message : "not_lecturer" }; }
     const r = await payOutstanding(supabaseDb(sb), squadClient);
     return { ok: true as const, ...r };
+  });
+
+/** Lecturer: the real account name for a bank code + account number (Squad account lookup). */
+export const lookupBankAccount = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({
+    accessToken: z.string().min(10),
+    bankCode: z.string().regex(/^\d{3,6}$/),
+    accountNumber: z.string().regex(/^\d{10}$/),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    try {
+      await requireLecturer(adminClient(), data.accessToken);
+    } catch (e) {
+      return { ok: false as const, message: e instanceof Error && /SERVICE_ROLE/.test(e.message) ? e.message : "Sign in as a lecturer to check accounts." };
+    }
+    try {
+      const json = await squadFetch("/payout/account/lookup", { bank_code: data.bankCode, account_number: data.accountNumber }) as { data?: { account_name?: string } };
+      const name = json.data?.account_name?.trim();
+      if (!name) return { ok: false as const, message: "No account found for that number at this bank." };
+      return { ok: true as const, accountName: name };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (/secret key not configured/i.test(msg)) return { ok: false as const, message: "Account check isn't set up: SQUAD_SECRET_KEY is missing on the server." };
+      return { ok: false as const, message: "No account found for that number at this bank. Check both and try again." };
+    }
   });

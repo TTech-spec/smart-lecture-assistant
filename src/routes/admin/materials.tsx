@@ -19,6 +19,9 @@ import {
   uploadMaterialFile, deleteMaterialFile, type Material, type MaterialFileType, type MaterialAccessType,
 } from "@/lib/materials-store";
 import { calcFees, NG_BANKS, OTHER_BANK } from "@/lib/squad";
+import { lookupBankAccount } from "@/lib/payments-server";
+import { supabase } from "@/lib/supabase";
+import { CheckCircle2 as AcctOk, Loader2 as AcctSpin, XCircle as AcctBad } from "lucide-react";
 
 type MaterialsSearch = {
   accessType?: MaterialAccessType;
@@ -100,6 +103,35 @@ function MaterialsAdmin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Bank account check: shows the real account name before saving
+  type Lookup = { state: "idle" | "checking" | "ok" | "fail" | "unavailable"; message?: string };
+  const [lookup, setLookup] = useState<Lookup>({ state: "idle" });
+  useEffect(() => {
+    const code = draft.lecturerBankCode.trim();
+    const acct = draft.lecturerAccountNumber;
+    if (!/^\d{3,6}$/.test(code) || !/^\d{10}$/.test(acct)) { setLookup({ state: "idle" }); return; }
+    let cancelled = false;
+    setLookup({ state: "checking" });
+    const t = setTimeout(async () => {
+      try {
+        const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
+        const token = data.session?.access_token;
+        if (!token) { if (!cancelled) setLookup({ state: "unavailable", message: "Sign in again to check the account name." }); return; }
+        const r = await lookupBankAccount({ data: { accessToken: token, bankCode: code, accountNumber: acct } });
+        if (cancelled) return;
+        if (r.ok) {
+          setLookup({ state: "ok" });
+          setDraft((d) => ({ ...d, lecturerAccountName: r.accountName }));
+        } else {
+          setLookup({ state: /isn't set up|Sign in|SERVICE_ROLE/.test(r.message) ? "unavailable" : "fail", message: r.message });
+        }
+      } catch {
+        if (!cancelled) setLookup({ state: "unavailable", message: "Couldn't reach the bank check. Type the name exactly as on the account." });
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [draft.lecturerBankCode, draft.lecturerAccountNumber]);
+
   function upd<K extends keyof Draft>(k: K, v: Draft[K]) {
     setDraft((d) => ({ ...d, [k]: v }));
   }
@@ -128,6 +160,12 @@ function MaterialsAdmin() {
       }
       if (!/^\d{3,6}$/.test(draft.lecturerBankCode.trim())) {
         return toast.error(draft.lecturerBankCode.trim() ? "Bank code should be 3 to 6 digits." : "Please select your bank.");
+      }
+      if (lookup.state === "checking") {
+        return toast.error("Still checking the bank account. Try again in a second.");
+      }
+      if (lookup.state === "fail") {
+        return toast.error("That account number wasn't found at the selected bank. Check both before saving.");
       }
       if (!draft.lecturerAccountName.trim()) {
         return toast.error("Please enter your account name.");
@@ -564,9 +602,17 @@ function MaterialsAdmin() {
                             id="mat-acct-name"
                             value={draft.lecturerAccountName}
                             onChange={(e) => upd("lecturerAccountName", e.target.value)}
-                            placeholder="e.g. Dr. Adeola Okonkwo"
-                            className="mt-1.5 bg-white dark:bg-background"
+                            readOnly={lookup.state === "ok" || lookup.state === "checking"}
+                            placeholder={lookup.state === "unavailable" ? "Type the name exactly as on the account" : "Filled in from your bank"}
+                            className={`mt-1.5 bg-white dark:bg-background ${lookup.state === "ok" ? "font-semibold" : ""}`}
                           />
+                          <p className={`mt-1.5 flex items-center gap-1.5 text-xs ${lookup.state === "ok" ? "text-green-700 dark:text-green-400" : lookup.state === "fail" ? "text-red-600" : "text-amber-700 dark:text-amber-400"}`} aria-live="polite">
+                            {lookup.state === "idle" && "Choose your bank and enter the 10-digit account number. We'll fetch the name from the bank."}
+                            {lookup.state === "checking" && <><AcctSpin className="h-3.5 w-3.5 animate-spin" /> Checking with the bank…</>}
+                            {lookup.state === "ok" && <><AcctOk className="h-3.5 w-3.5" /> Verified with the bank. Make sure this is your name.</>}
+                            {lookup.state === "fail" && <><AcctBad className="h-3.5 w-3.5" /> {lookup.message}</>}
+                            {lookup.state === "unavailable" && (lookup.message ?? "Couldn't check the account automatically.")}
+                          </p>
                         </div>
                       </div>
                     </div>
