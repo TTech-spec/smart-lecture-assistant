@@ -394,10 +394,37 @@ export function saveSettings(s: AdminSettings) {
 }
 
 // ── Records ───────────────────────────────────────────────────────────────────
+// Records live in memory; browser storage (about 5 MB) gets a copy, without
+// photos if they don't fit, so a class of 2,000 selfies never breaks saving.
+let recCache: AttendanceRecord[] | null = null;
+
+function writeRecords(recs: AttendanceRecord[]) {
+  recCache = recs;
+  try {
+    localStorage.setItem(REC_KEY, JSON.stringify(recs));
+  } catch {
+    try {
+      const slim = recs.map((r) => {
+        if (!r.customFields?.photo) return r;
+        const { photo: _photo, ...rest } = r.customFields;
+        return { ...r, customFields: rest };
+      });
+      localStorage.setItem(REC_KEY, JSON.stringify(slim));
+    } catch { /* storage full or blocked: memory copy still works */ }
+  }
+}
+
+// Another tab changed the records: drop the in-memory copy so we re-read
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => { if (e.key === REC_KEY) recCache = null; });
+}
+
 export function loadRecords(): AttendanceRecord[] {
   if (typeof window === "undefined") return [];
+  if (recCache) return recCache;
   try {
-    return JSON.parse(localStorage.getItem(REC_KEY) || "[]") as AttendanceRecord[];
+    recCache = JSON.parse(localStorage.getItem(REC_KEY) || "[]") as AttendanceRecord[];
+    return recCache;
   } catch {
     return [];
   }
@@ -416,7 +443,7 @@ export function updateStudentClassCode(matricNumber: string, classCode: string):
     }
     return r;
   });
-  localStorage.setItem(REC_KEY, JSON.stringify(updated));
+  writeRecords(updated);
   window.dispatchEvent(new Event("att:records"));
   
   // Sync to Supabase
@@ -429,7 +456,7 @@ export function updateStudentClassCode(matricNumber: string, classCode: string):
 }
 
 export function saveRecords(records: AttendanceRecord[]) {
-  localStorage.setItem(REC_KEY, JSON.stringify(records));
+  writeRecords(records);
   window.dispatchEvent(new Event("att:records"));
 }
 
@@ -1159,12 +1186,26 @@ type AllData = {
   links: AttendanceLink[];
 };
 
+/** Every attendance record, 1,000 at a time (Supabase returns at most 1,000 rows per request). */
+async function fetchAllRecordRows(): Promise<{ data: Row[] | null }> {
+  if (!supabase) return { data: null };
+  const all: Row[] = [];
+  for (let from = 0; from < 100_000; from += 1000) {
+    const { data, error } = await supabase.from("attendance_records").select("*")
+      .order("submitted_at", { ascending: false }).range(from, from + 999);
+    if (error) return { data: all.length ? all : null };
+    all.push(...(data as Row[]));
+    if (!data || data.length < 1000) break;
+  }
+  return { data: all };
+}
+
 export async function fetchAllFromSupabaseOnce(): Promise<AllData | null> {
   if (!supabase) return null;
   try {
     const [settingsRes, recordsRes, sessionsRes, testsRes, subsRes, linksRes] = await Promise.all([
       supabase.from("admin_settings").select("data").eq("id", "default").maybeSingle(),
-      supabase.from("attendance_records").select("*"),
+      fetchAllRecordRows(),
       supabase.from("attendance_sessions").select("*"),
       supabase.from("test_configs").select("*"),
       supabase.from("test_submissions").select("*"),
@@ -1193,7 +1234,7 @@ export async function syncFromSupabase(): Promise<void> {
     window.dispatchEvent(new Event("att:settings"));
   }
   if (data.records.length > 0) {
-    localStorage.setItem(REC_KEY, JSON.stringify(data.records));
+    writeRecords(data.records);
     window.dispatchEvent(new Event("att:records"));
   }
   const sessionsClearedFlag = localStorage.getItem("att.sessions.cleared.v1");
@@ -1613,10 +1654,10 @@ export async function fetchMyClassCode(matric: string): Promise<string | null> {
 /** Pull only attendance records and update the store. Returns the new records. */
 export async function refreshRecordsFromSupabase(): Promise<AttendanceRecord[] | null> {
   if (!supabase || typeof window === "undefined") return null;
-  const { data, error } = await supabase.from("attendance_records").select("*").order("submitted_at", { ascending: false });
-  if (error || !data) return null;
+  const { data } = await fetchAllRecordRows();
+  if (!data) return null;
   const recs = data.map(recordFromDb);
-  localStorage.setItem(REC_KEY, JSON.stringify(recs));
+  writeRecords(recs);
   window.dispatchEvent(new Event("att:records"));
   return recs;
 }
@@ -1627,25 +1668,47 @@ export async function refreshRecordsFromSupabase(): Promise<AttendanceRecord[] |
  * onNew with records that weren't there before. Returns a stop function.
  */
 export function watchRecords(onNew: (fresh: AttendanceRecord[]) => void, ms = 10_000): () => void {
-  let known = new Set(loadRecords().map((r) => r.id));
   let stopped = false;
+  let busy = false;
+  let pending: ReturnType<typeof setTimeout> | null = null;
+  // Only ask for rows newer than the newest one we have (with a 2-minute
+  // overlap for clock differences), so 2,000 photos aren't re-downloaded
+  // every 10 seconds.
+  const newest = () => loadRecords().reduce((m, r) => (r.submittedAt > m ? r.submittedAt : m), "");
   const tick = async () => {
-    const recs = await refreshRecordsFromSupabase();
-    if (!recs || stopped) return;
-    const fresh = recs.filter((r) => !known.has(r.id));
-    known = new Set(recs.map((r) => r.id));
-    if (fresh.length) onNew(fresh);
+    if (!supabase || busy || stopped) return;
+    busy = true;
+    try {
+      const since = newest();
+      let q = supabase.from("attendance_records").select("*").order("submitted_at", { ascending: false }).limit(500);
+      if (since) q = q.gt("submitted_at", new Date(new Date(since).getTime() - 120_000).toISOString());
+      const { data, error } = await q;
+      if (error || !data || stopped) return;
+      const current = loadRecords();
+      const known = new Set(current.map((r) => r.id));
+      const fresh = data.map(recordFromDb).filter((r) => !known.has(r.id));
+      if (!fresh.length) return;
+      writeRecords([...fresh, ...current]);
+      window.dispatchEvent(new Event("att:records"));
+      onNew(fresh);
+    } finally {
+      busy = false;
+    }
   };
   const timer = setInterval(tick, ms);
   const onFocus = () => { if (document.visibilityState === "visible") tick(); };
   document.addEventListener("visibilitychange", onFocus);
   const channel = supabase
     ?.channel("records-live")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "attendance_records" }, () => tick())
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "attendance_records" }, () => {
+      // A busy class sends many inserts at once: check at most every 2 s
+      if (!pending) pending = setTimeout(() => { pending = null; tick(); }, 2000);
+    })
     .subscribe();
   return () => {
     stopped = true;
     clearInterval(timer);
+    if (pending) clearTimeout(pending);
     document.removeEventListener("visibilitychange", onFocus);
     if (channel) supabase?.removeChannel(channel);
   };
