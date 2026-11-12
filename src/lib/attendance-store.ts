@@ -1608,3 +1608,45 @@ export async function fetchMyClassCode(matric: string): Promise<string | null> {
   if (error || !data) return null;
   return String(data);
 }
+
+// ── Live records for the lecturer (Records page) ────────────────────────────
+/** Pull only attendance records and update the store. Returns the new records. */
+export async function refreshRecordsFromSupabase(): Promise<AttendanceRecord[] | null> {
+  if (!supabase || typeof window === "undefined") return null;
+  const { data, error } = await supabase.from("attendance_records").select("*").order("submitted_at", { ascending: false });
+  if (error || !data) return null;
+  const recs = data.map(recordFromDb);
+  localStorage.setItem(REC_KEY, JSON.stringify(recs));
+  window.dispatchEvent(new Event("att:records"));
+  return recs;
+}
+
+/**
+ * Keep records live: poll every `ms` and also listen for Supabase realtime
+ * inserts (works when Realtime is on for attendance_records). Calls
+ * onNew with records that weren't there before. Returns a stop function.
+ */
+export function watchRecords(onNew: (fresh: AttendanceRecord[]) => void, ms = 10_000): () => void {
+  let known = new Set(loadRecords().map((r) => r.id));
+  let stopped = false;
+  const tick = async () => {
+    const recs = await refreshRecordsFromSupabase();
+    if (!recs || stopped) return;
+    const fresh = recs.filter((r) => !known.has(r.id));
+    known = new Set(recs.map((r) => r.id));
+    if (fresh.length) onNew(fresh);
+  };
+  const timer = setInterval(tick, ms);
+  const onFocus = () => { if (document.visibilityState === "visible") tick(); };
+  document.addEventListener("visibilitychange", onFocus);
+  const channel = supabase
+    ?.channel("records-live")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "attendance_records" }, () => tick())
+    .subscribe();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+    document.removeEventListener("visibilitychange", onFocus);
+    if (channel) supabase?.removeChannel(channel);
+  };
+}

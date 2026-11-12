@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2, XCircle, Loader2, ArrowLeft, MapPin, ChevronDown, KeyRound, Copy,
+  CheckCircle2, XCircle, Loader2, ArrowLeft, ArrowRight, MapPin, ChevronDown, KeyRound, Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -122,6 +122,8 @@ function AttendTokenPage() {
   // The student's personal class code (only returned on their own phone)
   const [myCode, setMyCode] = useState<string | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
+  // The form is three short screens: you → live selfie → class code
+  const [stage, setStage] = useState<1 | 2 | 3>(1);
   // Face comparison of the selfie against the registered face
   const [face, setFace] = useState<{ state: "checking" | "match" | "mismatch" | "noface"; distance?: number } | null>(null);
   const [roomCode, setRoomCode] = useState("");
@@ -182,6 +184,25 @@ function AttendTokenPage() {
     }, 450);
     return () => { cancelled = true; clearTimeout(t); };
   }, [form.matricNumber]);
+
+  function goNext(e: React.FormEvent) {
+    e.preventDefault();
+    if (stage === 1) {
+      if (form.matricNumber.trim().length < 5) return toast.error("Enter your matric number.");
+      if (profileLoading) return toast.error("One moment, we're still finding your details.");
+      if (!profile) {
+        if (!form.fullName.trim()) return toast.error("Enter your full name.");
+        if (!form.department.trim()) return toast.error("Enter your department.");
+        if (!form.level) return toast.error("Choose your level.");
+        if (!form.gender) return toast.error("Choose your gender.");
+      }
+      setStage(2);
+    } else if (stage === 2) {
+      if (!photo) return toast.error("Take your live photo first.");
+      setStage(3);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   function copyMyCode(code: string) {
     navigator.clipboard?.writeText(code).then(() => { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }).catch(() => {});
@@ -315,7 +336,7 @@ function AttendTokenPage() {
     const code = failure?.code;
     setFailure(null);
     // Location problems need a fresh photo; a wrong code only needs a new code
-    if (code !== "wrong_code") { setPhoto(null); setFace(null); }
+    if (code !== "wrong_code") { setPhoto(null); setFace(null); setStage(2); } else { setStage(3); }
     setRoomCode("");
   }
 
@@ -515,9 +536,19 @@ function AttendTokenPage() {
         {/* Form */}
         {isValid && (
           <form
-            onSubmit={onSubmit}
+            onSubmit={stage < 3 ? goNext : onSubmit}
             className="mt-4 grid gap-3 rounded-2xl border bg-card p-4 shadow-soft sm:mt-6 sm:gap-4 sm:p-6 sm:grid-cols-2"
           >
+            <div className="sm:col-span-2">
+              <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                <span className="h-2 w-2 rounded-full bg-primary" /> Step {stage} of 3 · {["Your details", "Live selfie", "Class code"][stage - 1]}
+              </p>
+              <div className="mt-2 grid grid-cols-3 gap-1.5">
+                {[1, 2, 3].map((i) => <div key={i} className={`h-[5px] rounded-full transition-colors duration-300 ${i <= stage ? "bg-primary" : "bg-border"}`} />)}
+              </div>
+            </div>
+
+            <div className={stage === 1 ? "contents" : "hidden"}>
             <Field label="Matric number" className="sm:col-span-2">
               <Input
                 value={form.matricNumber}
@@ -659,6 +690,21 @@ function AttendTokenPage() {
 
             </>)}
 
+            <div className="sm:col-span-2 pt-1">
+              <Button type="submit" className="h-12 w-full rounded-full text-base">Continue <ArrowRight className="ml-1 h-4 w-4" /></Button>
+            </div>
+            </div>
+
+            <div className={stage === 3 ? "contents" : "hidden"}>
+            {profile || form.fullName ? (
+              <div className="sm:col-span-2 flex items-center gap-3 rounded-2xl bg-secondary/60 p-3">
+                {photo && <img src={photo.dataUrl} alt="" className="h-12 w-12 rounded-xl object-cover" />}
+                <div className="min-w-0 text-sm">
+                  <p className="truncate font-semibold">{profile?.fullName ?? form.fullName}</p>
+                  <p className="truncate text-muted-foreground">{form.matricNumber.trim().toUpperCase()}{myCode ? ` · ${myCode}` : ""}</p>
+                </div>
+              </div>
+            ) : null}
             <Field label="Class code — look at the projector" className="sm:col-span-2">
               <Input
                 value={roomCode}
@@ -671,7 +717,9 @@ function AttendTokenPage() {
               />
               <p className="mt-1 text-xs text-muted-foreground">The code changes every 30 seconds. Letters are never O or I.</p>
             </Field>
+            </div>
 
+            <div className={stage === 2 ? "contents" : "hidden"}>
             <Field label="Live photo (with location stamp)" className="sm:col-span-2">
               <StampedSelfie onChange={setPhoto} getPosition={() => getCurrentPosition()} />
               {profile && photo && face && (
@@ -686,11 +734,16 @@ function AttendTokenPage() {
                 </p>
               )}
             </Field>
+            <div className="sm:col-span-2 flex flex-col gap-2 pt-1">
+              <Button type="submit" disabled={!photo} className="h-12 w-full rounded-full text-base">Continue <ArrowRight className="ml-1 h-4 w-4" /></Button>
+              <Button type="button" variant="ghost" className="h-11 w-full rounded-full" onClick={() => setStage(1)}>Back</Button>
+            </div>
+            </div>
 
-            <div className="sm:col-span-2 pt-1">
+            <div className={stage === 3 ? "sm:col-span-2 pt-1" : "hidden"}>
               <Button
                 type="submit"
-                className="w-full h-11 text-base"
+                className="h-12 w-full rounded-full text-base"
                 disabled={submitting || !photo || roomCode.length !== 4 || (alreadyMarked && !!form.matricNumber.trim())}
               >
                 {submitting
@@ -701,6 +754,7 @@ function AttendTokenPage() {
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 Your class code, location and photo are checked on the server before attendance is saved.
               </p>
+              <Button type="button" variant="ghost" className="mt-1 h-11 w-full rounded-full" onClick={() => setStage(2)}>Back</Button>
             </div>
           </form>
         )}

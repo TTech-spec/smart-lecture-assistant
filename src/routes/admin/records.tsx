@@ -17,7 +17,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  saveRecords, addRecord, syncRecord, deleteRecordById, clearAllRecords,
+  saveRecords, addRecord, syncRecord, watchRecords, deleteRecordById, clearAllRecords,
   loadTestSubmissions, loadSettings, saveTestSubmissions, syncTestSubmission,
   type AttendanceRecord, type AttendanceLink, type Gender,
   type TestSubmission, type TestType,
@@ -348,6 +348,20 @@ function RecordsPage() {
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [editingTestResult, setEditingTestResult] = useState<TestSubmission | null>(null);
 
+  // Live: new check-ins appear without refreshing, highlighted for a few seconds
+  const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
+  const [lastSync, setLastSync] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const stop = watchRecords((fresh) => {
+      setFreshIds((cur) => new Set([...cur, ...fresh.map((r) => r.id)]));
+      const names = fresh.map((r) => r.fullName).filter(Boolean);
+      toast.success(names.length === 1 ? `${names[0]} just signed in${fresh[0].courseCode ? ` for ${fresh[0].courseCode}` : ""}.` : `${fresh.length} new check-ins.`);
+      setTimeout(() => setFreshIds((cur) => { const n = new Set(cur); fresh.forEach((r) => n.delete(r.id)); return n; }), 8000);
+    });
+    const t = setInterval(() => setLastSync(new Date()), 10_000);
+    return () => { stop(); clearInterval(t); };
+  }, []);
+
   // Pull test submissions directly from Supabase on mount so we always have
   // the latest — even if the student submitted on a different device
   useEffect(() => {
@@ -648,6 +662,11 @@ function RecordsPage() {
           </div>
         </div>
 
+        <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+          <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#12b886] opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#12b886]" /></span>
+          Live · new check-ins appear here automatically · checked {lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        </div>
+
         {/* ── Table ── */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm sm:text-base">
@@ -688,7 +707,7 @@ function RecordsPage() {
                   const byType = testResultMap.get(r.matricNumber.toLowerCase()) ?? {};
                   const linkTitle = r.linkId ? linkMap.get(r.linkId) : null;
                   return (
-                    <tr key={r.id} className="border-t hover:bg-secondary/40 transition-colors">
+                    <tr key={r.id} className={`border-t transition-colors duration-700 hover:bg-secondary/40 ${freshIds.has(r.id) ? "bg-[#12b886]/15" : ""}`}>
                       <td className="px-4 py-2">
                         {r.customFields?.photo ? (
                           <button type="button"
