@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Ban, Loader2, Undo2 } from "lucide-react";
 import { useStore } from "@/hooks/use-store";
 import {
-  disableLink, fetchAttempts, setLinkExpiry,
-  type AttendanceLink, type AttendanceRecord, type CheckInAttempt,
+  blockStudent, deleteRecordById, disableLink, fetchAttempts, fetchSessionBlocks, setLinkExpiry, unblockStudent,
+  type AttendanceLink, type SessionBlock, type AttendanceRecord, type CheckInAttempt,
 } from "@/lib/attendance-store";
 import { needsReview } from "@/components/admin/AdminSidebar";
 import { ATTEMPT_LABEL, Avatar, PageHeader, Panel, PanelTitle, Stat } from "@/components/admin/ui";
@@ -22,6 +24,7 @@ function LivePage() {
   const { live, now } = useLiveLink(links);
   const { code, secondsLeft } = useClassCode(live?.id ?? null);
   const [attempts, setAttempts] = useState<CheckInAttempt[]>([]);
+  const blockRef = useRef<((matric: string) => void) | null>(null);
 
   // Refresh blocked attempts every 10 s while live
   useEffect(() => {
@@ -90,9 +93,11 @@ function LivePage() {
           <PanelTitle action={<span className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#12b886]" />Updating</span>}>
             Live feed
           </PanelTitle>
-          <Feed records={mine} attempts={attempts} />
+          <Feed records={mine} attempts={attempts} onBlock={(m) => blockRef.current?.(m)} />
         </Panel>
       </div>
+
+      <BlockPanel link={live} records={mine} allRecords={records} registerBlock={(fn) => { blockRef.current = fn; }} />
     </main>
   );
 }
@@ -101,7 +106,7 @@ type FeedItem =
   | { kind: "ok"; at: string; r: AttendanceRecord }
   | { kind: "blocked"; at: string; a: CheckInAttempt };
 
-function Feed({ records, attempts }: { records: AttendanceRecord[]; attempts: CheckInAttempt[] }) {
+function Feed({ records, attempts, onBlock }: { records: AttendanceRecord[]; attempts: CheckInAttempt[]; onBlock: (matric: string) => void }) {
   const items: FeedItem[] = useMemo(() => [
     ...records.map((r) => ({ kind: "ok" as const, at: r.submittedAt, r })),
     ...attempts.map((a) => ({ kind: "blocked" as const, at: a.at, a })),
@@ -124,6 +129,8 @@ function Feed({ records, attempts }: { records: AttendanceRecord[]; attempts: Ch
                 </p>
               </div>
               <span className="text-xs text-muted-foreground">{time}</span>
+              <button type="button" onClick={() => onBlock(it.r.matricNumber)} title={`Block ${it.r.fullName}`} aria-label={`Block ${it.r.fullName}`}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-900/30"><Ban className="h-4 w-4" /></button>
             </div>
           );
         }
@@ -181,4 +188,84 @@ function CheckInMap({ link, records, attempts }: { link: AttendanceLink; records
 
 function Legend({ color, label }: { color: string; label: string }) {
   return <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />{label}</span>;
+}
+
+
+/** Block a matric number from this session (and remove them if they already signed); unblock later. */
+function BlockPanel({ link, records, allRecords, registerBlock }: {
+  link: AttendanceLink; records: AttendanceRecord[]; allRecords: AttendanceRecord[];
+  registerBlock: (fn: (matric: string) => void) => void;
+}) {
+  const [blocks, setBlocks] = useState<SessionBlock[]>([]);
+  const [matric, setMatric] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(() => fetchSessionBlocks(link.id).then((b) => { setBlocks(b); setLoadError(null); }).catch((e: Error) => setLoadError(e.message)), [link.id]);
+  useEffect(() => { load(); }, [load]);
+
+  const nameFor = (m: string) => records.find((r) => r.matricNumber.toUpperCase() === m.toUpperCase())?.fullName;
+
+  const block = useCallback(async (raw: string, why = "") => {
+    const m = raw.trim().toUpperCase();
+    if (m.length < 3) { toast.error("Type the student's matric number."); return; }
+    setBusy(m);
+    try {
+      await blockStudent(link.id, m, why);
+      // A student sent out of class shouldn't keep a check-in for this session
+      const signed = allRecords.find((r) => r.linkId === link.id && r.matricNumber.toUpperCase() === m);
+      if (signed) deleteRecordById(signed.id, allRecords);
+      toast.success(signed ? `${signed.fullName} blocked and removed from this session.` : `${m} blocked for this session.`);
+      setMatric(""); setReason("");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not block the student.");
+    } finally { setBusy(null); }
+  }, [link.id, allRecords, load]);
+
+  useEffect(() => { registerBlock((m) => { if (window.confirm(`Block ${m} from this session? Their check-in will be removed.`)) block(m); }); }, [registerBlock, block]);
+
+  async function unblock(m: string) {
+    setBusy(m);
+    try {
+      await unblockStudent(link.id, m);
+      toast.success(`${m} unblocked. They can sign this session again.`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not unblock the student.");
+    } finally { setBusy(null); }
+  }
+
+  return (
+    <Panel className="flex flex-col gap-4">
+      <PanelTitle action={<span className="text-xs text-muted-foreground">{blocks.length} blocked</span>}>Blocked students</PanelTitle>
+      <p className="-mt-2 text-sm text-muted-foreground">Sent someone out? Block their matric number and they can't sign this session from anywhere, even outside the door. Unblock any time.</p>
+      <form onSubmit={(e) => { e.preventDefault(); block(matric, reason); }} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+        <Input id="block-matric" list="block-matric-list" value={matric} onChange={(e) => setMatric(e.target.value)} placeholder="Matric number, e.g. CSC/2021/001" className="h-11 rounded-xl text-base" autoComplete="off" />
+        <datalist id="block-matric-list">{records.map((r) => <option key={r.id} value={r.matricNumber}>{r.fullName}</option>)}</datalist>
+        <Input id="block-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="h-11 rounded-xl text-base" />
+        <Button type="submit" disabled={!!busy} className="h-11 rounded-xl bg-red-600 text-white hover:bg-red-700">
+          {busy && busy === matric.trim().toUpperCase() ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />} Block
+        </Button>
+      </form>
+      {loadError && <p className="text-sm text-amber-700 dark:text-amber-400">{loadError}</p>}
+      {blocks.length > 0 && (
+        <ul className="divide-y divide-[rgba(27,36,57,0.06)]">
+          {blocks.map((b) => (
+            <li key={b.matric} className="flex items-center gap-3 py-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-700 dark:bg-red-900/30"><Ban className="h-4 w-4" /></span>
+              <div className="min-w-0 flex-grow">
+                <p className="truncate text-sm font-medium tabular-nums">{b.matric}{nameFor(b.matric) ? ` · ${nameFor(b.matric)}` : ""}</p>
+                <p className="truncate text-xs text-muted-foreground">Blocked {new Date(b.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{b.reason ? ` · ${b.reason}` : ""}</p>
+              </div>
+              <Button variant="outline" size="sm" disabled={busy === b.matric} onClick={() => unblock(b.matric)} className="rounded-lg">
+                {busy === b.matric ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Undo2 className="mr-1.5 h-3.5 w-3.5" />} Unblock
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
 }

@@ -1268,7 +1268,7 @@ export type SubmitAttendanceResult = {
 export type CheckInErrorCode =
   | "not_found" | "closed" | "locked" | "wrong_code" | "weak_gps" | "no_gps"
   | "out_of_range" | "duplicate_device" | "duplicate_matric" | "invalid"
-  | "no_location" | "not_configured" | "unknown";
+  | "no_location" | "not_configured" | "blocked" | "unknown";
 
 export class CheckInError extends Error {
   code: CheckInErrorCode;
@@ -1285,7 +1285,7 @@ export class CheckInError extends Error {
 }
 
 function parseCheckInError(raw: string): CheckInError {
-  const m = raw.match(/(not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|no_location|invalid)(?::(\d+))?(?::(\d+))?/);
+  const m = raw.match(/(not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|no_location|invalid|blocked)(?::(\d+))?(?::(\d+))?/);
   if (!m) {
     if (/function .*submit_attendance.* does not exist|schema cache/i.test(raw)) {
       return new CheckInError("not_configured", "Check-in is not set up yet. Ask your lecturer to run security-hardening.sql.");
@@ -1550,4 +1550,27 @@ export async function updateMyDetails(input: { matricNumber: string; newMatricNu
     if (localStorage.getItem("att.student.matric")) localStorage.setItem("att.student.matric", r.matricNumber);
   } catch { /* ignore */ }
   return r;
+}
+
+
+// ── Session blocks (lecturer only) ─────────────────────────────────────────
+export type SessionBlock = { matric: string; reason: string | null; createdAt: string };
+
+export async function fetchSessionBlocks(linkId: string): Promise<SessionBlock[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from("session_blocks").select("matric, reason, created_at").eq("link_id", linkId).order("created_at", { ascending: false });
+  if (error) throw new Error(/session_blocks/.test(error.message) && /exist|schema cache/i.test(error.message) ? "Blocking isn't set up yet: run session-blocks.sql in Supabase." : error.message);
+  return (data ?? []).map((r) => ({ matric: r.matric, reason: r.reason, createdAt: r.created_at }));
+}
+
+export async function blockStudent(linkId: string, matric: string, reason?: string): Promise<void> {
+  if (!supabase) throw new Error("Database not configured.");
+  const { error } = await supabase.from("session_blocks").upsert({ link_id: linkId, matric: matric.trim().toUpperCase(), reason: reason?.trim() || null });
+  if (error) throw new Error(/exist|schema cache/i.test(error.message) ? "Blocking isn't set up yet: run session-blocks.sql in Supabase." : error.message);
+}
+
+export async function unblockStudent(linkId: string, matric: string): Promise<void> {
+  if (!supabase) throw new Error("Database not configured.");
+  const { error } = await supabase.from("session_blocks").delete().eq("link_id", linkId).eq("matric", matric.trim().toUpperCase());
+  if (error) throw new Error(error.message);
 }

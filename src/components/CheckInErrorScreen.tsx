@@ -161,6 +161,14 @@ function describe(e: CheckInError, course: string): View {
         body: `This phone has already been used to mark attendance for ${course} today. Only one student per phone per course per day.`,
         note: "If this is a mistake, speak to your lecturer.",
       };
+    case "blocked":
+      return {
+        tone: "red",
+        icon: <UserX className="h-6 w-6" />,
+        title: "You can't sign this class",
+        body: `Your lecturer has blocked your matric number for this ${course} session.`,
+        note: "If you think this is a mistake, speak to your lecturer after class.",
+      };
     case "duplicate_matric":
       return {
         tone: "amber",
