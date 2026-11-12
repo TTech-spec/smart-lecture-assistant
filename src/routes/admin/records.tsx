@@ -802,7 +802,7 @@ function RecordsPage() {
       <AnimatePresence>
         {showAi && (
           <SideSheet title="Ask AI" subtitle="About your attendance records" onClose={() => setShowAi(false)}>
-            <AskAiChat rows={aiRows} />
+            <AskAiChat rows={aiRows} onNavigate={() => setShowAi(false)} />
             <details className="rounded-2xl bg-secondary/40 p-3 text-sm">
               <summary className="cursor-pointer font-medium text-muted-foreground">Voice assistant (works offline)</summary>
               <div className="mt-3"><VoiceAssistant records={records} /></div>

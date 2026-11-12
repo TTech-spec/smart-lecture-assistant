@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { AdminAssistant } from "@/components/AdminAssistant";
 import {
   loadDashboardTheme, getThemeVars, loadDeveloperAccess, loadDeveloperAccessEmail,
   fetchDashboardPreferences, isOnboardingDone, type ThemeId,
@@ -205,6 +206,7 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
       <Outlet />
       </div>
       <InstallAppButton />
+      <AdminAssistant />
       <IOSInstallHelp open={showIOSHelp} onClose={() => setShowIOSHelp(false)} />
       {wizardOpen && (
         <OnboardingWizard
