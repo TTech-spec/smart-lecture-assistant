@@ -142,7 +142,7 @@ function TestTokenPage() {
 
     // Check if this matric number has already taken this test — show them their own result
     const existing = loadTestSubmissions().find(
-      (s) => s.testId === test.id && s.matricNumber.toLowerCase() === matric.trim().toLowerCase(),
+      (s) => s.testId === test!.id && s.matricNumber.toLowerCase() === matric.trim().toLowerCase(),
     );
     if (existing) {
       setStudentName(name);
@@ -155,8 +155,8 @@ function TestTokenPage() {
 
     // Device-level lock: this phone already submitted this test under any matric number
     if (
-      hasDeviceTakenTest(deviceId, test.id) ||
-      (await hasDeviceTakenTestRemote(deviceId, test.id))
+      hasDeviceTakenTest(deviceId, test!.id) ||
+      (await hasDeviceTakenTestRemote(deviceId, test!.id))
     ) {
       setStudentName(name);
       setMatricNumber(matric);
@@ -193,29 +193,29 @@ function TestTokenPage() {
     // Re-check the device lock at submit time in case another tab/session on
     // this same phone already submitted while this one was in progress.
     const raced =
-      hasDeviceTakenTest(deviceId, test.id) ||
-      (await hasDeviceTakenTestRemote(deviceId, test.id));
+      hasDeviceTakenTest(deviceId, test!.id) ||
+      (await hasDeviceTakenTestRemote(deviceId, test!.id));
     if (raced) {
       setStage("device_used");
       return;
     }
 
     const score = finalAnswers.reduce<number>((acc, ans, i) => {
-      return acc + (ans === test.questions[i].correctIndex ? 1 : 0);
+      return acc + (ans === test!.questions[i].correctIndex ? 1 : 0);
     }, 0);
 
     const submission: TestSubmission = {
       id: `tsub-${Date.now()}`,
-      testId: test.id,
+      testId: test!.id,
       studentName,
       matricNumber,
       level,
       answers: finalAnswers,
       score,
-      total: test.questions.length,
+      total: test!.questions.length,
       submittedAt: new Date().toISOString(),
       cheated,
-      testType: test.testType || "C1",
+      testType: test!.testType || "C1",
       deviceId,
     };
 

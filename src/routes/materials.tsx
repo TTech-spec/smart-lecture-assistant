@@ -67,8 +67,11 @@ function MaterialsPage() {
   const [courseFilter, setCourseFilter] = useState("all");
   const [userMatric, setUserMatric] = useState(() => {
     // Try to get matric number from attendance records
-    const records = JSON.parse(localStorage.getItem("att.records.v1") || "[]");
-    return records.length > 0 ? records[0].matricNumber : "";
+    if (typeof window === "undefined") return "";
+    try {
+      const records = JSON.parse(localStorage.getItem("att.records.v1") || "[]");
+      return records.length > 0 ? records[0].matricNumber : "";
+    } catch { return ""; }
   });
   const [viewer, setViewer] = useState<{ open: boolean; material: Material | null }>({ open: false, material: null });
   const [paymentModal, setPaymentModal] = useState<{

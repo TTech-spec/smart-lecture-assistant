@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { LeafletMap } from "@/components/LeafletMap";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -123,6 +124,14 @@ function AdminDashboard() {
 }
 
 // ── Radius hint ────────────────────────────────────────────────────────────────
+/** Free OpenStreetMap preview of the class pin (loads only in the browser). */
+function ClientMap({ lat, lng, radius }: { lat: number; lng: number; radius: number }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  if (!ready) return <div className="h-56 w-full bg-secondary/50" />;
+  return <LeafletMap center={{ lat, lng }} radius={radius} className="h-56 w-full" zoom={17} />;
+}
+
 function RadiusHint({ meters }: { meters: number }) {
   let description: string;
   let color: string;
@@ -338,14 +347,7 @@ function SettingsCard() {
           {typeof draft.classLat === "number" && typeof draft.classLng === "number" &&
           Math.abs(draft.classLat) <= 90 && Math.abs(draft.classLng) <= 180 ? (
             <div className="mt-3 overflow-hidden rounded-lg border">
-              <iframe
-                title="Class location map"
-                src={`https://maps.google.com/maps?q=${draft.classLat},${draft.classLng}&z=17&output=embed`}
-                className="h-56 w-full border-0"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                allowFullScreen
-              />
+              <ClientMap lat={draft.classLat} lng={draft.classLng} radius={draft.radiusMeters ?? 100} />
               <a
                 href={`https://www.google.com/maps/search/?api=1&query=${draft.classLat},${draft.classLng}`}
                 target="_blank"

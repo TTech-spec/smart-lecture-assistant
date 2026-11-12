@@ -37,6 +37,7 @@ const PAYMENTS_KEY = "att.squad.payments.v1";
 export function loadSquadPayments(): SquadPaymentRecord[] {
   if (typeof window === "undefined") return [];
   try {
+    if (typeof window === "undefined") return [];
     return JSON.parse(localStorage.getItem(PAYMENTS_KEY) || "[]") as SquadPaymentRecord[];
   } catch {
     return [];
