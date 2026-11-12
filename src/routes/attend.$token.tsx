@@ -14,6 +14,10 @@ import {
 import {
   fetchLinkByToken,
   fetchStudentProfile,
+  createHelpRequest,
+  getHelpRequest,
+  type SubmitAttendanceInput,
+  type SubmitAttendanceResult,
   fetchMyClassCode,
   getStudentCode,
   lookupStudentRemote,
@@ -34,6 +38,7 @@ import {
 } from "@/lib/attendance-store";
 import { getCurrentPosition, type Coords } from "@/lib/geo";
 import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
+import { QrCode } from "@/components/QrCode";
 import { analyseFace, faceDistance, FACE_MATCH_THRESHOLD, preloadFaceModels } from "@/lib/face";
 import { StampedSelfie, type GpsStats } from "@/components/StampedSelfie";
 import type { StampInfo } from "@/lib/photo-stamp";
@@ -124,6 +129,11 @@ function AttendTokenPage() {
   const [codeCopied, setCodeCopied] = useState(false);
   // The form is three short screens: you → live selfie → class code
   const [stage, setStage] = useState<1 | 2 | 3>(1);
+  // GPS help: the lecturer scans a code on this phone
+  const lastInputRef = useRef<SubmitAttendanceInput | null>(null);
+  const [helpId, setHelpId] = useState<string | null>(null);
+  const [helpState, setHelpState] = useState<"waiting" | "declined" | "expired" | "failed">("waiting");
+  const [helpBusy, setHelpBusy] = useState(false);
   // Face comparison of the selfie against the registered face
   const [face, setFace] = useState<{ state: "checking" | "match" | "mismatch" | "noface"; distance?: number } | null>(null);
   const [roomCode, setRoomCode] = useState("");
@@ -288,7 +298,7 @@ function AttendTokenPage() {
     setSubmitting(true);
     try {
       const pos = photo.pos;
-      const result = await submitAttendance({
+      const input: SubmitAttendanceInput = {
         id: crypto.randomUUID(),
         token,
         deviceId,
@@ -313,7 +323,9 @@ function AttendTokenPage() {
           photoWeather: photo.info.weather,
           photoTakenAt: photo.info.takenAt.toISOString(),
         },
-      });
+      };
+      lastInputRef.current = input;
+      const result = await submitAttendance(input);
 
       if (result.classCode) {
         markClassCodeUsed(form.matricNumber.trim());
@@ -386,8 +398,37 @@ function AttendTokenPage() {
   }
 
   // ── Server refused the check-in ────────────────────────────────────────────
+  async function askHelp() {
+    const input = lastInputRef.current;
+    if (!input || !failure) return;
+    setHelpBusy(true);
+    const reason = failure.code + (failure.meters != null ? `:${failure.meters}` : "");
+    const r = await createHelpRequest(input, reason);
+    setHelpBusy(false);
+    if ("error" in r) {
+      toast.error(r.error === "not_configured" ? "GPS help isn't switched on yet. Please tell your lecturer." : r.error === "closed" ? "This check-in has closed." : "We couldn't reach the server. Check your connection and try again.");
+      return;
+    }
+    setHelpState("waiting");
+    setHelpId(r.id);
+  }
+
+  if (helpId) {
+    return (
+      <HelpQrScreen id={helpId} state={helpState} courseCode={link ? (link as AttendanceLink).courseCode : ""}
+        onState={setHelpState}
+        onApproved={(res) => {
+          if (res?.classCode) { markClassCodeUsed(form.matricNumber.trim()); setAssignedCode(res.classCode); }
+          setHelpId(null); setFailure(null); setDone(true);
+          toast.success("Your lecturer confirmed you. Attendance marked!");
+        }}
+        onCancel={() => setHelpId(null)} />
+    );
+  }
+
   if (failure) {
-    return <CheckInErrorScreen error={failure} courseCode={link ? (link as AttendanceLink).courseCode : "this course"} onRetry={retryAfterFailure} />;
+    return <CheckInErrorScreen error={failure} courseCode={link ? (link as AttendanceLink).courseCode : "this course"} onRetry={retryAfterFailure}
+      onAskHelp={lastInputRef.current && !helpBusy ? askHelp : undefined} />;
   }
 
   // ── Success / done screen ──────────────────────────────────────────────────
@@ -783,6 +824,52 @@ function MyCodeRow({ code, copied, onCopy }: { code: string; copied: boolean; on
       <button type="button" onClick={onCopy} className="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium hover:bg-secondary">
         <Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy"}
       </button>
+    </div>
+  );
+}
+
+/** The student's phone shows this QR for the lecturer to scan, and waits for approval. */
+function HelpQrScreen({ id, state, courseCode, onState, onApproved, onCancel }: {
+  id: string; state: "waiting" | "declined" | "expired" | "failed"; courseCode: string;
+  onState: (s: "waiting" | "declined" | "expired" | "failed") => void;
+  onApproved: (r: SubmitAttendanceResult | null) => void; onCancel: () => void;
+}) {
+  useEffect(() => {
+    if (state !== "waiting") return;
+    let stop = false;
+    const tick = async () => {
+      const r = await getHelpRequest(id);
+      if (stop || !r) return;
+      if (r.status === "approved") onApproved(r.result);
+      else if (r.status === "declined" || r.status === "expired" || r.status === "failed") onState(r.status);
+    };
+    const t = setInterval(tick, 2000);
+    return () => { stop = true; clearInterval(t); };
+  }, [id, state, onApproved, onState]);
+
+  return (
+    <div className="min-h-[100svh] bg-background">
+      <div className="mx-auto flex min-h-[100svh] max-w-md flex-col items-center px-6 py-10 text-center">
+        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">{courseCode} · GPS help</p>
+        {state === "waiting" ? (<>
+          <h1 className="mt-2 font-display text-[28px] font-bold leading-8 tracking-tight">Show this to your lecturer</h1>
+          <p className="mt-2 text-base leading-6 text-muted-foreground">They'll scan it from their laptop or phone to confirm you're in the hall. Keep this screen open.</p>
+          <div className="mt-6 rounded-3xl bg-white p-4 shadow-soft">
+            <QrCode value={`ATTHELP:${id}`} size={240} alt="Your check-in code for the lecturer to scan" />
+          </div>
+          <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Waiting for your lecturer…</p>
+          <p className="mt-1 text-[12px] text-muted-foreground">This code works once and expires in 10 minutes.</p>
+        </>) : (<>
+          <h1 className="mt-2 font-display text-[28px] font-bold leading-8 tracking-tight">
+            {state === "declined" ? "Your lecturer didn't approve this" : state === "expired" ? "This code expired" : "That didn't go through"}
+          </h1>
+          <p className="mt-2 text-base leading-6 text-muted-foreground">
+            {state === "declined" ? "Speak to your lecturer if you think this is a mistake." : state === "expired" ? "Ask for help again to get a new code." : "You may already be marked for this class today, or the check-in has closed. Speak to your lecturer."}
+          </p>
+        </>)}
+        <div className="flex-grow" />
+        <Button variant="ghost" className="mt-8 h-11 w-full rounded-full" onClick={onCancel}>Back</Button>
+      </div>
     </div>
   );
 }

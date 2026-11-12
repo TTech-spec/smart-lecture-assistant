@@ -106,6 +106,7 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
     same_spot: "Exactly the same coordinates as another student",
     on_pin: "Exactly on your pin (real phones land a few metres away)",
     off_campus_net: `Not on a campus internet address${cf.ip ? ` (network ${cf.ip})` : ""}`,
+    gps_help: "You scanned this student in the hall because their GPS failed",
   };
   const locReasons = Object.keys(LOC_REASONS).filter((k) => flags.includes(k)).map((k) => LOC_REASONS[k]);
   const checks = [

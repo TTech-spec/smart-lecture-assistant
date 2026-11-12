@@ -1730,3 +1730,39 @@ export function watchRecords(onNew: (fresh: AttendanceRecord[]) => void, ms = 10
     if (channel) supabase?.removeChannel(channel);
   };
 }
+
+// ── GPS help: the lecturer scans the student's phone (gps-help.sql) ─────────
+export async function createHelpRequest(input: SubmitAttendanceInput, reason: string): Promise<{ id: string } | { error: string }> {
+  if (!supabase) return { error: "offline" };
+  const { data, error } = await supabase.rpc("create_help_request", { p: input, p_reason: reason });
+  if (error) return { error: /does not exist|schema cache|Could not find/i.test(error.message) ? "not_configured" : "offline" };
+  const r = data as { id?: string; error?: string };
+  return r?.id ? { id: r.id } : { error: r?.error ?? "offline" };
+}
+
+export async function getHelpRequest(id: string): Promise<{ status: string; result: SubmitAttendanceResult | null } | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc("get_help_request", { p_id: id, p_device: getDeviceId() });
+  if (error || !data) return null;
+  return data as { status: string; result: SubmitAttendanceResult | null };
+}
+
+export type HelpPreview = {
+  status: string; matric: string; name: string; registered: boolean; registeredPhoto: string | null;
+  photo: string | null; reason: string | null; course: string; title: string; createdAt: string; error?: string;
+};
+
+export async function peekHelpRequest(id: string): Promise<HelpPreview | { error: string }> {
+  if (!supabase) return { error: "offline" };
+  const { data, error } = await supabase.rpc("peek_help_request", { p_id: id });
+  if (error) return { error: /not_authorised/.test(error.message) ? "not_lecturer" : /does not exist|schema cache|Could not find/i.test(error.message) ? "not_configured" : "offline" };
+  return data as HelpPreview;
+}
+
+export async function decideHelpRequest(id: string, approve: boolean): Promise<{ ok: true } | { error: string }> {
+  if (!supabase) return { error: "offline" };
+  const { data, error } = await supabase.rpc("decide_help_request", { p_id: id, p_approve: approve });
+  if (error) return { error: /not_authorised/.test(error.message) ? "not_lecturer" : "offline" };
+  const r = data as { error?: string };
+  return r?.error ? { error: r.error } : { ok: true };
+}

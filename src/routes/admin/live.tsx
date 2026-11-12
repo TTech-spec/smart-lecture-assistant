@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Ban, Loader2, Undo2 } from "lucide-react";
+import { Ban, Loader2, ScanLine, Undo2 } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { HelpScanner } from "@/components/admin/HelpScanner";
 import { useStore } from "@/hooks/use-store";
 import {
   blockStudent, deleteRecordById, disableLink, fetchAttempts, fetchSessionBlocks, setLinkExpiry, unblockStudent,
@@ -26,6 +28,7 @@ function LivePage() {
   const { code, secondsLeft } = useClassCode(live?.id ?? null);
   const [attempts, setAttempts] = useState<CheckInAttempt[]>([]);
   const blockRef = useRef<((matric: string) => void) | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
 
   // Refresh blocked attempts every 10 s while live
   useEffect(() => {
@@ -68,6 +71,7 @@ function LivePage() {
         actions={<>
           <Button variant="outline" className="h-10 rounded-xl" onClick={() => extend(5)}>+5 minutes</Button>
           <Button variant="outline" className="h-10 rounded-xl text-red-700 hover:text-red-700" onClick={() => { if (confirm("End check-in now?")) { disableLink(live.id); toast.success("Check-in ended."); } }}>End check-in</Button>
+          <Button variant="outline" className="h-10 rounded-xl" onClick={() => setScanOpen(true)}><ScanLine className="mr-1.5 h-4 w-4" /> Scan student</Button>
           <Button asChild className="h-10 rounded-xl"><Link to="/admin/projector" search={{ link: live.id }}>Open projector</Link></Button>
         </>}
       />
@@ -97,6 +101,8 @@ function LivePage() {
           <Feed records={mine} attempts={attempts} onBlock={(m) => blockRef.current?.(m)} />
         </Panel>
       </div>
+
+      <AnimatePresence>{scanOpen && <HelpScanner onClose={() => setScanOpen(false)} />}</AnimatePresence>
 
       <BlockPanel link={live} records={mine} allRecords={records} registerBlock={(fn) => { blockRef.current = fn; }} />
     </main>

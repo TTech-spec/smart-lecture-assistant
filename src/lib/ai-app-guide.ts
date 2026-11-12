@@ -19,7 +19,7 @@ ATTENDLY: GPS-verified class attendance for EKSU lecturers.
 
 ADMIN PAGES (lecturer, after signing in at /admin)
 - Overview (/admin): today's numbers, the live check-in with its projector code, people who need review, latest check-ins. "Start check-in" button.
-- Live session (/admin/live): the running check-in on a map (your pin, the allowed circle, each student), live feed, +5 minutes, End check-in, Open projector, and "Blocked students" (block a matric number from this session; unblock any time).
+- Live session (/admin/live): "Scan student" button (GPS help: when a student in the hall can't sign in because of GPS, they tap "Ask your lecturer to scan me" on their error screen; their phone shows a code; you scan it here, compare the photos and Approve). The running check-in on a map (your pin, the allowed circle, each student), live feed, +5 minutes, End check-in, Open projector, and "Blocked students" (block a matric number from this session; unblock any time).
 - To review (/admin/review): check-ins flagged for face mismatch, different phone, suspicious location (GPS never moved, typed-in coordinates, same spot as another student, exactly on your pin, not on campus network) or a changed matric number. Compare the photos and Approve or Reject.
 - Records (/admin/records): every check-in. Summary tiles, search, All/Verified/Review tabs, Filters (level, course, department, gender, link, class code), Export (CSV/JSON), Add a record by hand, tap a student for full details, edit test scores, Ask AI. Updates live every 10 seconds.
 - Students (/admin/students): students who registered with a face scan; reset a student who changed phones.
@@ -47,11 +47,12 @@ COMMON TASKS
 FIXES FOR COMMON PROBLEMS
 - "Database table missing" or "couldn't get its class-code secret" when creating a link: run fix-link-creation.sql in Supabase SQL Editor, then create a NEW link.
 - QR code opens ".../attend/undefined" or "link does not exist": update to the latest version (Vercel redeploy, hard refresh), delete links made before the fix, create a new one, and create links from the published site address, not the editor preview.
+- A student in the hall still can't sign in because of GPS: on their error screen they tap "Ask your lecturer to scan me", then you open Live session > Scan student and approve them (needs gps-help.sql).
 - Weak GPS (e.g. ±97 m): use a phone (laptops have no GPS), go near a window or the door, turn on Precise Location (iPhone: Settings > Privacy > Location Services > Safari/Chrome > Precise) or Google Location Accuracy (Android), wait 10-20 s. Up to ±150 m is still accepted.
 - Student "out of range": check the radius in Tests & settings and that you verified your location in the hall when creating the link.
 - Everyone locked out after wrong codes on campus Wi-Fi: run scale-2000.sql (it relaxes the shared-network lock).
 - "This page isn't switched on yet" on My attendance: run student-edits.sql. Blocking not working: run session-blocks.sql. Class codes "not switched on": run class-codes.sql.
-- Order of SQL files: security-hardening.sql, students-migration.sql, security-fixes.sql (then make sure your account is in the lecturers table), student-edits.sql, session-blocks.sql, class-codes.sql, payments-secure.sql, scale-2000.sql, fix-link-creation.sql.
+- Order of SQL files: security-hardening.sql, students-migration.sql, security-fixes.sql (then make sure your account is in the lecturers table), student-edits.sql, session-blocks.sql, class-codes.sql, payments-secure.sql, scale-2000.sql, fix-link-creation.sql, gps-help.sql.
 - "function is_lecturer() does not exist": run security-fixes.sql first.
 - Can't see admin pages after security-fixes.sql: add your account: insert into lecturers (user_id) select id from auth.users where email = 'YOUR EMAIL'.
 - "Payment system not configured": on Vercel set SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL and SQUAD_SECRET_KEY (never with a VITE_ prefix), then redeploy. "API key is empty or invalid": use the Squad SECRET key (sandbox_sk_ or sk_), not the public key. OPay bank code is 100004.

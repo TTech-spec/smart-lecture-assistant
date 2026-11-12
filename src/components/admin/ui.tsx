@@ -63,6 +63,7 @@ export function checkStatus(customFields: Record<string, unknown> | undefined): 
   if (customFields?.reviewed === "approved") return { label: "Approved", tone: "green" };
   if (f.includes("matric_changed")) return { label: "Matric changed", tone: "amber" };
   if (/gps_too_still|gps_round|same_spot|on_pin|off_campus_net/.test(f)) return { label: "Suspicious location", tone: "amber" };
+  if (f.includes("gps_help") && !/face_mismatch|different_phone|no_face_check/.test(f)) return { label: "GPS help", tone: "green" };
   if (f.includes("face_mismatch")) return { label: "Face mismatch", tone: "amber" };
   if (f.includes("different_phone")) return { label: "Different phone", tone: "amber" };
   if (f.includes("no_face_check")) return { label: "No face check", tone: "amber" };

@@ -9,10 +9,13 @@ type Props = {
   error: CheckInError;
   courseCode: string;
   onRetry: () => void;
+  /** Shown for GPS problems: the lecturer scans the student's phone instead */
+  onAskHelp?: () => void;
 };
 
 /** Full-screen explanation when the server refuses a check-in, with what to do next. */
-export function CheckInErrorScreen({ error, courseCode, onRetry }: Props) {
+export function CheckInErrorScreen({ error, courseCode, onRetry, onAskHelp }: Props) {
+  const gpsProblem = error.code === "weak_gps" || error.code === "out_of_range" || error.code === "no_gps";
   const v = describe(error, courseCode);
   const tone = v.tone;
   const ring = tone === "red" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
@@ -52,8 +55,15 @@ export function CheckInErrorScreen({ error, courseCode, onRetry }: Props) {
 
         <div className="flex-grow" />
 
+        {gpsProblem && onAskHelp && (
+          <div className="mb-3 rounded-2xl bg-primary/10 p-4">
+            <p className="text-sm font-semibold">In the hall but GPS won't work?</p>
+            <p className="mt-1 text-[13px] leading-5 text-muted-foreground">Your lecturer can scan a code on your phone to confirm you're here.</p>
+            <Button className="mt-3 h-11 w-full rounded-full text-base" onClick={onAskHelp}>Ask your lecturer to scan me</Button>
+          </div>
+        )}
         {v.retry && (
-          <Button className="h-12 w-full text-base" onClick={onRetry}>
+          <Button variant={gpsProblem && onAskHelp ? "outline" : "default"} className="h-12 w-full text-base" onClick={onRetry}>
             <RefreshCw className="mr-2 h-4 w-4" /> {v.retry}
           </Button>
         )}

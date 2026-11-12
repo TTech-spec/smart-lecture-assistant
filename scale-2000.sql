@@ -54,6 +54,8 @@ declare
   v_name text; v_dept text; v_level text; v_gender text; v_phone text;
   v_gps      jsonb;
   v_prefixes text;
+  -- Set only inside approve_help_request() (lecturer scanned the student in class)
+  v_help     boolean := coalesce(current_setting('attendly.help_ok', true), '') = '1';
 begin
   if v_token is null or v_device = '' or v_matric = '' then
     raise exception 'invalid';
@@ -78,10 +80,10 @@ begin
   -- Rate limit: 5 failures in 5 minutes from the same phone, matric or IP → locked
   -- Per phone or matric: 5 failures in 5 minutes. Per IP (campus Wi-Fi is
   -- shared by hundreds): only a flood of 60 failures in 5 minutes.
-  if (select count(*) from attendance_attempts
+  if not v_help and (select count(*) from attendance_attempts
        where at > now() - interval '5 minutes'
          and (device_id = v_device or matric = v_matric)) >= 5
-     or (v_ip is not null and (select count(*) from attendance_attempts
+     or (not v_help and v_ip is not null and (select count(*) from attendance_attempts
        where at > now() - interval '5 minutes' and ip = v_ip) >= 60) then
     raise exception 'locked';
   end if;
@@ -96,7 +98,7 @@ begin
   end if;
 
   select code_secret into s from attendance_link_secrets where link_id = l.id;
-  if s is null or v_code not in (room_code_for(s, v_slot), room_code_for(s, v_slot - 1)) then
+  if not v_help and (s is null or v_code not in (room_code_for(s, v_slot), room_code_for(s, v_slot - 1))) then
     insert into attendance_attempts (link_id, device_id, matric, ip, reason, detail, lat, lng, accuracy)
       values (l.id, v_device, v_matric, v_ip, 'wrong_code', left(v_code, 10), v_lat, v_lng, v_acc);
     return jsonb_build_object('error', 'wrong_code');
@@ -115,24 +117,30 @@ begin
   if v_anchor_lat is null or v_anchor_lng is null then
     raise exception 'no_location';
   end if;
+  if v_help then
+    -- The lecturer saw the student in the hall: record them at the lecturer's spot
+    v_lat := v_anchor_lat; v_lng := v_anchor_lng; v_acc := coalesce(v_acc, 0);
+    v_flags := array_append(v_flags, 'gps_help');
+  end if;
   if v_lat is null or v_lng is null then
     insert into attendance_attempts (link_id, device_id, matric, ip, reason) values (l.id, v_device, v_matric, v_ip, 'no_gps');
     return jsonb_build_object('error', 'no_gps');
   end if;
-  if v_acc is null or v_acc > 150 then
+  if not v_help and (v_acc is null or v_acc > 150) then
     insert into attendance_attempts (link_id, device_id, matric, ip, reason, detail, lat, lng, accuracy)
       values (l.id, v_device, v_matric, v_ip, 'weak_gps', coalesce(round(v_acc)::text, ''), v_lat, v_lng, v_acc);
     return jsonb_build_object('error', 'weak_gps:' || coalesce(round(v_acc)::text, '0'));
   end if;
   v_dist := haversine_m(v_lat, v_lng, v_anchor_lat, v_anchor_lng);
   v_tol  := least(v_acc, 75) + least(greatest(coalesce(v_anchor_acc, 0), 0), 50);
-  if v_dist - v_tol > v_radius then
+  if not v_help and v_dist - v_tol > v_radius then
     insert into attendance_attempts (link_id, device_id, matric, ip, reason, detail, lat, lng, accuracy)
       values (l.id, v_device, v_matric, v_ip, 'out_of_range', round(v_dist)::text, v_lat, v_lng, v_acc);
     return jsonb_build_object('error', 'out_of_range:' || least(round(v_dist), 2000000000)::bigint || ':' || v_radius);
   end if;
 
-  -- ── Suspicious-location checks (flag only) ──
+  -- ── Suspicious-location checks (flag only; not for lecturer-scanned help) ──
+  if not v_help then
   v_gps := case when jsonb_typeof(p->'gps') = 'object' then p->'gps' else '{}'::jsonb end;
   if coalesce((v_gps->>'n')::int, 0) >= 4
      and coalesce((v_gps->>'coordDistinct')::int, 0) = 1
@@ -155,6 +163,7 @@ begin
      and not exists (select 1 from unnest(string_to_array(v_prefixes, ',')) pre
                       where trim(pre) <> '' and v_ip like trim(pre) || '%') then
     v_flags := array_append(v_flags, 'off_campus_net');
+  end if;
   end if;
 
   if exists (select 1 from attendance_records
