@@ -1029,6 +1029,19 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
                   </button>
                 </div>
               </div>
+              <details className="rounded-xl border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                <summary className="cursor-pointer font-medium text-foreground">How to write the PDF (objective and theory in one file)</summary>
+                <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-5">{`1. Which layer handles routing?
+A) Physical
+B) Network
+C) Session
+D) Transport
+Answer: B
+
+2. Explain two differences between TCP and UDP. (5 marks)
+Guide: TCP is reliable and connection-oriented; UDP is faster and connectionless.`}</pre>
+                <p className="mt-2">A question with A–D options and an Answer line becomes objective. A question without options becomes theory: put the marks in brackets, and a Guide line if you want the AI to mark against it (students never see the guide). Section headings like "SECTION B: THEORY" are fine.</p>
+              </details>
 
               {/* Metadata */}
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">

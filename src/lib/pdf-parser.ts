@@ -66,11 +66,14 @@ function findOptionMarker(letter: "A" | "B" | "C" | "D", fromIndex: number, str:
 
 const collapseSpace = (s: string) => s.replace(/\s+/g, " ").trim();
 
-function parseQuestionsFromText(text: string): TestQuestion[] {
+export function parseQuestionsFromText(text: string): TestQuestion[] {
   const questions: TestQuestion[] = [];
 
   // Normalise line endings
-  const clean = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const clean = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    // Drop section headings ("SECTION B: THEORY", "Part A – Objective") so they don't stick to a question
+    .replace(/^\s*(?:section|part)\s+[A-Z0-9]+\b.*$/gim, "")
+    .replace(/^\s*(?:objectives?|theory|essay|written)\s*(?:questions?)?\s*:?\s*$/gim, "");
 
   // Split on question starters: "1." / "1)" / "Q1." / "Q1)" at start of a line
   const blocks = clean.split(/(?=^\s*Q?\d+[.)]\s)/im);
@@ -81,6 +84,27 @@ function parseQuestionsFromText(text: string): TestQuestion[] {
 
     const withoutNumber = block.replace(/^Q?\d+[.)]\s*/i, "");
     if (withoutNumber === block) continue; // block didn't start with a question number
+
+    // Theory question: no A–D options. Marks from "(5 marks)" / "[10 marks]" / "Marks: 5",
+    // marking guide from a "Guide:" / "Marking guide:" / "Model answer:" / "Answer:" line.
+    if (!findOptionMarker("A", 0, withoutNumber) || !findOptionMarker("D", 0, withoutNumber)) {
+      const guideMatch = withoutNumber.match(/(?:marking\s+guide|model\s+answer|guide|answer|ans)\s*:\s*([\s\S]*)$/i);
+      let body = guideMatch ? withoutNumber.slice(0, guideMatch.index) : withoutNumber;
+      const marksMatch = body.match(/[([]\s*(\d{1,3})\s*marks?\s*[)\]]|marks?\s*:\s*(\d{1,3})/i);
+      if (marksMatch) body = body.replace(marksMatch[0], "");
+      const qText = collapseSpace(body);
+      if (qText.length < 5) continue;
+      questions.push({
+        id: `q-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        text: qText,
+        options: ["", "", "", ""],
+        correctIndex: 0,
+        kind: "theory",
+        marks: marksMatch ? Math.max(1, parseInt(marksMatch[1] ?? marksMatch[2], 10)) : 5,
+        modelAnswer: guideMatch ? collapseSpace(guideMatch[1]) : "",
+      });
+      continue;
+    }
 
     // Find the "Answer:"/"Ans:"/"Correct:"/"Key:" line, wherever it appears,
     // and cut the block there so its text doesn't pollute question/option parsing.
@@ -141,7 +165,7 @@ export async function parsePdfQuestions(file: File): Promise<ParseResult> {
       return {
         ok: false,
         error:
-          "No questions found. Make sure the PDF uses numbered questions (1. Question text?) with A/B/C/D options and an Answer: X line.",
+          "No questions found. Number every question (1. Question text?). Objective: A/B/C/D options and an Answer: X line. Theory: the question with (5 marks), and optionally a Guide: line.",
       };
     }
     return { ok: true, questions };
