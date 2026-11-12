@@ -24,6 +24,7 @@ export const Route = createFileRoute("/admin")({
     meta: [
       { title: "Lecturer dashboard — Attendly" },
       { name: "description", content: "Pin the class location, set the radius and time window, and review attendance." },
+      { name: "robots", content: "noindex, nofollow" },
     ],
   }),
   component: AdminPage,
