@@ -134,6 +134,7 @@ function RegisterPage() {
           <p><span className="mr-2 font-bold text-primary">2</span>Type your matric number and the class code on the projector.</p>
           <p><span className="mr-2 font-bold text-primary">3</span>Take a quick selfie — it's matched to today's face scan.</p>
         </div>
+        <Link to="/app" className="mt-4 flex items-center justify-between rounded-2xl bg-primary/10 px-4 py-3 text-sm font-medium text-foreground hover:bg-primary/15"><span>Add Attendly to your home screen and turn on notifications</span><span className="text-primary">Get the app</span></Link>
         <p className="mt-4 text-center text-xs text-muted-foreground">Changed phones? Register again and your lecturer will approve the reset.</p>
         <div className="flex-grow" />
         <Button asChild className="h-[52px] w-full rounded-full bg-foreground text-base font-semibold text-background hover:bg-foreground/85"><Link to="/">Done</Link></Button>

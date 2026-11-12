@@ -25,7 +25,7 @@ export default defineConfig({
         display: "standalone",
         orientation: "portrait",
         background_color: "#ffffff",
-        theme_color: "#7c3aed",
+        theme_color: "#12b886",
         icons: [
           {
             src: "/icon-192.png",
@@ -46,6 +46,8 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         // Don't cache Supabase API calls
         navigateFallbackDenylist: [/^\/api/, /^\/rest/, /^\/auth/],
+        // Phone notifications: show a notice when the server wakes this phone
+        importScripts: ["/push-sw.js"],
       },
       devOptions: {
         // Enable PWA in dev so you can test the install prompt locally

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AppRouteImport } from './routes/app'
 import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as MaterialsRouteImport } from './routes/materials'
 import { Route as MeRouteImport } from './routes/me'
@@ -36,6 +37,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AttendanceRoute = AttendanceRouteImport.update({
@@ -122,6 +128,7 @@ const TestTokenRoute = TestTokenRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/app': typeof AppRoute
   '/attendance': typeof AttendanceRoute
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
   '/attendance': typeof AttendanceRoute
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
@@ -162,6 +170,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/app': typeof AppRoute
   '/attendance': typeof AttendanceRoute
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/app'
     | '/attendance'
     | '/materials'
     | '/me'
@@ -203,6 +213,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/app'
     | '/attendance'
     | '/materials'
     | '/me'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/app'
     | '/attendance'
     | '/materials'
     | '/me'
@@ -244,6 +256,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  AppRoute: typeof AppRoute
   AttendanceRoute: typeof AttendanceRoute
   MaterialsRoute: typeof MaterialsRoute
   MeRoute: typeof MeRoute
@@ -266,6 +279,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/attendance': {
@@ -422,6 +442,7 @@ const TestRouteWithChildren = TestRoute._addFileChildren(TestRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  AppRoute: AppRoute,
   AttendanceRoute: AttendanceRoute,
   MaterialsRoute: MaterialsRoute,
   MeRoute: MeRoute,

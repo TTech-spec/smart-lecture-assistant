@@ -182,6 +182,7 @@ function AttendancePage() {
           </p>
           <p className="mt-6 text-center text-[13px] text-muted-foreground">
             Not registered yet? <Link to="/register" className="font-medium text-primary underline-offset-4 hover:underline">Register once</Link>
+            <span className="mx-1.5">·</span><Link to="/app" className="font-medium text-primary underline-offset-4 hover:underline">Get the app</Link>
           </p>
           <p className="mt-6 text-center text-[11px] text-muted-foreground/70 lg:hidden">Version {APP_VERSION}</p>
         </main>

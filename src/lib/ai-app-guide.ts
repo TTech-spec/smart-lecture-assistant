@@ -19,7 +19,7 @@ ATTENDLY: GPS-verified class attendance for EKSU lecturers.
 
 ADMIN PAGES (lecturer, after signing in at /admin)
 - Overview (/admin): today's numbers, the live check-in with its projector code, people who need review, latest check-ins. "Start check-in" button.
-- Live session (/admin/live): "Scan student" button (GPS help: when a student in the hall can't sign in because of GPS, they tap "Ask your lecturer to scan me" on their error screen; their phone shows a code; you scan it here, compare the photos and Approve). The running check-in on a map (your pin, the allowed circle, each student), live feed, +5 minutes, End check-in, Open projector, and "Blocked students" (block a matric number from this session; unblock any time).
+- Live session (/admin/live): "Notify students" button (sends a notice, e.g. \"CSC401 check-in is open\", to every student who turned on notifications; tapping it opens Sign attendance). "Scan student" button (GPS help: when a student in the hall can't sign in because of GPS, they tap "Ask your lecturer to scan me" on their error screen; their phone shows a code; you scan it here, compare the photos and Approve). The running check-in on a map (your pin, the allowed circle, each student), live feed, +5 minutes, End check-in, Open projector, and "Blocked students" (block a matric number from this session; unblock any time).
 - To review (/admin/review): check-ins flagged for face mismatch, different phone, suspicious location (GPS never moved, typed-in coordinates, same spot as another student, exactly on your pin, not on campus network) or a changed matric number. Compare the photos and Approve or Reject.
 - Records (/admin/records): every check-in. Summary tiles, search, All/Verified/Review tabs, Filters (level, course, department, gender, link, class code), Export (CSV/JSON), Add a record by hand, tap a student for full details, edit test scores, Ask AI. Updates live every 10 seconds. Shows the last 60 days first; "Load older" at the bottom loads earlier ones; Export > "CSV, all time" downloads everything.
 - Students (/admin/students): students who registered with a face scan; reset a student who changed phones.
@@ -34,7 +34,7 @@ HOW A STUDENT SIGNS IN
 3. Step 1: type matric number; their details and personal class code fill in.
 4. Step 2: live selfie with a location stamp.
 5. Step 3: type the projector code; the server checks distance, code and face, then saves.
-Students register once at /register (name, matric, department, level, phone, gender, face scan). /me lets them see their check-ins and fix name, matric or department.
+Students can add Attendly to their home screen and turn on notifications at /app ("Get the app"; on iPhone they must add it to the home screen first). Students register once at /register (name, matric, department, level, phone, gender, face scan). /me lets them see their check-ins and fix name, matric or department.
 
 COMMON TASKS
 - Start class: Links > New link > verify location > create > Open projector (or Overview > Start check-in).
@@ -52,12 +52,13 @@ FIXES FOR COMMON PROBLEMS
 - Student "out of range": check the radius in Tests & settings and that you verified your location in the hall when creating the link.
 - Everyone locked out after wrong codes on campus Wi-Fi: run scale-2000.sql (it relaxes the shared-network lock).
 - "This page isn't switched on yet" on My attendance: run student-edits.sql. Blocking not working: run session-blocks.sql. Class codes "not switched on": run class-codes.sql.
-- Order of SQL files: security-hardening.sql, students-migration.sql, security-fixes.sql (then make sure your account is in the lecturers table), student-edits.sql, session-blocks.sql, class-codes.sql, payments-secure.sql, scale-2000.sql, fix-link-creation.sql, gps-help.sql, photo-storage.sql (then gps-help.sql again).
+- Order of SQL files: security-hardening.sql, students-migration.sql, security-fixes.sql (then make sure your account is in the lecturers table), student-edits.sql, session-blocks.sql, class-codes.sql, payments-secure.sql, scale-2000.sql, fix-link-creation.sql, gps-help.sql, photo-storage.sql (then gps-help.sql again), push-notifications.sql.
 - "function is_lecturer() does not exist": run security-fixes.sql first.
 - Can't see admin pages after security-fixes.sql: add your account: insert into lecturers (user_id) select id from auth.users where email = 'YOUR EMAIL'.
 - "Payment system not configured": on Vercel set SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL and SQUAD_SECRET_KEY (never with a VITE_ prefix), then redeploy. "API key is empty or invalid": use the Squad SECRET key (sandbox_sk_ or sk_), not the public key. OPay bank code is 100004.
 - Paid upload fails: run payments-secure.sql (creates the private materials-paid storage).
 - Check-in selfies: stored on Cloudinary when CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET are set on Vercel (redeploy after adding); otherwise Supabase Storage (photo-storage.sql), otherwise inside the record.
+- Notifications not arriving: run push-notifications.sql, make sure SUPABASE_SERVICE_ROLE_KEY is set on Vercel, and students must tap Turn on notifications on the Get the app page (iPhone: add to home screen first, iOS 16.4 or newer).
 - Ask AI says not set up: set the "openrouterai" key on Vercel and redeploy; OpenRouter needs credit.
 - Changes not showing: wait for the Vercel deploy to finish, then hard refresh (Ctrl+Shift+R) or close all tabs on a phone. The version is shown at the bottom of the Register page.
 - Face scan stuck: good light on the face, hold the phone at eye level, remove glasses or caps, try again.

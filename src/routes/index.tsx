@@ -333,6 +333,7 @@ function Landing() {
             <Link to="/register" className="px-2 py-2 text-sm hover:opacity-60">Register</Link>
             <Link to="/me" className="px-2 py-2 text-sm hover:opacity-60">My attendance</Link>
             <Link to="/materials" className="px-2 py-2 text-sm hover:opacity-60">Materials</Link>
+            <Link to="/app" className="px-2 py-2 text-sm font-medium text-primary hover:opacity-70">Get the app</Link>
           </nav>
           <div className="flex items-center justify-end gap-2">
             <Button asChild className="hidden rounded-full bg-foreground text-background hover:bg-foreground/85 sm:inline-flex"><Link to="/attendance">Sign attendance</Link></Button>

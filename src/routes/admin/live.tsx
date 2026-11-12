@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Ban, Loader2, ScanLine, Undo2 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { HelpScanner } from "@/components/admin/HelpScanner";
+import { NotifyStudents } from "@/components/admin/NotifyStudents";
 import { useStore } from "@/hooks/use-store";
 import {
   blockStudent, deleteRecordById, disableLink, fetchAttempts, fetchSessionBlocks, setLinkExpiry, unblockStudent,
@@ -71,6 +72,7 @@ function LivePage() {
         actions={<>
           <Button variant="outline" className="h-10 rounded-xl" onClick={() => extend(5)}>+5 minutes</Button>
           <Button variant="outline" className="h-10 rounded-xl text-red-700 hover:text-red-700" onClick={() => { if (confirm("End check-in now?")) { disableLink(live.id); toast.success("Check-in ended."); } }}>End check-in</Button>
+          <NotifyStudents defaultTitle={`${live.courseCode} check-in is open`} defaultBody="Open Attendly and sign attendance now." />
           <Button variant="outline" className="h-10 rounded-xl" onClick={() => setScanOpen(true)}><ScanLine className="mr-1.5 h-4 w-4" /> Scan student</Button>
           <Button asChild className="h-10 rounded-xl"><Link to="/admin/projector" search={{ link: live.id }}>Open projector</Link></Button>
         </>}
