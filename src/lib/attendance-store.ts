@@ -1600,3 +1600,11 @@ export async function claimClassCode(matric: string, name: string, level: string
   }
   return { ok: false, reason: (r?.error as "invalid") ?? "offline" };
 }
+
+/** This student's class code, only if this phone is theirs (class-codes.sql). */
+export async function fetchMyClassCode(matric: string): Promise<string | null> {
+  if (!supabase || matric.trim().length < 5) return null;
+  const { data, error } = await supabase.rpc("get_my_class_code", { p_matric: matric.trim(), p_device: getDeviceId() });
+  if (error || !data) return null;
+  return String(data);
+}

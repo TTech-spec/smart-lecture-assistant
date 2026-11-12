@@ -14,6 +14,8 @@ import {
 import {
   fetchLinkByToken,
   fetchStudentProfile,
+  fetchMyClassCode,
+  getStudentCode,
   lookupStudentRemote,
   getRegisteredMatric,
   submitAttendance,
@@ -117,6 +119,9 @@ function AttendTokenPage() {
   const [profileLoading, setProfileLoading] = useState(false);
   // Not registered, but signed a class before: details found from that record
   const [pastMatch, setPastMatch] = useState<{ fullName: string; level: string } | null>(null);
+  // The student's personal class code (only returned on their own phone)
+  const [myCode, setMyCode] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
   // Face comparison of the selfie against the registered face
   const [face, setFace] = useState<{ state: "checking" | "match" | "mismatch" | "noface"; distance?: number } | null>(null);
   const [roomCode, setRoomCode] = useState("");
@@ -153,10 +158,11 @@ function AttendTokenPage() {
   // Look up the registered profile as the matric is typed (debounced)
   useEffect(() => {
     const m = form.matricNumber.trim();
-    if (m.length < 5) { setProfile(null); setPastMatch(null); setProfileLoading(false); return; }
+    if (m.length < 5) { setProfile(null); setPastMatch(null); setMyCode(null); setProfileLoading(false); return; }
     let cancelled = false;
     setProfileLoading(true);
     const t = setTimeout(async () => {
+      fetchMyClassCode(m).catch(() => null).then((c) => { if (!cancelled) setMyCode(c ?? getStudentCode(m)); });
       const p = await fetchStudentProfile(m).catch(() => null);
       if (cancelled) return;
       setProfile(p);
@@ -176,6 +182,10 @@ function AttendTokenPage() {
     }, 450);
     return () => { cancelled = true; clearTimeout(t); };
   }, [form.matricNumber]);
+
+  function copyMyCode(code: string) {
+    navigator.clipboard?.writeText(code).then(() => { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }).catch(() => {});
+  }
 
   // Compare the selfie with the registered face as soon as both exist
   useEffect(() => {
@@ -539,15 +549,19 @@ function AttendTokenPage() {
                       </div>
                     ))}
                   </dl>
+                  {myCode && <MyCodeRow code={myCode} copied={codeCopied} onCopy={() => copyMyCode(myCode)} />}
                   <p className="border-t border-primary/20 px-4 py-2 text-[12px] text-muted-foreground">
                     Not you? <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={() => update("matricNumber", "")}>Use a different matric number</button>
                   </p>
                 </div>
               )}
               {!profile && !profileLoading && pastMatch && (
-                <p className="mt-2 rounded-xl bg-accent/60 px-3 py-2 text-[13px] leading-5">
-                  We found <strong>{pastMatch.fullName}</strong> from a class you signed before and filled it in below. Check it, then add anything missing.
-                </p>
+                <div className="mt-2 overflow-hidden rounded-xl bg-accent/60">
+                  <p className="px-3 py-2 text-[13px] leading-5">
+                    We found <strong>{pastMatch.fullName}</strong> from a class you signed before and filled it in below. Check it, then add anything missing.
+                  </p>
+                  {myCode && <MyCodeRow code={myCode} copied={codeCopied} onCopy={() => copyMyCode(myCode)} />}
+                </div>
               )}
               {!profile && !profileLoading && !pastMatch && form.matricNumber.trim().length >= 5 && (
                 <p className="mt-2 text-[13px] leading-5 text-amber-700 dark:text-amber-400">
@@ -699,6 +713,21 @@ function AttendTokenPage() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+/** "Your class code" strip shown with the student's details. */
+function MyCodeRow({ code, copied, onCopy }: { code: string; copied: boolean; onCopy: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-primary/20 bg-background/60 px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Your class code</p>
+        <p className="mt-0.5 font-display text-xl font-bold tracking-[0.08em] tabular-nums">{code}</p>
+      </div>
+      <button type="button" onClick={onCopy} className="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium hover:bg-secondary">
+        <Copy className="h-3.5 w-3.5" /> {copied ? "Copied" : "Copy"}
+      </button>
     </div>
   );
 }

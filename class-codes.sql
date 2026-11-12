@@ -73,3 +73,36 @@ begin
 end $$;
 revoke all on function claim_class_code(text, text, text) from public;
 grant execute on function claim_class_code(text, text, text) to anon, authenticated;
+
+-- ── The student's own code, shown at check-in on their own phone only ───────
+-- Returns the code only when this phone registered that matric or has signed
+-- in with it before, so typing a friend's matric doesn't reveal their code.
+create or replace function get_my_class_code(p_matric text, p_device text)
+returns text language sql stable security definer set search_path = public as $$
+  select r.assigned_class_code
+    from attendance_records r
+   where upper(r.matric_number) = upper(trim(coalesce(p_matric, '')))
+     and r.assigned_class_code is not null
+     and coalesce(p_device, '') <> ''
+     and (exists (select 1 from students s
+                   where s.matric_number = upper(trim(p_matric)) and s.device_id = p_device)
+          or exists (select 1 from attendance_records d
+                      where upper(d.matric_number) = upper(trim(p_matric)) and d.device_id = p_device))
+   order by r.submitted_at desc
+   limit 1;
+$$;
+revoke all on function get_my_class_code(text, text) from public;
+grant execute on function get_my_class_code(text, text) to anon, authenticated;
+
+-- lookup_student no longer hands out class codes to anyone who knows a matric
+drop function if exists lookup_student(text);
+create function lookup_student(p_matric text)
+returns table (full_name text, level text, matric_number text, assigned_class_code text)
+language sql stable security definer set search_path = public as $$
+  select full_name, level, matric_number, null::text
+    from attendance_records
+   where upper(matric_number) = upper(trim(p_matric))
+   order by submitted_at desc limit 1;
+$$;
+revoke all on function lookup_student(text) from public;
+grant execute on function lookup_student(text) to anon, authenticated;
