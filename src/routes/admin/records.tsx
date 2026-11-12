@@ -331,6 +331,11 @@ function TestResultModal({ submission, test, onSave, onClose }: {
           {submission.level && <> · {submission.level} Level</>}
         </p>
         <form onSubmit={save} className="space-y-4">
+          {submission.integrity && (submission.integrity.focusLost + submission.integrity.splitScreen + submission.integrity.copyAttempts > 0) && (
+            <p className="rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              During the test: left the page {submission.integrity.focusLost}× · split screen or pop-up {submission.integrity.splitScreen}× · tried to copy {submission.integrity.copyAttempts}×
+            </p>
+          )}
           {hasTheory ? (
             <>
               <p className="rounded-xl bg-secondary p-3 text-sm">
@@ -905,7 +910,9 @@ function RecordsPage() {
                       className="rounded-xl bg-secondary/50 p-3 text-left transition-colors enabled:hover:bg-secondary disabled:opacity-60">
                       <span className="block text-[12px] text-muted-foreground">{t}</span>
                       <span className="block font-display text-lg font-bold tabular-nums">{res ? (res.cheated ? "Cheated" : `${res.score}/${res.total}`) : "—"}</span>
-                      {res && <span className="text-[11px] text-muted-foreground">Tap to edit</span>}
+                      {res && (unmarkedTheory(res) > 0
+                        ? <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{unmarkedTheory(res)} to mark</span>
+                        : <span className="text-[11px] text-muted-foreground">Tap to edit</span>)}
                     </button>
                   );
                 })}
