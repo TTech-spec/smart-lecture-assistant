@@ -179,6 +179,9 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     frame.width = v.videoWidth;
     frame.height = v.videoHeight;
     frame.getContext("2d")!.drawImage(v, 0, 0);
+    // Instant feedback: show the frozen photo straight away and buzz the phone
+    try { navigator.vibrate?.(40); } catch { /* not supported */ }
+    setPreview(frame.toDataURL("image/jpeg", 0.7));
     const posAtCapture = livePos;
     const gps = gpsStats(samplesRef.current);
     const addrAtCapture = liveAddress;
@@ -205,6 +208,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       onChange({ dataUrl, info, pos, frame, gps });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read your location.");
+      setPreview(null);
       setState("idle");
     }
   }
@@ -221,7 +225,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
   const waited = now.getTime() - watchStarted;
   // Wait for a strong signal first; accept weaker ones only after giving the GPS time
   // After 15 s the button opens whatever the signal; the server still checks distance
-  const canCapture = camReady && ((Boolean(livePos) && (acc <= 30 || (waited > 8_000 && acc <= 60))) || waited > 15_000);
+  void waited;
 
   const timeStr =
     now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
@@ -256,17 +260,12 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
               </p>
             </div>
           </div>
-          <Button type="button" className="w-full h-11" onClick={capture} disabled={!canCapture}>
-            {!camReady
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting camera…</>
-              : canCapture
-                ? <><Camera className="mr-2 h-4 w-4" /> Capture</>
-              : !livePos
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Waiting for location… {Math.max(0, Math.ceil((15_000 - waited) / 1000))}s</>
-              : !canCapture
-                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Improving accuracy… ±{Math.round(acc)} m</>
-                : <><Camera className="mr-2 h-4 w-4" /> Capture</>}
+          <Button type="button" className="h-12 w-full text-base" onClick={capture}>
+            {camReady ? <><Camera className="mr-2 h-5 w-5" /> Capture</> : <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting camera… tap to capture</>}
           </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            {!livePos ? "Finding your location… you can still capture." : acc <= 30 ? `Strong location signal · ±${Math.round(acc)} m` : `Location ±${Math.round(acc)} m. Capture now, or wait a few seconds for a stronger signal.`}
+          </p>
           {livePos && acc > 100 && (
             <p className="text-center text-xs text-amber-700 dark:text-amber-400">
               Weak signal (±{Math.round(acc)} m). Turn on WiFi and move near a window or the door.
@@ -276,8 +275,11 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       )}
 
       {state === "processing" && (
-        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Stamping your photo…
+        <div className="relative overflow-hidden rounded-lg">
+          {preview && <img src={preview} alt="Your photo" className="w-full [transform:scaleX(-1)]" />}
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-black/60 py-3 text-sm font-medium text-white">
+            <Loader2 className="h-4 w-4 animate-spin" /> Photo taken · adding location stamp…
+          </div>
         </div>
       )}
 
