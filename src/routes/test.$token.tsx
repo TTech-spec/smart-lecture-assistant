@@ -27,10 +27,12 @@ import {
 import { toast } from "sonner";
 import {
   addTestSubmission,
+  submitTestRemote,
   loadTestSubmissions,
   loadSettings,
   markClassCodeUsed,
   fetchTestLinkByToken,
+  fetchTestLinkWithTest,
   getDeviceId,
   hasDeviceTakenTest,
   hasDeviceTakenTestRemote,
@@ -74,12 +76,16 @@ function TestTokenPage() {
   const [level, setLevel] = useState("");
   const [answers, setAnswers] = useState<(number | null)[]>([]);
   const [result, setResult] = useState<TestSubmission | null>(null);
+  // Correct options for the answer review, sent by the server after submitting
+  const [reviewCorrect, setReviewCorrect] = useState<(number | null)[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadTestLink() {
       try {
-        const link = await fetchTestLinkByToken(token);
+        // Secure path: link + test without answers (tests-secure.sql)
+        const secure = await fetchTestLinkWithTest(token);
+        const link = secure === "legacy" ? await fetchTestLinkByToken(token) : secure?.link ?? null;
         if (!link) {
           setStage("invalid");
           setLoading(false);
@@ -89,7 +95,7 @@ function TestTokenPage() {
         setTestLink(link);
         
         // Load the test associated with this link
-        const testConfig = await fetchTestById(link.testId);
+        const testConfig = secure !== "legacy" && secure ? secure.test : await fetchTestById(link.testId);
         if (!testConfig) {
           toast.error("Test not found");
           setStage("invalid");
@@ -227,7 +233,16 @@ function TestTokenPage() {
       ...(theory && Object.keys(theory).length ? { theory } : {}),
     };
 
-    addTestSubmission(submission);
+    const saved = await submitTestRemote(submission);
+    if (!saved.ok) {
+      if (saved.reason === "already_taken") { setStage("device_used"); return; }
+      toast.error(saved.message);
+      return;
+    }
+    setReviewCorrect(saved.correct);
+    setResult(saved.submission);
+    setStage("result");
+    return;
     setResult(submission);
     setStage("result");
   }

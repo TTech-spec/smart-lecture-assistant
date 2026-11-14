@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import {
   getActiveTest,
   addTestSubmission,
+  submitTestRemote,
   loadTestSubmissions,
   loadSettings,
   markClassCodeUsed,
@@ -117,6 +118,8 @@ function TestFlow({ test }: { test: TestConfig }) {
     Array(test.questions.length).fill(null),
   );
   const [result, setResult] = useState<TestSubmission | null>(null);
+  // Correct options for the answer review, sent by the server after submitting
+  const [reviewCorrect, setReviewCorrect] = useState<(number | null)[] | null>(null);
   const settings = loadSettings();
 
   async function handleIdentitySubmit(name: string, matric: string, lvl: string) {
@@ -206,7 +209,16 @@ function TestFlow({ test }: { test: TestConfig }) {
       deviceId,
     };
 
-    addTestSubmission(submission);
+    const saved = await submitTestRemote(submission);
+    if (!saved.ok) {
+      if (saved.reason === "already_taken") { setStage("device_used"); return; }
+      toast.error(saved.message);
+      return;
+    }
+    setReviewCorrect(saved.correct);
+    setResult(saved.submission);
+    setStage("result");
+    return;
     setResult(submission);
     setStage("result");
   }
@@ -367,7 +379,7 @@ function TestFlow({ test }: { test: TestConfig }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
             >
-              <ResultScreen test={test} submission={result} />
+              <ResultScreen test={reviewCorrect ? { ...test, questions: test.questions.map((q, i) => ({ ...q, correctIndex: (reviewCorrect[i] ?? q.correctIndex) as 0 | 1 | 2 | 3 })) } : test} submission={result} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -803,9 +815,9 @@ function ResultScreen({ test, submission }: { test: TestConfig; submission: Test
           {submission.studentName} &middot; {submission.matricNumber}
           {submission.level && <> &middot; {submission.level} Level</>}
         </p>
-        <div className={`mt-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold ${passed ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
-          {passed ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-          {passed ? "Passed" : "Failed"}
+        <div className={`mt-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold ${waiting > 0 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" : passed ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
+          {waiting > 0 ? <Clock className="h-4 w-4" /> : passed ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+          {waiting > 0 ? "Awaiting marking" : passed ? "Passed" : "Failed"}
         </div>
       </div>
 

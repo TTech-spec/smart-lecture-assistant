@@ -767,6 +767,16 @@ export async function fetchLinkByToken(token: string): Promise<AttendanceLink | 
  * Returns the test link, null if not found, or throws with message "db_error" if
  * Supabase is reachable but the query failed.
  */
+/** Test link plus its test (without answers) for the student page */
+export async function fetchTestLinkWithTest(token: string): Promise<{ link: TestLink; test: TestConfig | null } | null | "legacy"> {
+  if (!supabase) return null;
+  const r = await supabase.rpc("get_test_link", { p_token: token });
+  if (r.error) return rpcMissing(r.error) ? "legacy" : null;
+  const d = r.data as { link?: Row; test?: Row } | null;
+  if (!d?.link) return null;
+  return { link: testLinkFromDb(d.link), test: d.test ? testFromDb(d.test) : null };
+}
+
 export async function fetchTestLinkByToken(token: string): Promise<TestLink | null> {
   if (!supabase) return null;
 
@@ -875,21 +885,37 @@ export function saveTests(tests: TestConfig[]) {
  * This is what students call on page load so they always see the live state
  * regardless of what's in their localStorage.
  */
+/** True when a server function from tests-secure.sql isn't installed yet */
+const rpcMissing = (e: { message?: string; code?: string } | null) =>
+  !!e && (e.code === "PGRST202" || /could not find the function|does not exist/i.test(e.message ?? ""));
+
+/** Student-safe test from get_active_test()/get_test_link(): no answers, no marking guide */
+async function fetchStudentActiveTest(): Promise<{ data: Row | null; legacy: boolean }> {
+  const r = await supabase!.rpc("get_active_test");
+  if (!r.error) return { data: (r.data as Row | null) ?? null, legacy: false };
+  if (!rpcMissing(r.error)) return { data: null, legacy: false };
+  // tests-secure.sql not run yet: old direct read
+  const { data } = await supabase!.from("test_configs").select("*").eq("is_active", true).limit(1).maybeSingle();
+  return { data: data ?? null, legacy: true };
+}
+
+/** Keep a lecturer's full copy (with answers) when a stripped student copy arrives */
+function mergeTestLocally(test: TestConfig, all: TestConfig[]): TestConfig[] {
+  const idx = all.findIndex((t) => t.id === test.id);
+  const stripped = test.questions.some((q) => q.correctIndex === undefined);
+  if (idx >= 0) all[idx] = stripped ? { ...test, questions: all[idx].questions } : test;
+  else all.push(test);
+  return all;
+}
+
 export async function fetchActiveTestFromSupabase(): Promise<TestConfig | null> {
   if (!supabase) return getActiveTest();
   try {
-    const { data, error } = await supabase
-      .from("test_configs")
-      .select("*")
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) return null;
+    const { data } = await fetchStudentActiveTest();
+    if (!data) return null;
     const test = testFromDb(data);
     // Sync into localStorage so getActiveTest() stays consistent
-    const all = loadTests();
-    const idx = all.findIndex((t) => t.id === test.id);
-    if (idx >= 0) all[idx] = test; else all.push(test);
+    const all = mergeTestLocally(test, loadTests());
     // Deactivate any other tests locally
     const synced = all.map((t) => ({ ...t, isActive: t.id === test.id }));
     localStorage.setItem(TST_KEY, JSON.stringify(synced));
@@ -907,12 +933,7 @@ export async function fetchActiveTestFromSupabase(): Promise<TestConfig | null> 
 export async function pollActiveTest(): Promise<TestConfig | null> {
   if (!supabase) return getActiveTest();
   try {
-    const { data } = await supabase
-      .from("test_configs")
-      .select("id, is_active, title, course_code, duration_minutes, created_at, questions, test_type")
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
+    const { data } = await fetchStudentActiveTest();
 
     if (!data) {
       // No active test in DB — make sure local state reflects that
@@ -929,8 +950,7 @@ export async function pollActiveTest(): Promise<TestConfig | null> {
     const local = loadTests();
     const needsUpdate = !local.some((t) => t.id === test.id && t.isActive);
     if (needsUpdate) {
-      const merged = local.filter((t) => t.id !== test.id);
-      merged.push(test);
+      const merged = mergeTestLocally(test, local);
       const synced = merged.map((t) => ({ ...t, isActive: t.id === test.id }));
       localStorage.setItem(TST_KEY, JSON.stringify(synced));
       window.dispatchEvent(new Event("att:tests"));
@@ -1000,6 +1020,28 @@ export function addTestSubmission(s: TestSubmission) {
   });
 }
 
+/**
+ * Student submit: the server marks the paper (tests-secure.sql). Returns the
+ * saved result plus the correct options for the answer review.
+ */
+export async function submitTestRemote(s: TestSubmission): Promise<
+  | { ok: true; submission: TestSubmission; correct: (number | null)[] | null }
+  | { ok: false; reason: "already_taken" | "test_closed" | "error"; message: string }
+> {
+  if (!supabase) { addTestSubmission(s); return { ok: true, submission: s, correct: null }; }
+  const r = await supabase.rpc("submit_test", { p: submissionToDb(s) });
+  if (r.error) {
+    if (rpcMissing(r.error)) { addTestSubmission(s); return { ok: true, submission: s, correct: null }; }
+    if (/already_taken/.test(r.error.message)) return { ok: false, reason: "already_taken", message: "You have already taken this test." };
+    if (/test_closed/.test(r.error.message)) return { ok: false, reason: "test_closed", message: "This test has been closed by your lecturer." };
+    return { ok: false, reason: "error", message: "Couldn't submit your test. Check your internet and tap Submit again." };
+  }
+  const row = r.data as Row & { correct?: (number | null)[] };
+  const saved = submissionFromDb(row);
+  const all = loadTestSubmissions(); all.push(saved); saveTestSubmissions(all);
+  return { ok: true, submission: saved, correct: row.correct ?? null };
+}
+
 export function syncTestSubmission(s: TestSubmission) {
   sync(supabase?.from("test_submissions").upsert(submissionToDb(s)));
 }
@@ -1025,6 +1067,9 @@ export async function hasDeviceTakenTestRemote(
 ): Promise<TestSubmission | null> {
   if (!supabase) return null;
   try {
+    const r = await supabase.rpc("test_taken", { p_test_id: testId, p_device_id: deviceId });
+    if (!r.error) return r.data ? submissionFromDb(r.data as Row) : null;
+    if (!rpcMissing(r.error)) return null;
     const { data } = await supabase
       .from("test_submissions")
       .select("*")
