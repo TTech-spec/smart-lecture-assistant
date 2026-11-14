@@ -1810,6 +1810,33 @@ export async function refreshRecordsFromSupabase(): Promise<AttendanceRecord[] |
  * inserts (works when Realtime is on for attendance_records). Calls
  * onNew with records that weren't there before. Returns a stop function.
  */
+/** Flags that put a check-in on the To review list (keep in sync with needsReview) */
+export const REVIEW_FLAGS = ["face_mismatch", "no_face_check", "different_phone", "matric_changed", "gps_too_still", "gps_round", "same_spot", "on_pin", "off_campus_net"];
+
+/**
+ * Flagged check-ins straight from the database (any date), merged into the
+ * local copy so the To review page never depends on what happened to be
+ * downloaded when the dashboard opened.
+ */
+export async function fetchReviewQueue(): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
+  if (!supabase) return { ok: true, count: 0 };
+  const orFilter = REVIEW_FLAGS.map((f) => `custom_fields->>flags.ilike.*${f}*`).join(",");
+  const { data, error } = await supabase
+    .from("attendance_records")
+    .select("*")
+    .or(orFilter)
+    .order("submitted_at", { ascending: false })
+    .limit(1000);
+  if (error) return { ok: false, message: error.message };
+  const fresh = (data as Row[]).map(recordFromDb);
+  const byId = new Map(loadRecords().map((r) => [r.id, r]));
+  for (const r of fresh) byId.set(r.id, r);
+  const merged = [...byId.values()].sort((x, y) => y.submittedAt.localeCompare(x.submittedAt));
+  writeRecords(merged);
+  window.dispatchEvent(new Event("att:records"));
+  return { ok: true, count: fresh.filter((r) => !r.customFields?.reviewed).length };
+}
+
 export function watchRecords(onNew: (fresh: AttendanceRecord[]) => void, ms = 10_000): () => void {
   let stopped = false;
   let busy = false;

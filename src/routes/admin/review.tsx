@@ -4,7 +4,7 @@ import { Check, ShieldCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/hooks/use-store";
-import { fetchStudents, reviewRecord, type AttendanceRecord, type StudentProfile } from "@/lib/attendance-store";
+import { fetchStudents, fetchReviewQueue, reviewRecord, type AttendanceRecord, type StudentProfile } from "@/lib/attendance-store";
 import { needsReview } from "@/components/admin/AdminSidebar";
 import { Avatar, PageHeader, Panel, checkStatus } from "@/components/admin/ui";
 
@@ -19,7 +19,21 @@ function ReviewPage() {
   const { id } = Route.useSearch();
   const navigate = useNavigate();
   const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => { fetchStudents().then(setStudents).catch(() => setStudents([])); }, []);
+  // Pull flagged check-ins from the database now and every 15 seconds
+  useEffect(() => {
+    let alive = true;
+    const pull = () => fetchReviewQueue().then((r) => {
+      if (!alive) return;
+      setLoadError(r.ok ? null : r.message);
+      setLoading(false);
+    });
+    pull();
+    const t = setInterval(pull, 15_000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
 
   const queue = useMemo(
     () => records.filter(needsReview).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)),
@@ -45,7 +59,14 @@ function ReviewPage() {
         title="To review"
       />
 
-      {queue.length === 0 && resets.length === 0 ? (
+      {loadError && (
+        <Panel className="border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+          Couldn't load check-ins to review from the database. Check your internet, then refresh. ({loadError})
+        </Panel>
+      )}
+      {queue.length === 0 && resets.length === 0 && loading ? (
+        <Panel className="py-16 text-center text-sm text-muted-foreground">Loading check-ins to review…</Panel>
+      ) : queue.length === 0 && resets.length === 0 ? (
         <Panel className="flex flex-col items-center gap-3 py-16 text-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e7f8f1] text-[#0f8a66]"><ShieldCheck className="h-6 w-6" /></span>
           <p className="font-display text-xl font-semibold">Nothing to review</p>
