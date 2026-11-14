@@ -451,6 +451,10 @@ function RecordsPage() {
   const [showAi, setShowAi] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "review" | "other">("all");
+  // Only today's check-ins by default; older ones when the lecturer asks to check them
+  const [showOlder, setShowOlder] = useState(false);
+  const todayLocal = new Date().toDateString();
+  const isToday = (r: AttendanceRecord) => new Date(r.submittedAt).toDateString() === todayLocal;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Records load the last 60 days first; older ones on request
   const [loadedSince, setLoadedSince] = useState<string | null>(() => getRecordsLoadedSince() ?? new Date(Date.now() - RECORD_WINDOW_DAYS * 86_400_000).toISOString());
@@ -579,6 +583,8 @@ function RecordsPage() {
       .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
       .filter((r) => {
         if (m && !r.matricNumber.toLowerCase().includes(m) && !r.fullName.toLowerCase().includes(m)) return false;
+        // Searching a name or matric looks through older check-ins too
+        if (!showOlder && !m && !isToday(r)) return false;
         if (dept !== "all" && r.department !== dept) return false;
         if (gender !== "all" && r.gender !== gender) return false;
         if (level !== "all" && (r.level || "") !== level) return false;
@@ -593,7 +599,11 @@ function RecordsPage() {
         }
         return true;
       });
-  }, [records, matric, dept, gender, level, course, linkFilter, classCodeFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, matric, dept, gender, level, course, linkFilter, classCodeFilter, showOlder]);
+  const olderCount = useMemo(() => records.filter((r) => !isToday(r)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [records]);
 
   function resetFilters() {
     setStatusFilter("all");
@@ -726,6 +736,21 @@ function RecordsPage() {
           <Button onClick={openAdd} className="h-10 rounded-full bg-foreground px-4 text-background hover:bg-foreground/85"><Plus className="mr-1.5 h-4 w-4" /> Add</Button>
         </div>
       </div>
+
+      {/* ── Today only, unless the lecturer wants older records ── */}
+      {olderCount > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-secondary/40 px-4 py-3 text-sm">
+          <span className="text-muted-foreground">
+            {showOlder
+              ? <>Showing <strong className="text-foreground">all check-ins</strong>, including {olderCount} older one{olderCount === 1 ? "" : "s"}.</>
+              : <>Showing <strong className="text-foreground">today's check-ins</strong>. {olderCount} older check-in{olderCount === 1 ? " is" : "s are"} hidden; search a name to find one.</>}
+          </span>
+          <button type="button" onClick={() => setShowOlder((v) => !v)}
+            className="inline-flex h-9 items-center rounded-full bg-card px-4 text-[13px] font-semibold shadow-sm ring-1 ring-border hover:bg-secondary">
+            {showOlder ? "Show only today" : "Show older records"}
+          </button>
+        </div>
+      )}
 
       {/* ── Summary ── */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
