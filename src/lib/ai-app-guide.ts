@@ -26,6 +26,7 @@ ADMIN PAGES (lecturer, after signing in at /admin)
 - Links (/admin/links): create a check-in link. Verify your location on the map first (drag the pin if needed, choose the radius, save the venue for next time), set how long it stays open, then share the link or show its QR code.
 - Tests & settings (/admin/manage): on phones it has tabs (Class settings, Tests, Stats & earnings, History). class location and allowed radius, campus internet addresses (optional, flags off-campus check-ins), how long the form stays open, course code, level, topic, custom form fields, class codes on/off and format, tests (C1/C2/C3; each question can be Multiple choice or Theory with marks and a marking guide; a PDF can mix both: objective = A-D options + "Answer: B", theory = question with "(5 marks)" and optional "Guide:" line), earnings from paid materials and "Pay out now".
 - Materials (/admin/materials): upload study materials, free or paid. Paid ones need your bank (with the account name checked against the bank) and go in private storage.
+- "Show me how" videos: Ask AI can play an on-screen walkthrough that opens the page, points at each button and explains it (create a link, review check-ins, download attendance, add a record, block a student, GPS help, notify students, create a test, class location, upload materials).
 - Projector screen (/admin/projector): full-screen QR code and the 4-letter code that changes every 30 seconds.
 
 HOW A STUDENT SIGNS IN

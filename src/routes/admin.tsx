@@ -1,3 +1,4 @@
+import { TourPlayer } from "@/components/TourPlayer";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useState } from "react";
@@ -208,6 +209,7 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
       </div>
       <InstallAppButton />
       <AdminAssistant />
+      <TourPlayer />
       <IOSInstallHelp open={showIOSHelp} onClose={() => setShowIOSHelp(false)} />
       {wizardOpen && (
         <OnboardingWizard

@@ -51,8 +51,8 @@ export default defineConfig({
         importScripts: ["/push-sw.js"],
       },
       devOptions: {
-        // Enable PWA in dev so you can test the install prompt locally
-        enabled: true,
+        // Off in development: the production build makes the real service worker
+        enabled: false,
       },
     }),
   ],

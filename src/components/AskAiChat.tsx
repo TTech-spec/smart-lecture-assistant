@@ -1,6 +1,7 @@
+import { playTour, tourById, tourForQuestion } from "@/lib/tours";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ArrowRight, ArrowUp, Loader2, Mic, MicOff, Sparkles, Volume2, VolumeX } from "lucide-react";
+import { ArrowRight, ArrowUp, Loader2, Mic, MicOff, PlayCircle, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { askAttendanceAi } from "@/lib/ai-server";
 
@@ -9,7 +10,7 @@ export type AiRow = {
   status?: string; distance?: number; at: string; classCode?: string; tests?: string;
 };
 
-type Msg = { role: "user" | "assistant"; content: string; error?: boolean; actions?: { path: string; label: string }[] };
+type Msg = { role: "user" | "assistant"; content: string; error?: boolean; actions?: { path: string; label: string }[]; tour?: string };
 
 const SUGGESTIONS = [
   "How do I start attendance for my class?",
@@ -77,6 +78,18 @@ export function AskAiChat({ rows, onNavigate }: { rows: AiRow[]; onNavigate?: ()
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, busy]);
 
+  function startTour(id: string) {
+    setTimeout(() => { onNavigate?.(); playTour(id); }, 900);
+  }
+
+  /** AI unavailable: still show a matching walkthrough if there is one */
+  function offerTour(question: string, fallback: string) {
+    const t = tourForQuestion(question);
+    if (!t) { setMsgs((m) => [...m, { role: "assistant", content: fallback, error: true }]); return; }
+    setMsgs((m) => [...m, { role: "assistant", content: `Let me show you how to ${t.title.toLowerCase()}. Watch the screen.`, tour: t.id }]);
+    startTour(t.id);
+  }
+
   async function ask(q: string) {
     const question = q.trim();
     if (!question || busy) return;
@@ -89,10 +102,18 @@ export function AskAiChat({ rows, onNavigate }: { rows: AiRow[]; onNavigate?: ()
       const token = data.session?.access_token;
       if (!token) throw new Error("Sign in again to use Ask AI.");
       const r = await askAttendanceAi({ data: { accessToken: token, question, history, records: rows.slice(0, 3000), today: new Date().toDateString(), page } });
-      setMsgs((m) => [...m, r.ok ? { role: "assistant", content: r.answer, actions: r.actions } : { role: "assistant", content: r.message, error: true }]);
-      if (r.ok && voiceOn) speak(r.answer);
+      if (r.ok) {
+        // The AI picked a walkthrough: play it now, it opens the right page by itself
+        const tour = r.tour ?? (/\b(how|show|where|can'?t|cannot|stuck|help|don'?t (understand|get))\b/i.test(question) ? tourForQuestion(question)?.id : undefined);
+        setMsgs((m) => [...m, { role: "assistant", content: r.answer, actions: r.actions, tour }]);
+        if (voiceOn) speak(r.answer);
+        if (tour) startTour(tour);
+      } else {
+        offerTour(question, r.message);
+      }
     } catch (e) {
-      setMsgs((m) => [...m, { role: "assistant", content: e instanceof Error && e.message.startsWith("Sign in") ? e.message : "Couldn't reach the AI. Check your connection and try again.", error: true }]);
+      if (e instanceof Error && e.message.startsWith("Sign in")) setMsgs((m) => [...m, { role: "assistant", content: e.message, error: true }]);
+      else offerTour(question, "Couldn't reach the AI. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -126,6 +147,12 @@ export function AskAiChat({ rows, onNavigate }: { rows: AiRow[]; onNavigate?: ()
                     Open {a.label} <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 ))}
+                {m.tour && (
+                  <button type="button" onClick={() => { onNavigate?.(); playTour(m.tour!); }}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-foreground px-3 text-[13px] font-semibold text-background hover:opacity-90">
+                    <PlayCircle className="h-3.5 w-3.5" /> {tourById(m.tour)?.title ? `Show me how` : "Show me"}
+                  </button>
+                )}
                 <button type="button" onClick={() => speak(m.content)} aria-label="Read this answer aloud"
                   className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[12px] text-muted-foreground hover:bg-secondary"><Volume2 className="h-3.5 w-3.5" /> Listen</button>
               </div>

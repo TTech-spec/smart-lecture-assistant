@@ -7,6 +7,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { AI_APP_GUIDE, AI_PAGES } from "./ai-app-guide";
+import { TOURS } from "./tours";
 
 function env(...names: string[]): string {
   for (const n of names) {
@@ -49,7 +50,7 @@ export const askAttendanceAi = createServerFn({ method: "POST" })
     today: z.string().max(40),
     page: z.string().max(80).default("/admin"),
   }).parse(d))
-  .handler(async ({ data }): Promise<{ ok: true; answer: string; actions: { path: string; label: string }[] } | { ok: false; message: string }> => {
+  .handler(async ({ data }): Promise<{ ok: true; answer: string; actions: { path: string; label: string }[]; tour?: string } | { ok: false; message: string }> => {
     const key = openRouterKey();
     if (!key) return { ok: false, message: "AI isn't set up yet: add your OpenRouter key on Vercel as \"openrouterai\" and redeploy." };
     if (!(await isLecturer(data.accessToken))) return { ok: false, message: "Sign in as a lecturer to use Ask AI." };
@@ -66,6 +67,7 @@ export const askAttendanceAi = createServerFn({ method: "POST" })
       "Use only the app guide and the records. Don't invent pages, buttons or numbers. Count carefully; numbers must match the rows.",
       "Be short and plain, like a helpful colleague: the answer first, then numbered steps if there are steps. No markdown headings. Your answer may be read aloud, so avoid tables unless asked.",
       "When a page would help, add one line per page at the very end in exactly this form: GO: /admin/links (only these paths: " + AI_PAGES.map((p) => p.path).join(", ") + "). At most 2 GO lines.",
+      "SHOW-ME VIDEOS: the app can play an on-screen walkthrough that opens the page and points at each button. When the lecturer asks how to do one of these tasks, says they don't understand, are stuck, or asks you to show them, add one line at the very end in exactly this form: SHOW: create_link. Available: " + TOURS.map((t) => `${t.id} (${t.title})`).join("; ") + ". Use at most one SHOW line, and only for a matching task.",
       "Status meanings: Verified = location, code and face passed; Face mismatch, Different phone, Suspicious location, Matric changed = needs review; Not registered = no face registration.",
       `Today is ${data.today}. The lecturer is on page ${data.page}. There are ${lines.length} check-in rows.`,
       "\n\nAPP GUIDE:\n" + AI_APP_GUIDE,
@@ -104,14 +106,17 @@ export const askAttendanceAi = createServerFn({ method: "POST" })
       if (!raw) return { ok: false, message: "The AI sent an empty answer. Try asking again." };
       // Pull out "GO: /admin/..." lines and turn them into page buttons
       const actions: { path: string; label: string }[] = [];
+      let tour: string | undefined;
       const answer = raw.split("\n").filter((line) => {
+        const sm = line.trim().match(/^SHOW:\s*([a-z_]+)\s*$/i);
+        if (sm) { if (TOURS.some((t) => t.id === sm[1])) tour = sm[1]; return false; }
         const m = line.trim().match(/^GO:\s*(\/admin[\w/-]*)\s*$/i);
         if (!m) return true;
         const page = AI_PAGES.find((p) => p.path === m[1].replace(/\/$/, "") || (m[1] === "/admin/" && p.path === "/admin"));
         if (page && !actions.some((a) => a.path === page.path)) actions.push(page);
         return false;
       }).join("\n").trim();
-      return { ok: true, answer, actions };
+      return { ok: true, answer, actions, tour };
     } catch {
       return { ok: false, message: "Couldn't reach the AI service. Check your connection and try again." };
     }
