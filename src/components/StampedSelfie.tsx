@@ -33,6 +33,23 @@ function gpsStats(samples: { pos: Coords }[]): GpsStats {
   return { n, coordDistinct: coords.size, accDistinct: accs.size, spreadM: Math.round(spreadM * 10) / 10 };
 }
 
+/** Decode a photo file; falls back to an <img> on older iPhones */
+async function decodePhoto(file: File): Promise<{ width: number; height: number } & CanvasImageSource> {
+  try {
+    return await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
+  } catch {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      return Object.assign(img, { width: img.naturalWidth, height: img.naturalHeight });
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+  }
+}
+
 /** True when a frame is (almost) completely black */
 function isBlackFrame(c: HTMLCanvasElement): boolean {
   try {
@@ -87,6 +104,14 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     const v = videoRef.current;
     const stream = streamRef.current;
     if (!v || !stream) return;
+    // iPhone Safari only shows a live camera when the video is muted and plays
+    // inline; React doesn't always set the muted attribute, so set both here
+    v.muted = true;
+    v.defaultMuted = true;
+    v.setAttribute("muted", "");
+    v.setAttribute("playsinline", "");
+    v.setAttribute("webkit-playsinline", "");
+    v.autoplay = true;
     if (v.srcObject !== stream) v.srcObject = stream;
     const ready = () => { if (v.videoWidth > 0) setCamReady(true); };
     v.addEventListener("loadedmetadata", ready);
@@ -123,7 +148,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       return;
     }
     try {
-      const bmp = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
+      const bmp = await decodePhoto(file);
       const scale = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
       const frame = document.createElement("canvas");
       frame.width = Math.round(bmp.width * scale); frame.height = Math.round(bmp.height * scale);

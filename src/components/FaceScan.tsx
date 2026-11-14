@@ -51,6 +51,7 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
         const v = videoRef.current!;
+        v.muted = true; v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); // iPhone Safari needs these to show the camera
         v.srcObject = stream;
         await v.play();
         setStatus("live");
@@ -168,7 +169,7 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="relative overflow-hidden rounded-2xl bg-[#283349]" style={{ aspectRatio: "3 / 4" }}>
-        <video ref={videoRef} playsInline muted className="absolute inset-0 h-full w-full object-cover [transform:scaleX(-1)]" />
+        <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover [transform:scaleX(-1)]" />
         {/* Oval mask */}
         <div
           className="pointer-events-none absolute left-1/2 top-1/2 h-[72%] w-[62%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border-[3px]"

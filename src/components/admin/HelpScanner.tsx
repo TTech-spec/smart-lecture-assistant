@@ -54,6 +54,7 @@ export function HelpScanner({ onClose }: { onClose: () => void }) {
         if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
         const v = videoRef.current!;
+        v.muted = true; v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); // iPhone Safari needs these to show the camera
         v.srcObject = stream; await v.play();
         const { default: jsQR } = await import("jsqr");
         canvasRef.current = document.createElement("canvas");
@@ -108,7 +109,7 @@ export function HelpScanner({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-black">
-          <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
+          <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
           <div className="pointer-events-none absolute inset-10 rounded-2xl border-2 border-white/80" />
           {camError && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-white"><Camera className="h-6 w-6" />{camError}</div>}
           {looking && <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white"><Loader2 className="h-6 w-6 animate-spin" /></div>}
