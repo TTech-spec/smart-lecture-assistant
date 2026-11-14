@@ -42,6 +42,16 @@ begin
   end if;
 end $$;
 
+-- Old OPay payment table (no longer used by the app): lecturers only
+do $$
+begin
+  if to_regclass('public.payment_records') is not null then
+    alter table public.payment_records enable row level security;
+    drop policy if exists lecturer_all on public.payment_records;
+    create policy lecturer_all on public.payment_records for all to authenticated using (public.is_lecturer()) with check (public.is_lecturer());
+  end if;
+end $$;
+
 -- 2. Questions without answers ------------------------------------------------
 create or replace function public._student_questions(q jsonb)
 returns jsonb language sql immutable set search_path = public as $$
