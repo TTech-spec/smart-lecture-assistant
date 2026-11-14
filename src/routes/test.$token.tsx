@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { TestResultView } from "@/components/TestResultView";
 import { TestRules } from "@/components/TestRules";
 import { isTheory, questionMarks, unmarkedTheory, type TheoryAnswer } from "@/lib/attendance-store";
 import { TheoryAnswerBox, emptyTheoryAnswer } from "@/components/TheoryAnswerBox";
@@ -328,7 +329,7 @@ function TestTokenPage() {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.35 }}
             >
-              <ResultScreen result={result} test={test} />
+              <TestResultView test={test} submission={result} correct={reviewCorrect} />
             </motion.div>
           )}
 
@@ -666,55 +667,6 @@ function CheatedScreen({ onRetry }: { onRetry: () => void }) {
 }
 
 // ── Result Screen ─────────────────────────────────────────────────────────────
-function ResultScreen({ result, test }: { result: TestSubmission; test: TestConfig }) {
-  const percentage = Math.round((result.score / result.total) * 100);
-  const passed = percentage >= 50;
-  const waiting = unmarkedTheory(result);
-
-  return (
-    <div className="rounded-2xl border bg-card p-6 shadow-soft text-center">
-      {waiting > 0 && (
-        <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-          Score so far. {waiting} written answer{waiting === 1 ? " is" : "s are"} waiting for your lecturer to mark.
-        </p>
-      )}
-      <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full ${
-        passed ? "bg-[color:var(--color-success)]/20" : "bg-destructive/20"
-      }`}>
-        {passed ? (
-          <CheckCircle2 className="h-8 w-8 text-[color:var(--color-success)]" />
-        ) : (
-          <XCircle className="h-8 w-8 text-destructive" />
-        )}
-      </div>
-      <h2 className={`mb-2 text-xl font-bold ${passed ? "text-[color:var(--color-success)]" : "text-destructive"}`}>
-        {waiting > 0 ? "Test submitted" : passed ? "Test Passed!" : "Test Failed"}
-      </h2>
-      <div className="mb-6">
-        <div className="text-4xl font-bold">{result.score}/{result.total}</div>
-        <div className="text-sm text-muted-foreground">{percentage}%</div>
-      </div>
-      <div className="mb-6 rounded-lg bg-secondary p-4 text-left">
-        <h3 className="mb-2 font-semibold">Test Details</h3>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <div className="text-muted-foreground">Student:</div>
-          <div>{result.studentName}</div>
-          <div className="text-muted-foreground">Matric Number:</div>
-          <div>{result.matricNumber}</div>
-          <div className="text-muted-foreground">Level:</div>
-          <div>{result.level}</div>
-          <div className="text-muted-foreground">Test Type:</div>
-          <div>{result.testType}</div>
-        </div>
-      </div>
-      <Button asChild className="w-full">
-        <Link to="/">
-          <MapPin className="mr-2 h-4 w-4" /> Back to home
-        </Link>
-      </Button>
-    </div>
-  );
-}
 
 // ── Already Taken Screen ───────────────────────────────────────────────────────
 function AlreadyTakenScreen({ result, test }: { result: TestSubmission; test: TestConfig }) {

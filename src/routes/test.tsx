@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { TestResultView } from "@/components/TestResultView";
 import { TestRules } from "@/components/TestRules";
 import { useTestIntegrity, NO_COPY_CLASS } from "@/hooks/use-test-integrity";
 import { IntegrityNote } from "@/components/IntegrityNote";
@@ -380,7 +381,7 @@ function TestFlow({ test }: { test: TestConfig }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
             >
-              <ResultScreen test={reviewCorrect ? { ...test, questions: test.questions.map((q, i) => ({ ...q, correctIndex: (reviewCorrect[i] ?? q.correctIndex) as 0 | 1 | 2 | 3 })) } : test} submission={result} />
+              <TestResultView test={test} submission={result} correct={reviewCorrect} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -792,84 +793,3 @@ function CheatedScreen({ onForceSubmit }: { onForceSubmit: () => void }) {
 }
 
 // ── Result screen ──────────────────────────────────────────────────────────────
-function ResultScreen({ test, submission }: { test: TestConfig; submission: TestSubmission }) {
-  const percentage = Math.round((submission.score / submission.total) * 100);
-  const passed = percentage >= 50;
-  const waiting = unmarkedTheory(submission);
-
-  return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div className="rounded-2xl border bg-card p-8 shadow-soft text-center">
-        <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 220, damping: 18 }}
-          className={`mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full ${submission.cheated ? "bg-red-100 dark:bg-red-900/30" : waiting > 0 ? "bg-amber-100 dark:bg-amber-900/30" : passed ? "bg-green-100 dark:bg-green-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
-          {submission.cheated ? <AlertTriangle className="h-10 w-10 text-red-600 dark:text-red-400" /> : waiting > 0 ? <Clock className="h-10 w-10 text-amber-600 dark:text-amber-400" /> : passed ? <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" /> : <XCircle className="h-10 w-10 text-amber-600 dark:text-amber-400" />}
-        </motion.div>
-        <h1 className="text-3xl font-bold">{submission.score}/{submission.total}</h1>
-        <p className="mt-1 text-xl font-semibold text-muted-foreground">{percentage}%</p>
-        {waiting > 0 && !submission.cheated && (
-          <p className="mt-2 text-sm font-medium text-amber-700 dark:text-amber-300">
-            So far: {waiting} written answer{waiting === 1 ? " is" : "s are"} waiting for your lecturer to mark.
-          </p>
-        )}
-        {submission.cheated && <p className="mt-2 text-sm text-red-600 dark:text-red-400 font-medium">Test ended due to cheating violation</p>}
-        <p className="mt-3 text-muted-foreground">
-          {submission.studentName} &middot; {submission.matricNumber}
-          {submission.level && <> &middot; {submission.level} Level</>}
-        </p>
-        <div className={`mt-4 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold ${waiting > 0 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" : passed ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
-          {waiting > 0 ? <Clock className="h-4 w-4" /> : passed ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-          {waiting > 0 ? "Awaiting marking" : passed ? "Passed" : "Failed"}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border bg-card shadow-soft">
-        <div className="border-b p-5"><h2 className="text-lg font-semibold">Answer review</h2></div>
-        <div className="divide-y">
-          {test.questions.map((q, i) => {
-            const chosen = submission.answers[i];
-            const correct = q.correctIndex;
-            const isRight = chosen === correct;
-            const notAnswered = chosen === null || chosen === undefined;
-            return (
-              <div key={q.id} className="p-5 space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${notAnswered ? "bg-secondary text-muted-foreground" : isRight ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>{i + 1}</div>
-                  <p className="font-medium leading-relaxed">{q.text}</p>
-                </div>
-                {isTheory(q) ? (
-                  <div className="ml-9 space-y-1">
-                    <p className="whitespace-pre-wrap rounded-lg border bg-secondary/40 px-3 py-2 text-sm">{submission.theory?.[i]?.text || <span className="italic text-muted-foreground">Not answered</span>}</p>
-                    <p className="text-xs text-muted-foreground">{submission.theory?.[i]?.marks != null ? `Marked: ${submission.theory[i].marks}/${questionMarks(q)}` : `Waiting for marking · ${questionMarks(q)} marks`}</p>
-                  </div>
-                ) : (
-                <div className="ml-9 space-y-2">
-                  {q.options.map((opt, oi) => {
-                    const isCorrectOpt = oi === correct;
-                    const isChosenOpt = oi === chosen;
-                    let cls = "rounded-lg border px-3 py-2 text-sm ";
-                    if (isCorrectOpt) cls += "border-green-300 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300";
-                    else if (isChosenOpt) cls += "border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300";
-                    else cls += "border-border bg-secondary/40 text-muted-foreground";
-                    return (
-                      <div key={oi} className={cls}>
-                        <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span>{opt}
-                        {isCorrectOpt && <span className="ml-2 text-xs font-semibold text-green-600 dark:text-green-400">✓ Correct</span>}
-                        {isChosenOpt && !isCorrectOpt && <span className="ml-2 text-xs font-semibold text-red-600 dark:text-red-400">✗ Your answer</span>}
-                      </div>
-                    );
-                  })}
-                  {notAnswered && <p className="text-xs text-muted-foreground italic">Not answered</p>}
-                </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="text-center">
-        <Button asChild variant="outline"><Link to="/"><MapPin className="mr-2 h-4 w-4" /> Back to home</Link></Button>
-      </div>
-    </div>
-  );
-}
