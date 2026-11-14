@@ -33,6 +33,19 @@ function gpsStats(samples: { pos: Coords }[]): GpsStats {
   return { n, coordDistinct: coords.size, accDistinct: accs.size, spreadM: Math.round(spreadM * 10) / 10 };
 }
 
+/** True when a frame is (almost) completely black */
+function isBlackFrame(c: HTMLCanvasElement): boolean {
+  try {
+    const w = Math.min(c.width, 64), h = Math.min(c.height, 48);
+    const small = document.createElement("canvas"); small.width = w; small.height = h;
+    small.getContext("2d")!.drawImage(c, 0, 0, w, h);
+    const d = small.getContext("2d")!.getImageData(0, 0, w, h).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2];
+    return sum / (d.length / 4) / 3 < 10;
+  } catch { return false; }
+}
+
 /** Resolve with `fallback` if the promise takes longer than `ms` */
 function within<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
   return Promise.race([p, new Promise<F>((r) => setTimeout(() => r(fallback), ms))]);
@@ -82,6 +95,44 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     const poll = setInterval(ready, 300);
     return () => { v.removeEventListener("loadedmetadata", ready); v.removeEventListener("playing", ready); clearInterval(poll); };
   }, [state]);
+
+  // Black preview (common in WhatsApp / Instagram browsers or when another app holds the camera)
+  const [black, setBlack] = useState(false);
+  useEffect(() => {
+    if (state !== "live") { setBlack(false); return; }
+    const started = Date.now();
+    const t = setInterval(() => {
+      const v = videoRef.current;
+      const waitedMs = Date.now() - started;
+      if (!v || !v.videoWidth) { if (waitedMs > 5000) setBlack(true); return; }
+      const c = document.createElement("canvas"); c.width = 24; c.height = 18;
+      c.getContext("2d")!.drawImage(v, 0, 0, 24, 18);
+      if (isBlackFrame(c)) { if (waitedMs > 3000) setBlack(true); } else setBlack(false);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [state]);
+
+  const nativeRef = useRef<HTMLInputElement>(null);
+  /** Photo from the phone's own camera app; must be taken just now (no gallery photos) */
+  async function useNativePhoto(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    if (!file.type.startsWith("image/")) { setError("That isn't a photo. Tap Use phone camera and take a selfie."); return; }
+    if (Date.now() - file.lastModified > 3 * 60_000) {
+      setError("Please take a new selfie now. Photos from your gallery can't be used.");
+      return;
+    }
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
+      const scale = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+      const frame = document.createElement("canvas");
+      frame.width = Math.round(bmp.width * scale); frame.height = Math.round(bmp.height * scale);
+      frame.getContext("2d")!.drawImage(bmp, 0, 0, frame.width, frame.height);
+      await processFrame(frame);
+    } catch {
+      setError("Couldn't read that photo. Try Use phone camera again.");
+    }
+  }
 
   /** Wait (up to 3 s) for the camera picture, nudging it to play */
   async function waitForVideo(v: HTMLVideoElement): Promise<boolean> {
@@ -179,6 +230,16 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     frame.width = v.videoWidth;
     frame.height = v.videoHeight;
     frame.getContext("2d")!.drawImage(v, 0, 0);
+    if (isBlackFrame(frame)) {
+      setBlack(true);
+      setError("Your camera is showing a black screen. Tap \"Use phone camera\" below.");
+      return;
+    }
+    await processFrame(frame);
+  }
+
+  /** Stamp a captured frame with time and location and hand it to the form */
+  async function processFrame(frame: HTMLCanvasElement) {
     // Instant feedback: show the frozen photo straight away and buzz the phone
     try { navigator.vibrate?.(40); } catch { /* not supported */ }
     setPreview(frame.toDataURL("image/jpeg", 0.7));
@@ -234,10 +295,18 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
 
   return (
     <div className="rounded-xl border bg-secondary/30 p-3">
+      <input ref={nativeRef} type="file" accept="image/*" capture="user" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void useNativePhoto(f); }} />
       {state === "idle" && (
         <Button type="button" variant="outline" className="w-full h-11" onClick={start}>
           <Camera className="mr-2 h-4 w-4" /> Take live photo
         </Button>
+      )}
+      {state === "idle" && (
+        <button type="button" onClick={() => nativeRef.current?.click()}
+          className="mt-2 w-full text-center text-xs font-medium text-primary underline-offset-4 hover:underline">
+          Camera not working? Use your phone's camera app
+        </button>
       )}
 
       {state === "live" && (
@@ -266,6 +335,15 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
           <p className="text-center text-xs text-muted-foreground">
             {!livePos ? "Finding your location… you can still capture." : acc <= 30 ? `Strong location signal · ±${Math.round(acc)} m` : `Location ±${Math.round(acc)} m. Capture now, or wait a few seconds for a stronger signal.`}
           </p>
+          {black && (
+            <div className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+              <p className="font-semibold">Camera showing a black screen?</p>
+              <p className="text-xs">Use your phone's own camera instead. If you opened this link inside WhatsApp, Instagram or Facebook, opening it in Chrome or Safari also fixes it.</p>
+              <Button type="button" variant="outline" className="h-11 w-full bg-card" onClick={() => nativeRef.current?.click()}>
+                <Camera className="mr-2 h-4 w-4" /> Use phone camera
+              </Button>
+            </div>
+          )}
           {livePos && acc > 100 && (
             <p className="text-center text-xs text-amber-700 dark:text-amber-400">
               Weak signal (±{Math.round(acc)} m). Turn on WiFi and move near a window or the door.
