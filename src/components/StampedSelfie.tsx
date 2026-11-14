@@ -33,6 +33,11 @@ function gpsStats(samples: { pos: Coords }[]): GpsStats {
   return { n, coordDistinct: coords.size, accDistinct: accs.size, spreadM: Math.round(spreadM * 10) / 10 };
 }
 
+/** Resolve with `fallback` if the promise takes longer than `ms` */
+function within<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
+  return Promise.race([p, new Promise<F>((r) => setTimeout(() => r(fallback), ms))]);
+}
+
 export function StampedSelfie({ onChange, getPosition }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -60,6 +65,32 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     watchRef.current = null;
   }
   useEffect(() => stopAll, []);
+
+  // Attach the camera to the <video> once it is on screen (a timing race here
+  // left some phones with a black, uncapturable preview)
+  const [camReady, setCamReady] = useState(false);
+  useEffect(() => {
+    if (state !== "live") return;
+    const v = videoRef.current;
+    const stream = streamRef.current;
+    if (!v || !stream) return;
+    if (v.srcObject !== stream) v.srcObject = stream;
+    const ready = () => { if (v.videoWidth > 0) setCamReady(true); };
+    v.addEventListener("loadedmetadata", ready);
+    v.addEventListener("playing", ready);
+    v.play().then(ready).catch(() => {});
+    const poll = setInterval(ready, 300);
+    return () => { v.removeEventListener("loadedmetadata", ready); v.removeEventListener("playing", ready); clearInterval(poll); };
+  }, [state]);
+
+  /** Wait (up to 3 s) for the camera picture, nudging it to play */
+  async function waitForVideo(v: HTMLVideoElement): Promise<boolean> {
+    for (let i = 0; i < 15 && !v.videoWidth; i++) {
+      v.play().catch(() => {});
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return v.videoWidth > 0;
+  }
 
   // Ticking clock while the camera is open
   useEffect(() => {
@@ -129,14 +160,9 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
         audio: false,
       });
       streamRef.current = stream;
+      setCamReady(false);
       setState("live");
       startLocationWatch();
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      });
     } catch {
       setError("Camera access is required. Allow camera permission and try again.");
     }
@@ -144,7 +170,11 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
 
   async function capture() {
     const v = videoRef.current;
-    if (!v || !v.videoWidth) return;
+    setError(null);
+    if (!v || !(await waitForVideo(v))) {
+      setError("The camera isn't showing a picture yet. Wait a second and tap Capture again, or tap Retake.");
+      return;
+    }
     const frame = document.createElement("canvas");
     frame.width = v.videoWidth;
     frame.height = v.videoHeight;
@@ -156,12 +186,19 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     stopAll();
     setState("processing");
     try {
-      const pos = posAtCapture ?? (await getPosition());
+      const pos = posAtCapture ?? (await within(getPosition().catch(() => null), 8_000, null));
+      if (!pos) throw new Error("Couldn't find your location. Turn on Location (Precise), then tap Take live photo again.");
+      // Address and weather are nice to have: never let a slow network block the photo
       const [address, w] = await Promise.all([
-        addrAtCapture ?? reverseGeocode(pos),
-        weatherAtCapture ?? currentWeather(pos),
+        addrAtCapture ?? within(reverseGeocode(pos).catch(() => null), 4000, null),
+        weatherAtCapture ?? within(currentWeather(pos).catch(() => null), 3000, null),
       ]);
-      const info: StampInfo = { address, ...w, takenAt: new Date() };
+      const info: StampInfo = {
+        address: address ?? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`,
+        temperatureC: w?.temperatureC ?? null,
+        weather: w?.weather ?? "",
+        takenAt: new Date(),
+      };
       const dataUrl = await stampPhoto(frame, pos, info);
       setPreview(dataUrl);
       setState("done");
@@ -183,7 +220,8 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
   const acc = livePos?.accuracy ?? 999;
   const waited = now.getTime() - watchStarted;
   // Wait for a strong signal first; accept weaker ones only after giving the GPS time
-  const canCapture = Boolean(livePos) && (acc <= 30 || (waited > 8_000 && acc <= 60) || (waited > 20_000 && acc <= 150));
+  // After 15 s the button opens whatever the signal; the server still checks distance
+  const canCapture = camReady && ((Boolean(livePos) && (acc <= 30 || (waited > 8_000 && acc <= 60))) || waited > 15_000);
 
   const timeStr =
     now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
@@ -201,7 +239,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       {state === "live" && (
         <div className="space-y-2">
           <div className="relative overflow-hidden rounded-lg bg-black">
-            <video ref={videoRef} playsInline muted className="w-full [transform:scaleX(-1)]" />
+            <video ref={videoRef} autoPlay playsInline muted className="w-full [transform:scaleX(-1)]" />
             {/* Live overlay */}
             <div className="absolute inset-x-0 bottom-0 bg-black/60 px-3 py-2 text-center text-white">
               <p className="flex items-start justify-center gap-1 text-xs leading-snug sm:text-sm">
@@ -219,8 +257,12 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
             </div>
           </div>
           <Button type="button" className="w-full h-11" onClick={capture} disabled={!canCapture}>
-            {!livePos
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Waiting for location…</>
+            {!camReady
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting camera…</>
+              : canCapture
+                ? <><Camera className="mr-2 h-4 w-4" /> Capture</>
+              : !livePos
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Waiting for location… {Math.max(0, Math.ceil((15_000 - waited) / 1000))}s</>
               : !canCapture
                 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Improving accuracy… ±{Math.round(acc)} m</>
                 : <><Camera className="mr-2 h-4 w-4" /> Capture</>}
