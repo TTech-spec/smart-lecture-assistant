@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { motion, AnimatePresence, MotionConfig, animate, type Variants } from "framer-motion";
 import { AlertTriangle, Check, CheckCircle2, Clock, Home, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { isTheory, questionMarks, unmarkedTheory, type TestConfig, type TestSubmission } from "@/lib/attendance-store";
+import { isTheory, questionMarks, type TestConfig, type TestSubmission } from "@/lib/attendance-store";
 
 
 const list: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.2 } } };
@@ -51,9 +51,8 @@ export function TestResultView({ test, submission, correct }: {
   correct?: (number | null)[] | null;
 }) {
   const pct = submission.total ? Math.round((submission.score / submission.total) * 100) : 0;
-  const waiting = unmarkedTheory(submission);
   const passed = pct >= 50;
-  const state = submission.cheated ? "cheated" : waiting > 0 ? "waiting" : passed ? "passed" : "failed";
+  const state = submission.cheated ? "cheated" : passed ? "passed" : "failed";
   const look = {
     cheated: { ring: "#dc2626", chip: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300", icon: AlertTriangle, label: "Test ended: cheating detected" },
     waiting: { ring: "#d97706", chip: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300", icon: Clock, label: "Awaiting marking" },
@@ -102,11 +101,6 @@ export function TestResultView({ test, submission, correct }: {
             className={`mt-3 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold ${look.chip}`}>
             <StateIcon className="h-4 w-4" /> {look.label}
           </motion.span>
-          {state === "waiting" && (
-            <p className="mx-auto mt-3 max-w-sm text-sm text-muted-foreground">
-              {waiting} written answer{waiting === 1 ? "" : "s"} still to be marked by your lecturer.
-            </p>
-          )}
         </motion.section>
 
         {/* Answer review */}
@@ -143,7 +137,7 @@ export function TestResultView({ test, submission, correct }: {
                       <div className="ml-10 space-y-1.5">
                         <p className="whitespace-pre-wrap rounded-xl border bg-secondary/40 px-3 py-2 text-sm">{t?.text || <span className="italic text-muted-foreground">Not answered</span>}</p>
                         <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                          {t?.marks != null ? `Marked: ${t.marks}/${questionMarks(q)}` : `Waiting for your lecturer · ${questionMarks(q)} marks`}
+                          {t?.marks != null ? `Marked: ${t.marks}/${questionMarks(q)}` : `${questionMarks(q)} marks`}
                         </p>
                       </div>
                     ) : (
