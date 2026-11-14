@@ -70,7 +70,7 @@ function ReviewPage() {
         <Panel className="flex flex-col items-center gap-3 py-16 text-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e7f8f1] text-[#0f8a66]"><ShieldCheck className="h-6 w-6" /></span>
           <p className="font-display text-xl font-semibold">Nothing to review</p>
-          <p className="max-w-sm text-sm text-muted-foreground">Check-ins where the face didn't match or a different phone was used will appear here.</p>
+          <p className="max-w-sm text-sm text-muted-foreground">Unverified check-ins, and ones where the face didn't match, a different phone was used or the location looks suspicious, appear here.</p>
         </Panel>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">

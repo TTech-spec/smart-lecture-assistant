@@ -635,7 +635,7 @@ function RecordsPage() {
         submittedAt: new Date().toISOString(),
         dayKey: new Date().toISOString().slice(0, 10),
         deviceId: "manual", distanceMeters: 0, lat: 0, lng: 0,
-        sessionId: "", customFields: {},
+        sessionId: "", customFields: { addedByLecturer: "1" },
       };
       try {
         await addRecord(newRec);

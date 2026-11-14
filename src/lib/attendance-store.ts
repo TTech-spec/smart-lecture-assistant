@@ -1828,7 +1828,17 @@ export async function fetchReviewQueue(): Promise<{ ok: true; count: number } | 
     .order("submitted_at", { ascending: false })
     .limit(1000);
   if (error) return { ok: false, message: error.message };
-  const fresh = (data as Row[]).map(recordFromDb);
+  // Unverified check-ins: never checked by the server, not reviewed, not added by hand
+  const unv = await supabase
+    .from("attendance_records")
+    .select("*")
+    .is("custom_fields->>serverChecked", null)
+    .is("custom_fields->>reviewed", null)
+    .is("custom_fields->>addedByLecturer", null)
+    .not("id", "like", "manual-%")
+    .order("submitted_at", { ascending: false })
+    .limit(1000);
+  const fresh = [...(data as Row[]), ...((unv.data as Row[] | null) ?? [])].map(recordFromDb);
   const byId = new Map(loadRecords().map((r) => [r.id, r]));
   for (const r of fresh) byId.set(r.id, r);
   const merged = [...byId.values()].sort((x, y) => y.submittedAt.localeCompare(x.submittedAt));

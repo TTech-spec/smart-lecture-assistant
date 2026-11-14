@@ -13,7 +13,16 @@ type Item = { to: string; label: string; icon: React.ReactNode; exact?: boolean;
 export function needsReview(r: AttendanceRecord): boolean {
   const flags = String(r.customFields?.flags ?? "");
   const decided = r.customFields?.reviewed;
-  return !decided && /face_mismatch|no_face_check|different_phone|matric_changed|gps_too_still|gps_round|same_spot|on_pin|off_campus_net/.test(flags);
+  if (decided) return false;
+  if (/face_mismatch|no_face_check|different_phone|matric_changed|gps_too_still|gps_round|same_spot|on_pin|off_campus_net/.test(flags)) return true;
+  // Unverified: never went through the server checks (and not added by the lecturer)
+  return isUnverified(r);
+}
+
+/** A check-in the server never checked, that the lecturer didn't add by hand */
+export function isUnverified(r: AttendanceRecord): boolean {
+  const cf = r.customFields ?? {};
+  return !cf.serverChecked && !cf.flags && !cf.reviewed && !cf.addedByLecturer && !r.id.startsWith("manual-");
 }
 
 export function AdminSidebar({
