@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion, AnimatePresence, MotionConfig, animate, type Variants } from "framer-motion";
-import { AlertTriangle, Check, CheckCircle2, Clock, Home, PenLine, X, XCircle } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Clock, Home, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isTheory, questionMarks, unmarkedTheory, type TestConfig, type TestSubmission } from "@/lib/attendance-store";
 
-type Filter = "all" | "wrong" | "written";
 
 const list: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.2 } } };
 const item: Variants = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 24 } } };
@@ -51,7 +50,6 @@ export function TestResultView({ test, submission, correct }: {
   submission: TestSubmission;
   correct?: (number | null)[] | null;
 }) {
-  const [filter, setFilter] = useState<Filter>("all");
   const pct = submission.total ? Math.round((submission.score / submission.total) * 100) : 0;
   const waiting = unmarkedTheory(submission);
   const passed = pct >= 50;
@@ -73,12 +71,9 @@ export function TestResultView({ test, submission, correct }: {
     return { q, i, kind: chosen == null ? "blank" as const : !known ? "unknown" as const : chosen === right ? "right" as const : "wrong" as const, ok: known && chosen === right };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [test, submission, correct]);
-  const count = (k: string) => rows.filter((r) => r.kind === k).length;
-  const shown = rows.filter((r) => filter === "all" || (filter === "wrong" ? r.kind === "wrong" || r.kind === "blank" : r.kind === "written"));
+  const shown = rows;
 
   const R = 70, C = 2 * Math.PI * R;
-  const integ = submission.integrity;
-  const recorded = integ ? integ.focusLost + integ.splitScreen + integ.copyAttempts : 0;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -109,53 +104,18 @@ export function TestResultView({ test, submission, correct }: {
           </motion.span>
           {state === "waiting" && (
             <p className="mx-auto mt-3 max-w-sm text-sm text-muted-foreground">
-              This is your score so far. {waiting} written answer{waiting === 1 ? " is" : "s are"} waiting for your lecturer to mark; your final score will be higher if they award marks.
+              {waiting} written answer{waiting === 1 ? "" : "s"} still to be marked by your lecturer.
             </p>
           )}
-          <p className="mt-4 text-sm text-muted-foreground">
-            {submission.studentName} · {submission.matricNumber}{submission.level && ` · ${submission.level} Level`}
-            <span className="block text-xs">Submitted {new Date(submission.submittedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
-          </p>
         </motion.section>
-
-        {/* Summary tiles */}
-        <motion.div variants={list} initial="hidden" animate="show" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { label: "Correct", value: count("right"), cls: "text-emerald-600 dark:text-emerald-400", icon: Check },
-            { label: "Wrong", value: count("wrong"), cls: "text-rose-600 dark:text-rose-400", icon: X },
-            { label: "Not answered", value: count("blank"), cls: "text-muted-foreground", icon: Clock },
-            { label: "Written", value: count("written"), cls: "text-amber-600 dark:text-amber-400", icon: PenLine },
-          ].map((t) => (
-            <motion.div key={t.label} variants={item} className="rounded-2xl border bg-card p-4">
-              <t.icon className={`h-4 w-4 ${t.cls}`} />
-              <p className={`mt-2 font-display text-2xl font-bold tabular-nums ${t.cls}`}>{t.value}</p>
-              <p className="text-xs text-muted-foreground">{t.label}</p>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {recorded > 0 && (
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
-            className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-            Recorded during your test and shared with your lecturer: left the page {integ!.focusLost}×, split screen or pop-up {integ!.splitScreen}×, tried to copy {integ!.copyAttempts}×.
-          </motion.p>
-        )}
 
         {/* Answer review */}
         <section className="rounded-3xl border bg-card shadow-soft">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
-            <h2 className="font-display text-lg font-semibold">Answer review</h2>
-            <div className="relative flex rounded-full bg-secondary p-1 text-xs font-medium" role="tablist">
-              {([["all", "All"], ["wrong", "To revise"], ["written", "Written"]] as const).map(([k, l]) => (
-                <button key={k} role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}
-                  className="relative rounded-full px-3 py-1.5">
-                  {filter === k && <motion.span layoutId="rv-tab" className="absolute inset-0 rounded-full bg-card shadow-sm" transition={{ type: "spring", stiffness: 400, damping: 32 }} />}
-                  <span className="relative">{l}</span>
-                </button>
-              ))}
-            </div>
+            <h2 className="font-display text-lg font-semibold">Your answers</h2>
+            <p className="text-xs text-muted-foreground">Green is the right answer · red is where you missed it</p>
           </div>
-          <motion.ol key={filter} variants={list} initial="hidden" animate="show" className="divide-y">
+          <motion.ol variants={list} initial="hidden" animate="show" className="divide-y">
             <AnimatePresence>
               {shown.length === 0 && (
                 <motion.li variants={item} className="p-8 text-center text-sm text-muted-foreground">Nothing here. Well done.</motion.li>
