@@ -1,3 +1,4 @@
+import { isChunkLoadError, reloadForNewVersion } from "@/lib/chunk-reload";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -47,9 +48,22 @@ function ErrorComponent({ error: rawError, reset }: { error: unknown; reset: () 
   const error = rawError instanceof Error ? rawError : new Error(String(rawError));
   console.error(error);
   const router = useRouter();
+  const stale = isChunkLoadError(error);
+  const [reloading, setReloading] = useState(stale);
   useEffect(() => {
+    // A new version was deployed: reload quietly instead of showing an error
+    if (stale && reloadForNewVersion()) return;
+    setReloading(false);
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+  }, [error, stale]);
+
+  if (reloading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Loading the latest version…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">

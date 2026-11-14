@@ -44,8 +44,9 @@ export default defineConfig({
       workbox: {
         // Cache app shell and assets
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-        // Don't cache Supabase API calls
-        navigateFallbackDenylist: [/^\/api/, /^\/rest/, /^\/auth/],
+        // This app renders pages on the server: there is no index.html to fall
+        // back to, so let every page load go to the network as normal.
+        navigateFallback: null,
         // Phone notifications: show a notice when the server wakes this phone
         importScripts: ["/push-sw.js"],
       },
