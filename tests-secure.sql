@@ -15,6 +15,7 @@
 alter table public.test_submissions add column if not exists device_id text;
 alter table public.test_submissions add column if not exists integrity jsonb;
 alter table public.test_submissions add column if not exists theory jsonb;
+alter table public.test_configs add column if not exists warning text;
 
 -- 1. Lecturers only on the tables ------------------------------------------
 alter table public.test_configs     enable row level security;
@@ -64,7 +65,7 @@ returns jsonb language sql stable set search_path = public as $$
   select jsonb_build_object(
     'id', t.id, 'title', t.title, 'course_code', t.course_code,
     'duration_minutes', t.duration_minutes, 'is_active', t.is_active,
-    'created_at', t.created_at, 'test_type', t.test_type,
+    'created_at', t.created_at, 'test_type', t.test_type, 'warning', t.warning,
     'questions', public._student_questions(t.questions))
 $$;
 

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { TestRules } from "@/components/TestRules";
 import { useTestIntegrity, NO_COPY_CLASS } from "@/hooks/use-test-integrity";
 import { IntegrityNote } from "@/components/IntegrityNote";
 import { isTheory, questionMarks, unmarkedTheory, type TestIntegrity, type TheoryAnswer } from "@/lib/attendance-store";
@@ -249,7 +250,7 @@ function TestFlow({ test }: { test: TestConfig }) {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.35 }}
             >
-              <IdentityForm test={test} onSubmit={handleIdentitySubmit} />
+              <TestRules test={test}><IdentityForm test={test} onSubmit={handleIdentitySubmit} /></TestRules>
             </motion.div>
           )}
 
@@ -800,8 +801,8 @@ function ResultScreen({ test, submission }: { test: TestConfig; submission: Test
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="rounded-2xl border bg-card p-8 shadow-soft text-center">
         <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 220, damping: 18 }}
-          className={`mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full ${submission.cheated ? "bg-red-100 dark:bg-red-900/30" : passed ? "bg-green-100 dark:bg-green-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
-          {submission.cheated ? <AlertTriangle className="h-10 w-10 text-red-600 dark:text-red-400" /> : passed ? <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" /> : <XCircle className="h-10 w-10 text-amber-600 dark:text-amber-400" />}
+          className={`mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full ${submission.cheated ? "bg-red-100 dark:bg-red-900/30" : waiting > 0 ? "bg-amber-100 dark:bg-amber-900/30" : passed ? "bg-green-100 dark:bg-green-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
+          {submission.cheated ? <AlertTriangle className="h-10 w-10 text-red-600 dark:text-red-400" /> : waiting > 0 ? <Clock className="h-10 w-10 text-amber-600 dark:text-amber-400" /> : passed ? <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" /> : <XCircle className="h-10 w-10 text-amber-600 dark:text-amber-400" />}
         </motion.div>
         <h1 className="text-3xl font-bold">{submission.score}/{submission.total}</h1>
         <p className="mt-1 text-xl font-semibold text-muted-foreground">{percentage}%</p>

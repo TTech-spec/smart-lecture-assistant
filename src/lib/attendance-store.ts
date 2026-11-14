@@ -177,6 +177,8 @@ export type TestConfig = {
   createdAt: string;
   questions: TestQuestion[];
   testType: TestType;
+  /** Lecturer's message about cheating, shown to students before they start */
+  warning?: string;
 };
 
 export type TestSubmission = {
@@ -300,6 +302,7 @@ function testToDb(t: TestConfig): Row {
     created_at: t.createdAt,
     questions: t.questions,
     test_type: t.testType,
+    ...(t.warning !== undefined ? { warning: t.warning } : {}),
   };
 }
 
@@ -313,6 +316,7 @@ function testFromDb(row: Row): TestConfig {
     createdAt: row.created_at,
     questions: (row.questions as TestQuestion[]) || [],
     testType: (row.test_type as TestType) || "C1",
+    warning: (row.warning as string | null) ?? undefined,
   };
 }
 
@@ -965,12 +969,25 @@ export function addTest(t: TestConfig) {
   const all = loadTests();
   all.push(t);
   saveTests(all);
-  sync(supabase?.from("test_configs").upsert(testToDb(t)));
+  upsertTestRemote(t);
+}
+
+/** Save a test; if tests-secure.sql hasn't added the warning column yet, save without it */
+function upsertTestRemote(t: TestConfig) {
+  if (!supabase) return;
+  supabase.from("test_configs").upsert(testToDb(t)).then(({ error }) => {
+    if (error && /warning/.test(error.message)) {
+      const { warning: _w, ...rest } = testToDb(t);
+      sync(supabase?.from("test_configs").upsert(rest));
+    } else if (error) {
+      console.warn("Saving test failed:", error.message);
+    }
+  });
 }
 
 export function updateTest(t: TestConfig) {
   saveTests(loadTests().map((x) => (x.id === t.id ? t : x)));
-  sync(supabase?.from("test_configs").upsert(testToDb(t)));
+  upsertTestRemote(t);
 }
 
 export function deleteTest(id: string) {

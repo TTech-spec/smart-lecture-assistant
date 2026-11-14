@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { TestRules } from "@/components/TestRules";
 import { isTheory, questionMarks, unmarkedTheory, type TheoryAnswer } from "@/lib/attendance-store";
 import { TheoryAnswerBox, emptyTheoryAnswer } from "@/components/TheoryAnswerBox";
 import type { TestIntegrity } from "@/lib/attendance-store";
@@ -273,7 +274,7 @@ function TestTokenPage() {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.35 }}
             >
-              <IdentityForm test={test} onSubmit={handleIdentitySubmit} />
+              <TestRules test={test}><IdentityForm test={test} onSubmit={handleIdentitySubmit} /></TestRules>
             </motion.div>
           )}
 
@@ -687,7 +688,7 @@ function ResultScreen({ result, test }: { result: TestSubmission; test: TestConf
         )}
       </div>
       <h2 className={`mb-2 text-xl font-bold ${passed ? "text-[color:var(--color-success)]" : "text-destructive"}`}>
-        {passed ? "Test Passed!" : "Test Failed"}
+        {waiting > 0 ? "Test submitted" : passed ? "Test Passed!" : "Test Failed"}
       </h2>
       <div className="mb-6">
         <div className="text-4xl font-bold">{result.score}/{result.total}</div>

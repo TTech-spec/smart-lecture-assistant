@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import {
   loadSettings, saveSettings, isWindowOpen, minutesRemaining, addSession, closeSession, clearSessions,
-  addTest, deleteTest, setTestActive,
+  addTest, deleteTest, setTestActive, updateTest,
   type AdminSettings, type AttendanceRecord, type AttendanceSession,
   type CustomField, type TestConfig, type TestType,
 } from "@/lib/attendance-store";
@@ -885,7 +885,12 @@ const AI_TRAP_QUESTION: QuestionDraft = {
   correctIndex: 2,
 };
 
+const SUGGESTED_WARNING = "Any student caught cheating, using AI (ChatGPT, Gemini…), copying from a friend or another phone will score zero for this test and be reported to the department.";
+
 function TestManager({ tests }: { tests: TestConfig[] }) {
+  // After saving a test: ask what to warn students about before they start
+  const [warnFor, setWarnFor] = useState<TestConfig | null>(null);
+  const [warnText, setWarnText] = useState(SUGGESTED_WARNING);
   const [creating, setCreating] = useState(false);
   const [inputMode, setInputMode] = useState<"manual" | "pdf">("manual");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -974,8 +979,9 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
       testType,
     };
     addTest(config);
-    toast.success("Test saved. Toggle it active when ready for students.");
     resetForm();
+    setWarnText(SUGGESTED_WARNING);
+    setWarnFor(config);
   }
 
   function toggleActive(t: TestConfig) {
@@ -988,7 +994,41 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
     toast.success("Test deleted.");
   }
 
+  function saveWarning(text: string) {
+    if (!warnFor) return;
+    updateTest({ ...warnFor, warning: text.trim() });
+    setWarnFor(null);
+    toast.success(text.trim() ? "Test saved with your warning. Toggle it active when ready for students." : "Test saved. Toggle it active when ready for students.");
+  }
+
   return (
+    <>
+    {warnFor && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="warn-title">
+        <div className="w-full max-w-lg space-y-4 rounded-2xl border bg-card p-6 shadow-soft">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">Test saved · one last step</p>
+            <h2 id="warn-title" className="mt-1 text-lg font-semibold">What do you want to warn your students about cheating?</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Students see this before they can start <strong>{warnFor.title}</strong>, and must tick "I will not cheat" to continue.</p>
+          </div>
+          <Textarea id="warn-text" value={warnText} onChange={(e) => setWarnText(e.target.value.slice(0, 600))} className="min-h-28 text-sm" autoFocus />
+          <div className="flex flex-wrap gap-2">
+            {[
+              ["Zero score", SUGGESTED_WARNING],
+              ["AI is detected", "This test records split screen, copying and how you type written answers. Answers written by AI will be detected and scored zero."],
+              ["Phones only", "Use only your own phone. Answers that match another student's word for word will both be cancelled."],
+            ].map(([label, text]) => (
+              <button key={label} type="button" onClick={() => setWarnText(text)} className="rounded-full border px-3 py-1 text-xs font-medium hover:bg-secondary">{label}</button>
+            ))}
+          </div>
+          <p className="text-right text-xs text-muted-foreground">{warnText.length}/600</p>
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={() => saveWarning(warnText)} disabled={!warnText.trim()}>Save warning</Button>
+            <Button variant="outline" onClick={() => saveWarning("")}>Skip</Button>
+          </div>
+        </div>
+      </div>
+    )}
     <div id="tests-quizzes" className="rounded-2xl border bg-card shadow-soft scroll-mt-24">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b p-4 sm:p-5">
         <div>
@@ -1257,5 +1297,6 @@ Guide: TCP is reliable and connection-oriented; UDP is faster and connectionless
         </div>
       )}
     </div>
+    </>
   );
 }
