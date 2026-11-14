@@ -1,4 +1,4 @@
-import { playTour, tourById, tourForQuestion } from "@/lib/tours";
+import { TOURS, playTour, tourById, tourForQuestion } from "@/lib/tours";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ArrowRight, ArrowUp, Loader2, Mic, MicOff, PlayCircle, Sparkles, Volume2, VolumeX } from "lucide-react";
@@ -129,6 +129,13 @@ export function AskAiChat({ rows, onNavigate }: { rows: AiRow[]; onNavigate?: ()
               {SUGGESTIONS.map((s) => (
                 <button key={s} type="button" onClick={() => ask(s)}
                   className="rounded-2xl bg-secondary/60 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary">{s}</button>
+              ))}
+            </div>
+            <p className="mt-1 flex items-center gap-2 text-sm font-medium"><PlayCircle className="h-4 w-4 text-primary" /> Watch how to…</p>
+            <div className="flex flex-wrap gap-1.5">
+              {TOURS.map((t) => (
+                <button key={t.id} type="button" onClick={() => { onNavigate?.(); playTour(t.id); }}
+                  className="rounded-full border px-3 py-1.5 text-[13px] transition-colors hover:border-primary hover:text-primary">{t.title}</button>
               ))}
             </div>
           </div>

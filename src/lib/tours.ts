@@ -109,13 +109,108 @@ export const TOURS: Tour[] = [
       { path: "/admin/materials", target: "Add New Material", caption: "Tap Add New Material, add a title and file, choose Free or Paid, then save." },
     ],
   },
+  {
+    id: "run_checkin",
+    title: "Run a live check-in",
+    keywords: /\b(live session|extend|more time|\+ ?5|end (the )?check.?in|close (the )?check.?in|stop check.?in)\b/i,
+    steps: [
+      { path: "/admin/live", caption: "Live session shows the check-in that's running now: your pin, the allowed circle and each student on the map." },
+      { path: "/admin/live", target: "+5 minutes", caption: "Students running late? Tap +5 minutes to keep it open longer." },
+      { path: "/admin/live", target: "End check-in", caption: "When class has started, tap End check-in. Nobody can sign after that." },
+    ],
+  },
+  {
+    id: "projector",
+    title: "Show the code on the projector",
+    keywords: /\b(projector|screen|qr|room code|4.?letter|code changes)\b/i,
+    steps: [
+      { path: "/admin/live", target: "Open projector", caption: "On Live session, tap Open projector." },
+      { path: "/admin/projector", caption: "Put this page on the projector. Students scan the QR code and type the 4-letter code. It changes every 30 seconds, so a WhatsApp photo is useless." },
+    ],
+  },
+  {
+    id: "student_phone_reset",
+    title: "Reset a student who changed phones",
+    keywords: /\b(changed|new|lost|different) phone\b|\breset\b|registered students/i,
+    steps: [
+      { path: "/admin/students", target: "Registered students", caption: "Students who registered with a face scan are on the Students page." },
+      { path: "/admin/students", target: "Approve reset", caption: "If a student asked for a reset after changing phones, tap Approve reset. They can then register again on the new phone." },
+      { path: "/admin/students", caption: "To reset someone yourself, find them in the list and tap Reset." },
+    ],
+  },
+  {
+    id: "mark_theory",
+    title: "Mark theory answers",
+    keywords: /\b(mark|grade|score)\b.*\b(theory|written|essay|answer)\b|\b(theory|written)\b.*\b(mark|grade)\b|edit (a )?score/i,
+    steps: [
+      { path: "/admin/records", target: "Records", caption: "Test scores are on Records. A score with * still has written answers to mark." },
+      { path: "/admin/records", caption: "Tap the student, then tap their test score (it says \"to mark\")." },
+      { path: "/admin/records", caption: "Read each answer and how it was typed. Tap \"Suggest mark + AI check\" for a suggested mark and an AI-written rating." },
+      { path: "/admin/records", caption: "Type your mark for each answer and tap Save result. The student's score updates." },
+    ],
+  },
+  {
+    id: "class_codes",
+    title: "Turn on personal class codes",
+    keywords: /\bclass code/i,
+    steps: [
+      { path: "/admin/manage", target: "Class code", caption: "In Tests & settings, find Class code." },
+      { path: "/admin/manage", caption: "Switch it on and choose the format. Each student gets their own code, shown only on their phone when they sign in." },
+    ],
+  },
+  {
+    id: "open_lock_form",
+    title: "Open or lock the sign-in form",
+    keywords: /\b(open|lock|close) (the )?form\b|form (is )?(locked|closed)/i,
+    steps: [
+      { path: "/admin/manage", target: "Open form", caption: "Open form lets students sign for the time you set." },
+      { path: "/admin/manage", target: "Lock form", caption: "Lock form stops all sign-ins straight away." },
+    ],
+  },
+  {
+    id: "custom_fields",
+    title: "Ask students for extra details",
+    keywords: /\b(custom|extra) (field|detail|question)|add (a )?field/i,
+    steps: [
+      { path: "/admin/manage", target: "Custom form fields", caption: "Custom form fields add questions to the sign-in form, like Faculty or State of origin." },
+      { path: "/admin/manage", target: "Add field", caption: "Tap Add field, name it and choose if it's required, then Save settings." },
+    ],
+  },
+  {
+    id: "earnings_payout",
+    title: "See earnings and get paid",
+    keywords: /\b(earning|payout|pay ?out|withdraw|money|bank|paid material|sales)\b/i,
+    steps: [
+      { path: "/admin/manage", target: "Earnings from materials", caption: "Money from paid materials shows under Earnings from materials." },
+      { path: "/admin/manage", caption: "Check Total earned and Still owed to you. Tap Pay out now to send it to the bank you added on Materials." },
+    ],
+  },
+  {
+    id: "change_password",
+    title: "Change your password",
+    keywords: /\bpassword\b/i,
+    steps: [
+      { path: "/admin/manage", target: "Change admin password", caption: "At the bottom of Class settings, tap Change admin password and enter the new one." },
+    ],
+  },
+  {
+    id: "install_app",
+    title: "Install Attendly on your phone",
+    keywords: /\b(install|home screen|download (the )?app|app icon)\b/i,
+    steps: [
+      { path: "/admin", target: "Install app", caption: "Tap Install app in the menu to add Attendly to your home screen. It opens like an app and works on slow data." },
+    ],
+  },
 ];
 
 export const tourById = (id: string) => TOURS.find((t) => t.id === id);
 
 /** Best walkthrough for a question, if any (used when the AI can't answer) */
 export function tourForQuestion(q: string): Tour | undefined {
-  return TOURS.find((t) => t.keywords.test(q));
+  // Specific tasks first, so "mark theory answers" isn't taken by "create a test"
+  const first = ["mark_theory", "class_codes", "student_phone_reset", "run_checkin", "projector", "open_lock_form", "custom_fields", "change_password", "earnings_payout"];
+  const ordered = [...first.map(tourById).filter((t): t is Tour => !!t), ...TOURS.filter((t) => !first.includes(t.id))];
+  return ordered.find((t) => t.keywords.test(q));
 }
 
 /** Ask the player (mounted in the admin layout) to play a walkthrough */
