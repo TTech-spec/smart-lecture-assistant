@@ -36,7 +36,7 @@ import {
   type AttendanceLink,
   type Gender,
 } from "@/lib/attendance-store";
-import { getCurrentPosition, type Coords } from "@/lib/geo";
+import { getCurrentPosition, warmUpGps, type Coords } from "@/lib/geo";
 import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
 import { QrCode } from "@/components/QrCode";
 import { uploadCheckinPhoto, withTimeout } from "@/lib/checkin-photos";
@@ -145,6 +145,7 @@ function AttendTokenPage() {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => warmUpGps(), []); // GPS gets a strong fix while the student fills in their details
   useEffect(() => {
     let cancelled = false;
 

@@ -1,3 +1,4 @@
+import { fuseFixes } from "@/lib/geo";
 import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, MapPin, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -88,18 +89,11 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
           accuracy: p.coords.accuracy,
           source: "gps",
         };
-        // Keep the last 20 s of readings and use the most accurate ones,
-        // averaged — indoor GPS wobbles, and the first fix is usually rough.
+        // Keep the last 30 s of readings and combine them into one stronger
+        // fix (clear readings count more, GPS jumps are dropped).
         const nowMs = Date.now();
-        samplesRef.current = [...samplesRef.current, { pos: sample, at: nowMs }].filter((x) => nowMs - x.at < 20_000);
-        const sorted = [...samplesRef.current].sort((a, b) => (a.pos.accuracy ?? 999) - (b.pos.accuracy ?? 999));
-        const best = sorted.slice(0, Math.min(3, sorted.length));
-        const pos: Coords = {
-          lat: best.reduce((t, x) => t + x.pos.lat, 0) / best.length,
-          lng: best.reduce((t, x) => t + x.pos.lng, 0) / best.length,
-          accuracy: best[0].pos.accuracy,
-          source: "gps",
-        };
+        samplesRef.current = [...samplesRef.current, { pos: sample, at: nowMs }].filter((x) => nowMs - x.at < 30_000);
+        const pos = fuseFixes(samplesRef.current.map((x) => x.pos)) ?? sample;
         setLivePos(pos);
         refreshAddress(pos);
         if (!weatherLoaded) {
@@ -188,7 +182,8 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
   // least usable (≤150 m — the server refuses anything worse).
   const acc = livePos?.accuracy ?? 999;
   const waited = now.getTime() - watchStarted;
-  const canCapture = Boolean(livePos) && (acc <= 50 || (waited > 12_000 && acc <= 150));
+  // Wait for a strong signal first; accept weaker ones only after giving the GPS time
+  const canCapture = Boolean(livePos) && (acc <= 30 || (waited > 8_000 && acc <= 60) || (waited > 20_000 && acc <= 150));
 
   const timeStr =
     now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +

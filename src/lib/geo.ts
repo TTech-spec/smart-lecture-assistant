@@ -118,9 +118,36 @@ function getBrowserPosition(options?: PositionOptions): Promise<Coords> {
       (err) => reject(new Error(err.message || "Unable to read your location.")),
       // maximumAge: 30 s — allows a recent cached fix which is often more stable
       // than forcing a brand-new cold reading every time
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000, ...options },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000, ...options },
     );
   });
+}
+
+/**
+ * Combine several GPS readings into one stronger fix:
+ * - readings far from the clearest one (a GPS "jump") are dropped,
+ * - the rest are averaged, each weighted by how clear it is (1 / accuracy²),
+ * - the accuracy reported is the clearest single reading's, never better.
+ */
+export function fuseFixes(samples: Coords[]): Coords | null {
+  const gps = samples.filter((s) => s.accuracy != null && s.accuracy > 0);
+  if (!gps.length) return samples[0] ?? null;
+  const best = gps.reduce((m, s) => ((s.accuracy as number) < (m.accuracy as number) ? s : m));
+  const limit = Math.max(30, 2 * (best.accuracy as number));
+  const keep = gps.filter((s) => distanceMeters(s, best) <= limit && (s.accuracy as number) <= 3 * (best.accuracy as number));
+  let wSum = 0, lat = 0, lng = 0;
+  for (const s of keep) {
+    const w = 1 / ((s.accuracy as number) ** 2);
+    wSum += w; lat += s.lat * w; lng += s.lng * w;
+  }
+  return { lat: lat / wSum, lng: lng / wSum, accuracy: best.accuracy, source: "gps" };
+}
+
+/** Start the phone's GPS early so it has a strong fix by the time it's needed. Returns a stop function. */
+export function warmUpGps(): () => void {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return () => {};
+  const id = navigator.geolocation.watchPosition(() => {}, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 60_000 });
+  return () => navigator.geolocation.clearWatch(id);
 }
 
 export function formatDistance(m: number): string {
@@ -153,13 +180,7 @@ export function getPrecisePosition(
         reject(new Error("Could not get a GPS reading. Turn on Location (Precise) and try again."));
         return;
       }
-      // Average the most accurate half of the readings
-      const best = [...samples].sort((a, b) => (a.accuracy ?? 999) - (b.accuracy ?? 999))
-        .slice(0, Math.max(1, Math.ceil(samples.length / 2)));
-      const lat = best.reduce((s, p) => s + p.lat, 0) / best.length;
-      const lng = best.reduce((s, p) => s + p.lng, 0) / best.length;
-      const accuracy = Math.min(...best.map((p) => p.accuracy ?? 999));
-      resolve({ lat, lng, accuracy, source: "gps" });
+      resolve(fuseFixes(samples) as Coords);
     };
     const id = navigator.geolocation.watchPosition(
       (p) => {
