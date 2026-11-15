@@ -157,6 +157,51 @@ export async function setNewLecturerPassword(next: string): Promise<void> {
   }
 }
 
+/** The email the lecturer signs in with (null when not signed in) */
+export async function currentLecturerEmail(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getUser();
+  return data.user?.email ?? null;
+}
+
+/**
+ * Change the sign-in email. Checks the current password first. Supabase then
+ * emails a confirmation link; the change happens once it is opened (and, if
+ * "Secure email change" is on in Supabase, after the old address confirms too).
+ */
+export async function changeLecturerEmail(newEmail: string, password: string): Promise<{ pending: boolean }> {
+  if (!supabase) throw new Error("Changing your email needs the online database.");
+  const clean = newEmail.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) throw new Error("Enter a valid email address.");
+  const { data } = await supabase.auth.getUser();
+  const email = data.user?.email;
+  if (!email) throw new Error("You are not signed in.");
+  if (email.toLowerCase() === clean) throw new Error("That's already your sign-in email.");
+  const check = await supabase.auth.signInWithPassword({ email, password });
+  if (check.error) throw new Error("Wrong password.");
+  const { data: upd, error } = await supabase.auth.updateUser(
+    { email: clean },
+    { emailRedirectTo: `${window.location.origin}/admin` },
+  );
+  if (error) {
+    throw new Error(/already|registered|exists/i.test(error.message)
+      ? "Another account already uses that email."
+      : /rate|too many|seconds/i.test(error.message)
+        ? "Too many emails. Wait a minute, then try again."
+        : error.message);
+  }
+  return { pending: (upd.user?.email ?? "").toLowerCase() !== clean };
+}
+
+/** Sign in with the 6-digit code from the reset email (when the email template includes the code) */
+export async function verifyPasswordResetCode(email: string, code: string): Promise<void> {
+  if (!supabase) throw new Error("Password reset needs the online database.");
+  const token = code.replace(/\s+/g, "");
+  if (!/^\d{6,10}$/.test(token)) throw new Error("Enter the code from the email.");
+  const { error } = await supabase.auth.verifyOtp({ email: email.trim().toLowerCase(), token, type: "recovery" });
+  if (error) throw new Error(/expired|invalid/i.test(error.message) ? "That code is wrong or has expired. Ask for a new one." : error.message);
+}
+
 /** Subscribe to sign-in / sign-out changes (Supabase only). */
 export function onLecturerAuthChange(cb: (signedIn: boolean) => void): () => void {
   if (!supabase) return () => {};

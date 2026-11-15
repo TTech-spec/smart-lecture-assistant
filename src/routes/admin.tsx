@@ -1,5 +1,5 @@
 import { TourPlayer } from "@/components/TourPlayer";
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useState } from "react";
 import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X, Link2, Settings2, Download, Users } from "lucide-react";
@@ -18,7 +18,7 @@ import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { IOSInstallHelp } from "@/components/IOSInstallHelp";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { useStore } from "@/hooks/use-store";
-import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth, sendLecturerPasswordReset } from "@/lib/lecturer-auth";
+import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth, sendLecturerPasswordReset, verifyPasswordResetCode } from "@/lib/lecturer-auth";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -57,6 +57,21 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"signin" | "forgot" | "sent">("signin");
+  const [code, setCode] = useState("");
+  const navigate = useNavigate();
+
+  async function useCode(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await verifyPasswordResetCode(email, code);
+      navigate({ to: "/reset-password" });
+    } catch (err) {
+      toast.error(friendlyError(err, "That code didn't work."));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function sendReset(e: React.FormEvent) {
     e.preventDefault();
@@ -106,8 +121,18 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
         {mode === "sent" ? (
           <div className="mt-8 w-full space-y-3 rounded-2xl border bg-card p-6 text-center shadow-soft">
             <p className="text-lg font-semibold">Check your email</p>
-            <p className="text-sm text-muted-foreground">If <strong className="text-foreground">{email.trim()}</strong> has a lecturer account, a reset link is on its way. Open it on this device to choose a new password. Check spam if it doesn't arrive in a few minutes.</p>
-            <Button variant="outline" className="w-full" onClick={() => setMode("signin")}>Back to sign in</Button>
+            <p className="text-sm text-muted-foreground">If <strong className="text-foreground">{email.trim()}</strong> has a lecturer account, we've emailed a reset link and code. Tap the link on this device, or type the code below. Check spam if it doesn't arrive in a few minutes.</p>
+            <form onSubmit={useCode} className="space-y-2 text-left">
+              <Label htmlFor="reset-code">Code from the email</Label>
+              <Input id="reset-code" inputMode="numeric" autoComplete="one-time-code" value={code}
+                onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} placeholder="123456"
+                className="h-12 text-center text-xl tracking-[0.4em]" />
+              <Button type="submit" className="h-10 w-full" disabled={busy || code.length < 6}>{busy ? "Checking…" : "Continue"}</Button>
+            </form>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setMode("forgot")}>Send again</Button>
+              <Button variant="ghost" className="flex-1" onClick={() => setMode("signin")}>Back to sign in</Button>
+            </div>
           </div>
         ) : mode === "forgot" ? (
           <form onSubmit={sendReset} className="mt-8 w-full rounded-2xl border bg-card p-4 sm:p-6 shadow-soft space-y-4">

@@ -26,6 +26,7 @@ import {
 import { parsePdfQuestions } from "@/lib/pdf-parser";
 import { getCurrentPosition } from "@/lib/geo";
 import { changeLecturerPassword } from "@/lib/lecturer-auth";
+import { AccountSettings } from "@/components/admin/AccountSettings";
 import { useStore } from "@/hooks/use-store";
 import { lecturerPayOutstanding, lecturerPaymentsSummary } from "@/lib/payments-server";
 import { supabase } from "@/lib/supabase";
@@ -244,6 +245,7 @@ function SettingsCard() {
     toast.success("Attendance form locked.");
   }
 
+  const [accountOpen, setAccountOpen] = useState(false);
   async function changePassword() {
     const current = prompt("Enter current password:");
     if (current == null) return;
@@ -620,9 +622,10 @@ function SettingsCard() {
           </p>
         )}
 
-        <button type="button" onClick={changePassword} className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors">
-          Change admin password
+        <button type="button" onClick={() => setAccountOpen(true)} className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors">
+          Change sign-in email or password
         </button>
+        {accountOpen && <AccountSettings onClose={() => setAccountOpen(false)} />}
       </div>
     </aside>
   );
