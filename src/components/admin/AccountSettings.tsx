@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { KeyRound, LogOut, Mail, X } from "lucide-react";
 import { toast } from "sonner";
-import { PasswordStrength, authButton, authInput } from "@/components/auth/AuthUI";
+import { PasswordInput, PasswordStrength, authButton, authInput } from "@/components/auth/AuthUI";
 import { changeLecturerEmail, changeLecturerPassword, currentLecturerEmail } from "@/lib/lecturer-auth";
 import { friendlyError } from "@/lib/friendly-error";
 
@@ -26,7 +26,7 @@ export function AccountSettings({ onClose, onSignOut }: { onClose: () => void; o
       setSentTo(newEmail.trim().toLowerCase());
       setEmailPass("");
     } catch (err) {
-      toast.error(friendlyError(err, "Couldn't change your email."));
+      toast.error(err instanceof Error && err.message ? err.message : "Couldn't change your email.", { duration: 12000 });
     } finally {
       setBusy(null);
     }
@@ -88,7 +88,7 @@ export function AccountSettings({ onClose, onSignOut }: { onClose: () => void; o
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="acct-email-pass" className="text-[13px] font-medium">Current password</label>
-                <input id="acct-email-pass" type="password" autoComplete="current-password" value={emailPass} onChange={(e) => setEmailPass(e.target.value)} className={authInput} />
+                <PasswordInput id="acct-email-pass" autoComplete="current-password" value={emailPass} onChange={(e) => setEmailPass(e.target.value)} />
               </div>
               <button type="submit" className={authButton} disabled={busy !== null || !newEmail || !emailPass}>{busy === "email" ? "Sending…" : "Send confirmation"}</button>
             </form>
@@ -109,11 +109,11 @@ export function AccountSettings({ onClose, onSignOut }: { onClose: () => void; o
             <form onSubmit={savePassword} className="mt-3 space-y-3">
               <div className="space-y-1.5">
                 <label htmlFor="acct-cur-pass" className="text-[13px] font-medium">Current password</label>
-                <input id="acct-cur-pass" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} className={authInput} autoFocus />
+                <PasswordInput id="acct-cur-pass" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} autoFocus />
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="acct-new-pass" className="text-[13px] font-medium">New password</label>
-                <input id="acct-new-pass" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="At least 8 characters" className={authInput} />
+                <PasswordInput id="acct-new-pass" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="At least 8 characters" />
               </div>
               <PasswordStrength value={next} />
               <button type="submit" className={authButton} disabled={busy !== null || !current || next.length < 8}>{busy === "pass" ? "Saving…" : "Change password"}</button>

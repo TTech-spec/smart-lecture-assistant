@@ -1,6 +1,6 @@
 import { TourPlayer } from "@/components/TourPlayer";
 import { AccountSettings } from "@/components/admin/AccountSettings";
-import { AuthShell, AuthMark, AuthTitle, CodeBoxes, authInput, authButton } from "@/components/auth/AuthUI";
+import { AuthShell, AuthMark, AuthTitle, CodeBoxes, PasswordInput, authInput, authButton } from "@/components/auth/AuthUI";
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useState } from "react";
@@ -93,7 +93,7 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
       setResendIn(60);
       setMode("code");
     } catch (err) {
-      toast.error(friendlyError(err, "Couldn't send the code."));
+      toast.error(err instanceof Error && err.message ? err.message : "Couldn't send the code.", { duration: 10000 });
     } finally {
       setBusy(false);
     }
@@ -179,8 +179,8 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
               <button type="button" onClick={() => setMode("forgot")} className="text-sm text-muted-foreground hover:text-primary">Forgot password?</button>
             )}
           </div>
-          <input id="pass" type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)}
-            placeholder="Enter password" className={authInput} autoFocus={!usesSupabaseAuth} />
+          <PasswordInput id="pass" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)}
+            placeholder="Enter password" autoFocus={!usesSupabaseAuth} />
         </div>
         <button type="submit" className={authButton} disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
       </form>

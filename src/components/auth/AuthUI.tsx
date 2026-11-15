@@ -1,6 +1,6 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, MapPin } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, MapPin } from "lucide-react";
 
 /** Calm single-column page for sign-in, reset and new-password screens */
 export function AuthShell({ step, children, back }: { step?: string; children: ReactNode; back?: ReactNode }) {
@@ -101,6 +101,20 @@ export function PasswordStrength({ value }: { value: string }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Password box with a show / hide eye */
+export function PasswordInput(props: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input {...props} type={show ? "text" : "password"} className={`${props.className ?? authInput} pr-12`} />
+      <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Hide password" : "Show password"} aria-pressed={show}
+        className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground">
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
     </div>
   );
 }

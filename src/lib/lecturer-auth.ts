@@ -95,8 +95,13 @@ export async function sendLecturerPasswordReset(email: string): Promise<void> {
   const { error } = await supabase.auth.resetPasswordForEmail(clean, {
     redirectTo: `${window.location.origin}/reset-password`,
   });
-  if (error && /rate|too many|seconds/i.test(error.message)) {
-    throw new Error("Too many reset emails. Wait a minute, then try again.");
+  if (error) {
+    console.warn("Password reset email:", error.message);
+    // Don't reveal whether the email has an account, but do report sending problems
+    const status = (error as { status?: number }).status ?? 0;
+    if (status >= 500 || status === 429 || error.message.trim() === "{}" || /rate|too many|seconds|429|error sending|smtp|not authori[sz]ed|mail/i.test(error.message)) {
+      throw new Error(explainEmailError(error.message, status));
+    }
   }
 }
 
@@ -157,6 +162,21 @@ export async function setNewLecturerPassword(next: string): Promise<void> {
   }
 }
 
+/** Plain-language reason when Supabase can't send an auth email */
+export function explainEmailError(message: string, status?: number): string {
+  // Supabase answers a failed email send with a server error and no readable message
+  if (!message.trim() || message.trim() === "{}" || (status ?? 0) >= 500) message = "error sending email";
+  if (/rate|too many|seconds|429/i.test(message)) return "Too many emails were sent. Wait a few minutes, then try again.";
+  if (/not authori[sz]ed|not allowed/i.test(message)) {
+    return "Supabase's built-in email only sends to your own team's addresses. Set up your own sender in Supabase → Authentication → Emails → SMTP Settings.";
+  }
+  if (/error sending|smtp|send(ing)? (the )?(email|mail)|confirmation email|recovery email|mail ?server|535|authentication failed/i.test(message)) {
+    return "Supabase couldn't send the email. Check Supabase → Authentication → Emails → SMTP Settings (host smtp.gmail.com, port 465, your Gmail as username, and a Google App password). Or switch custom SMTP off to use Supabase's own sender.";
+  }
+  if (/invalid|format/i.test(message) && /email/i.test(message)) return "That email address doesn't look right. Check it and try again.";
+  return message;
+}
+
 /** The email the lecturer signs in with (null when not signed in) */
 export async function currentLecturerEmail(): Promise<string | null> {
   if (!supabase) return null;
@@ -178,17 +198,16 @@ export async function changeLecturerEmail(newEmail: string, password: string): P
   if (!email) throw new Error("You are not signed in.");
   if (email.toLowerCase() === clean) throw new Error("That's already your sign-in email.");
   const check = await supabase.auth.signInWithPassword({ email, password });
-  if (check.error) throw new Error("Wrong password.");
+  if (check.error) throw new Error(/invalid login/i.test(check.error.message) ? "That isn't your current password." : explainEmailError(check.error.message));
   const { data: upd, error } = await supabase.auth.updateUser(
     { email: clean },
     { emailRedirectTo: `${window.location.origin}/admin` },
   );
   if (error) {
+    console.warn("Change email:", error.message);
     throw new Error(/already|registered|exists/i.test(error.message)
       ? "Another account already uses that email."
-      : /rate|too many|seconds/i.test(error.message)
-        ? "Too many emails. Wait a minute, then try again."
-        : error.message);
+      : explainEmailError(error.message, (error as { status?: number }).status));
   }
   return { pending: (upd.user?.email ?? "").toLowerCase() !== clean };
 }
