@@ -84,6 +84,79 @@ export async function changeLecturerPassword(current: string, next: string): Pro
   localStorage.setItem(LOCAL_PASS_KEY, next);
 }
 
+/**
+ * Email a password-reset link. Always reports success, so the form can't be
+ * used to find out which emails have lecturer accounts.
+ */
+export async function sendLecturerPasswordReset(email: string): Promise<void> {
+  if (!supabase) throw new Error("Password reset needs the online database.");
+  const clean = email.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) throw new Error("Enter the email you sign in with.");
+  const { error } = await supabase.auth.resetPasswordForEmail(clean, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+  if (error && /rate|too many|seconds/i.test(error.message)) {
+    throw new Error("Too many reset emails. Wait a minute, then try again.");
+  }
+}
+
+/**
+ * Open the reset link from the email: works for every link style Supabase
+ * sends (#access_token=…, ?code=…, ?token_hash=…). True when the link is valid.
+ */
+let resetLinkCheck: Promise<boolean> | null = null;
+export function openPasswordResetLink(): Promise<boolean> {
+  // Read the link once: a second check would find it already cleared
+  resetLinkCheck ??= readPasswordResetLink();
+  return resetLinkCheck;
+}
+
+async function readPasswordResetLink(): Promise<boolean> {
+  if (!supabase || typeof window === "undefined") return false;
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const query = new URLSearchParams(window.location.search);
+  try {
+    if (hash.get("access_token") && hash.get("refresh_token")) {
+      const { error } = await supabase.auth.setSession({
+        access_token: hash.get("access_token")!,
+        refresh_token: hash.get("refresh_token")!,
+      });
+      if (error) console.warn("Password reset link:", error.message);
+      return !error;
+    }
+    if (query.get("code")) {
+      const { error } = await supabase.auth.exchangeCodeForSession(query.get("code")!);
+      return !error;
+    }
+    if (query.get("token_hash")) {
+      const { error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: query.get("token_hash")! });
+      return !error;
+    }
+  } catch (e) {
+    console.warn("Password reset link:", e);
+    return false;
+  } finally {
+    // Don't leave the one-time link in the address bar or history
+    window.history.replaceState(null, "", window.location.pathname);
+  }
+  const { data } = await supabase.auth.getSession();
+  return Boolean(data.session);
+}
+
+/** Set the new password after opening the reset link. */
+export async function setNewLecturerPassword(next: string): Promise<void> {
+  if (!supabase) throw new Error("Password reset needs the online database.");
+  if (next.length < 8) throw new Error("Use at least 8 characters.");
+  const { error } = await supabase.auth.updateUser({ password: next });
+  if (error) {
+    throw new Error(/same|different/i.test(error.message)
+      ? "Choose a password you haven't used before."
+      : /expired|invalid|session/i.test(error.message)
+        ? "This reset link has expired. Ask for a new one."
+        : error.message);
+  }
+}
+
 /** Subscribe to sign-in / sign-out changes (Supabase only). */
 export function onLecturerAuthChange(cb: (signedIn: boolean) => void): () => void {
   if (!supabase) return () => {};

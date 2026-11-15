@@ -18,7 +18,7 @@ import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { IOSInstallHelp } from "@/components/IOSInstallHelp";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { useStore } from "@/hooks/use-store";
-import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth } from "@/lib/lecturer-auth";
+import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth, sendLecturerPasswordReset } from "@/lib/lecturer-auth";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -56,6 +56,20 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"signin" | "forgot" | "sent">("signin");
+
+  async function sendReset(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await sendLecturerPasswordReset(email);
+      setMode("sent");
+    } catch (err) {
+      toast.error(friendlyError(err, "Couldn't send the reset email."));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,6 +103,27 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
             ? "Sign in with your lecturer account. Students don't have access to this area."
             : "Enter the admin password to open the dashboard."}
         </p>
+        {mode === "sent" ? (
+          <div className="mt-8 w-full space-y-3 rounded-2xl border bg-card p-6 text-center shadow-soft">
+            <p className="text-lg font-semibold">Check your email</p>
+            <p className="text-sm text-muted-foreground">If <strong className="text-foreground">{email.trim()}</strong> has a lecturer account, a reset link is on its way. Open it on this device to choose a new password. Check spam if it doesn't arrive in a few minutes.</p>
+            <Button variant="outline" className="w-full" onClick={() => setMode("signin")}>Back to sign in</Button>
+          </div>
+        ) : mode === "forgot" ? (
+          <form onSubmit={sendReset} className="mt-8 w-full rounded-2xl border bg-card p-4 sm:p-6 shadow-soft space-y-4">
+            <div>
+              <p className="font-semibold">Reset your password</p>
+              <p className="mt-1 text-sm text-muted-foreground">Enter the email you sign in with. We'll email you a link to choose a new password.</p>
+            </div>
+            <div>
+              <Label htmlFor="reset-email">Email</Label>
+              <Input id="reset-email" type="email" autoComplete="username" value={email}
+                onChange={(e) => setEmail(e.target.value)} placeholder="you@university.edu.ng" className="mt-2 h-10" autoFocus />
+            </div>
+            <Button type="submit" className="h-10 w-full" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</Button>
+            <button type="button" onClick={() => setMode("signin")} className="w-full text-center text-sm text-muted-foreground hover:text-foreground">Back to sign in</button>
+          </form>
+        ) : (
         <form onSubmit={submit} className="mt-8 w-full rounded-2xl border bg-card p-4 sm:p-6 shadow-soft space-y-4">
           {usesSupabaseAuth && (
             <div>
@@ -110,11 +145,13 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
             {busy ? "Signing in…" : "Sign in"}
           </Button>
           {usesSupabaseAuth && (
-            <p className="text-center text-xs text-muted-foreground">
-              Forgot your password? Reset it in Supabase → Authentication → Users.
-            </p>
+            <button type="button" onClick={() => setMode("forgot")}
+              className="w-full text-center text-sm font-medium text-primary underline-offset-4 hover:underline">
+              Forgot password?
+            </button>
           )}
         </form>
+        )}
       </main>
     </div>
   );

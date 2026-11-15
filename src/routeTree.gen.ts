@@ -16,6 +16,7 @@ import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as MaterialsRouteImport } from './routes/materials'
 import { Route as MeRouteImport } from './routes/me'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as TestRouteImport } from './routes/test'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminLinksRouteImport } from './routes/admin/links'
@@ -62,6 +63,11 @@ const MeRoute = MeRouteImport.update({
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TestRoute = TestRouteImport.update({
@@ -133,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/live': typeof AdminLiveRoute
@@ -153,6 +160,7 @@ export interface FileRoutesByTo {
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/live': typeof AdminLiveRoute
@@ -175,6 +183,7 @@ export interface FileRoutesById {
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/test': typeof TestRouteWithChildren
   '/admin/links': typeof AdminLinksRoute
   '/admin/live': typeof AdminLiveRoute
@@ -198,6 +207,7 @@ export interface FileRouteTypes {
     | '/materials'
     | '/me'
     | '/register'
+    | '/reset-password'
     | '/test'
     | '/admin/links'
     | '/admin/live'
@@ -218,6 +228,7 @@ export interface FileRouteTypes {
     | '/materials'
     | '/me'
     | '/register'
+    | '/reset-password'
     | '/test'
     | '/admin/links'
     | '/admin/live'
@@ -239,6 +250,7 @@ export interface FileRouteTypes {
     | '/materials'
     | '/me'
     | '/register'
+    | '/reset-password'
     | '/test'
     | '/admin/links'
     | '/admin/live'
@@ -261,6 +273,7 @@ export interface RootRouteChildren {
   MaterialsRoute: typeof MaterialsRoute
   MeRoute: typeof MeRoute
   RegisterRoute: typeof RegisterRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   TestRoute: typeof TestRouteWithChildren
   AttendTokenRoute: typeof AttendTokenRoute
 }
@@ -314,6 +327,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/test': {
@@ -447,6 +467,7 @@ const rootRouteChildren: RootRouteChildren = {
   MaterialsRoute: MaterialsRoute,
   MeRoute: MeRoute,
   RegisterRoute: RegisterRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   TestRoute: TestRouteWithChildren,
   AttendTokenRoute: AttendTokenRoute,
 }
