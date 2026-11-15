@@ -1,8 +1,9 @@
 import { TourPlayer } from "@/components/TourPlayer";
+import { AuthShell, AuthMark, AuthTitle, CodeBoxes, authInput, authButton } from "@/components/auth/AuthUI";
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X, Link2, Settings2, Download, Users } from "lucide-react";
+import { ArrowLeft, ShieldCheck, LogOut, ClipboardList, LayoutDashboard, MapPin, BookOpen, Menu, X, Link2, Settings2, Download, Users, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,9 +57,46 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<"signin" | "forgot" | "sent">("signin");
+  const [mode, setMode] = useState<"signin" | "forgot" | "code">("signin");
   const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (usesSupabaseAuth && !email.trim()) return toast.error("Enter your email.");
+    setBusy(true);
+    try {
+      await signInLecturer(email, pass);
+      toast.success("Welcome back.");
+      onSuccess();
+    } catch (err) {
+      toast.error(friendlyError(err, "Could not sign in."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendCode(e?: React.FormEvent) {
+    e?.preventDefault();
+    setBusy(true);
+    try {
+      await sendLecturerPasswordReset(email);
+      setCode("");
+      setResendIn(60);
+      setMode("code");
+    } catch (err) {
+      toast.error(friendlyError(err, "Couldn't send the code."));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function useCode(e: React.FormEvent) {
     e.preventDefault();
@@ -73,112 +111,80 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
-  async function sendReset(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await sendLecturerPasswordReset(email);
-      setMode("sent");
-    } catch (err) {
-      toast.error(friendlyError(err, "Couldn't send the reset email."));
-    } finally {
-      setBusy(false);
-    }
+  const backToSignIn = (
+    <button type="button" onClick={() => setMode("signin")} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <ArrowLeft className="h-4 w-4" /> Sign in
+    </button>
+  );
+
+  if (mode === "forgot") {
+    return (
+      <AuthShell step="Reset · 1 of 3" back={backToSignIn}>
+        <AuthTitle title="Reset your password" sub="We'll email you a 6-digit code." />
+        <form onSubmit={sendCode} className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="reset-email" className="text-sm font-medium">Email</label>
+            <input id="reset-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@eksu.edu.ng" className={authInput} autoFocus />
+          </div>
+          <button type="submit" className={authButton} disabled={busy || !email.trim()}>{busy ? "Sending…" : "Send code"}</button>
+        </form>
+      </AuthShell>
+    );
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (usesSupabaseAuth && !email.trim()) return toast.error("Enter your email.");
-    setBusy(true);
-    try {
-      await signInLecturer(email, pass);
-      toast.success("Welcome back, lecturer.");
-      onSuccess();
-    } catch (err) {
-      toast.error(friendlyError(err, "Could not sign in."));
-    } finally {
-      setBusy(false);
-    }
+  if (mode === "code") {
+    return (
+      <AuthShell step="Reset · 2 of 3" back={backToSignIn}>
+        <AuthTitle title="Check your email" sub="Enter the code we sent. It expires in 1 hour." />
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border p-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Mail className="h-4 w-4" /></span>
+          <div className="min-w-0 text-sm">
+            <p className="truncate font-medium">{email.trim().toLowerCase()}</p>
+            <button type="button" onClick={() => setMode("forgot")} className="text-muted-foreground hover:text-foreground">Not you? Change email</button>
+          </div>
+        </div>
+        <form onSubmit={useCode} className="space-y-5">
+          <CodeBoxes value={code} onChange={setCode} disabled={busy} />
+          <button type="submit" className={authButton} disabled={busy || code.length < 6}>{busy ? "Checking…" : "Continue"}</button>
+        </form>
+        <p className="mt-5 text-center text-sm text-muted-foreground">
+          Didn't get it?{" "}
+          {resendIn > 0
+            ? <span className="font-medium text-foreground tabular-nums">Resend in {Math.floor(resendIn / 60)}:{String(resendIn % 60).padStart(2, "0")}</span>
+            : <button type="button" onClick={() => sendCode()} className="font-medium text-foreground underline-offset-4 hover:underline">Resend code</button>}
+          <span className="mt-1 block text-xs">Check spam too. The email also has a link you can tap instead.</span>
+        </p>
+      </AuthShell>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-hero">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 py-6">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" /> Home
-        </Link>
-      </header>
-      <main className="mx-auto flex max-w-md flex-col items-center px-4 sm:px-6 pt-16">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
-          <ShieldCheck className="h-6 w-6" />
-        </div>
-        <h1 className="mt-5 text-2xl sm:text-3xl font-bold tracking-tight text-center">Lecturer sign in</h1>
-        <p className="mt-2 text-center text-sm sm:text-base text-muted-foreground">
-          {usesSupabaseAuth
-            ? "Sign in with your lecturer account. Students don't have access to this area."
-            : "Enter the admin password to open the dashboard."}
-        </p>
-        {mode === "sent" ? (
-          <div className="mt-8 w-full space-y-3 rounded-2xl border bg-card p-6 text-center shadow-soft">
-            <p className="text-lg font-semibold">Check your email</p>
-            <p className="text-sm text-muted-foreground">If <strong className="text-foreground">{email.trim()}</strong> has a lecturer account, we've emailed a reset link and code. Tap the link on this device, or type the code below. Check spam if it doesn't arrive in a few minutes.</p>
-            <form onSubmit={useCode} className="space-y-2 text-left">
-              <Label htmlFor="reset-code">Code from the email</Label>
-              <Input id="reset-code" inputMode="numeric" autoComplete="one-time-code" value={code}
-                onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} placeholder="123456"
-                className="h-12 text-center text-xl tracking-[0.4em]" />
-              <Button type="submit" className="h-10 w-full" disabled={busy || code.length < 6}>{busy ? "Checking…" : "Continue"}</Button>
-            </form>
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setMode("forgot")}>Send again</Button>
-              <Button variant="ghost" className="flex-1" onClick={() => setMode("signin")}>Back to sign in</Button>
-            </div>
+    <AuthShell>
+      <AuthMark />
+      <AuthTitle title="Welcome back" sub={usesSupabaseAuth ? "Sign in to your lecturer dashboard." : "Enter the admin password to open the dashboard."} />
+      <form onSubmit={submit} className="space-y-4">
+        {usesSupabaseAuth && (
+          <div className="space-y-1.5">
+            <label htmlFor="email" className="text-sm font-medium">Email</label>
+            <input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@eksu.edu.ng" className={authInput} autoFocus />
           </div>
-        ) : mode === "forgot" ? (
-          <form onSubmit={sendReset} className="mt-8 w-full rounded-2xl border bg-card p-4 sm:p-6 shadow-soft space-y-4">
-            <div>
-              <p className="font-semibold">Reset your password</p>
-              <p className="mt-1 text-sm text-muted-foreground">Enter the email you sign in with. We'll email you a link to choose a new password.</p>
-            </div>
-            <div>
-              <Label htmlFor="reset-email">Email</Label>
-              <Input id="reset-email" type="email" autoComplete="username" value={email}
-                onChange={(e) => setEmail(e.target.value)} placeholder="you@university.edu.ng" className="mt-2 h-10" autoFocus />
-            </div>
-            <Button type="submit" className="h-10 w-full" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</Button>
-            <button type="button" onClick={() => setMode("signin")} className="w-full text-center text-sm text-muted-foreground hover:text-foreground">Back to sign in</button>
-          </form>
-        ) : (
-        <form onSubmit={submit} className="mt-8 w-full rounded-2xl border bg-card p-4 sm:p-6 shadow-soft space-y-4">
-          {usesSupabaseAuth && (
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email" type="email" autoComplete="username" value={email}
-                onChange={(e) => setEmail(e.target.value)} placeholder="you@university.edu.ng" className="mt-2 h-10" autoFocus
-              />
-            </div>
-          )}
-          <div>
-            <Label htmlFor="pass">Password</Label>
-            <Input
-              id="pass" type="password" autoComplete="current-password" value={pass}
-              onChange={(e) => setPass(e.target.value)} placeholder="Enter password" className="mt-2 h-10" autoFocus={!usesSupabaseAuth}
-            />
-          </div>
-          <Button type="submit" className="w-full h-10" disabled={busy}>
-            {busy ? "Signing in…" : "Sign in"}
-          </Button>
-          {usesSupabaseAuth && (
-            <button type="button" onClick={() => setMode("forgot")}
-              className="w-full text-center text-sm font-medium text-primary underline-offset-4 hover:underline">
-              Forgot password?
-            </button>
-          )}
-        </form>
         )}
-      </main>
-    </div>
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between">
+            <label htmlFor="pass" className="text-sm font-medium">Password</label>
+            {usesSupabaseAuth && (
+              <button type="button" onClick={() => setMode("forgot")} className="text-sm text-muted-foreground hover:text-primary">Forgot password?</button>
+            )}
+          </div>
+          <input id="pass" type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)}
+            placeholder="Enter password" className={authInput} autoFocus={!usesSupabaseAuth} />
+        </div>
+        <button type="submit" className={authButton} disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+      </form>
+      <p className="mt-8 text-center text-xs text-muted-foreground">Students don't need an account.</p>
+    </AuthShell>
   );
 }
 

@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { KeyRound, Mail, X } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { PasswordStrength, authButton, authInput } from "@/components/auth/AuthUI";
 import { changeLecturerEmail, changeLecturerPassword, currentLecturerEmail } from "@/lib/lecturer-auth";
 import { friendlyError } from "@/lib/friendly-error";
 
@@ -39,7 +38,7 @@ export function AccountSettings({ onClose }: { onClose: () => void }) {
     try {
       await changeLecturerPassword(current, next);
       toast.success("Password updated.");
-      setCurrent(""); setNext("");
+      setCurrent(""); setNext(""); setOpen(null);
     } catch (err) {
       toast.error(friendlyError(err, "Couldn't change the password."));
     } finally {
@@ -47,55 +46,82 @@ export function AccountSettings({ onClose }: { onClose: () => void }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="acct-title"
+  const [open, setOpen] = useState<"email" | "pass" | null>(null);
+  const initials = (email ?? "?").slice(0, 2).toUpperCase();
+
+  if (typeof document === "undefined") return null;
+  // Drawn straight onto the page so animated parents can't blend it with what's behind
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="acct-title"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="max-h-[90svh] w-full max-w-md space-y-5 overflow-y-auto rounded-2xl border bg-card p-6 shadow-soft">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 id="acct-title" className="text-lg font-semibold">Your account</h2>
-            <p className="text-sm text-muted-foreground">Signed in as <strong className="text-foreground">{email ?? "…"}</strong></p>
+      <div className="max-h-[92svh] w-full overflow-y-auto rounded-t-3xl border bg-background px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-5 shadow-soft sm:max-w-md sm:rounded-3xl sm:p-6">
+        <div className="flex items-center gap-3 border-b pb-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary">{initials}</span>
+          <div className="min-w-0 flex-1">
+            <h2 id="acct-title" className="font-semibold">Your account</h2>
+            <p className="truncate text-sm text-muted-foreground">{email ?? "…"}</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-4 w-4" /></button>
         </div>
 
-        <form onSubmit={saveEmail} className="space-y-3 rounded-xl border p-4">
-          <p className="flex items-center gap-2 font-medium"><Mail className="h-4 w-4 text-primary" /> Change sign-in email</p>
-          <p className="text-xs text-muted-foreground">Password reset codes and links go to this email. Use one you check.</p>
-          {sentTo ? (
-            <div className="space-y-2 rounded-lg bg-primary/10 p-3 text-sm">
-              <p>We sent a confirmation link to <strong>{sentTo}</strong>. Open it to finish the change. Until then, keep signing in with <strong>{email}</strong>.</p>
-              <p className="text-xs text-muted-foreground">If nothing arrives, check spam. Your old email may also get a link to approve the change.</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => { setSentTo(null); setNewEmail(""); }}>Use a different email</Button>
+        {/* Sign-in email */}
+        <div className="border-b py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-sm font-medium"><Mail className="h-4 w-4 text-primary" /> Sign-in email</p>
+              <p className="truncate text-[13px] text-muted-foreground">Reset codes are sent here</p>
             </div>
-          ) : (
-            <>
-              <div>
-                <Label htmlFor="acct-new-email">New email</Label>
-                <Input id="acct-new-email" type="email" autoComplete="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="you@gmail.com" className="mt-1.5 h-10" />
-              </div>
-              <div>
-                <Label htmlFor="acct-email-pass">Your current password</Label>
-                <Input id="acct-email-pass" type="password" autoComplete="current-password" value={emailPass} onChange={(e) => setEmailPass(e.target.value)} className="mt-1.5 h-10" />
-              </div>
-              <Button type="submit" className="h-10 w-full" disabled={busy !== null || !newEmail || !emailPass}>{busy === "email" ? "Sending…" : "Send confirmation"}</Button>
-            </>
+            <button type="button" onClick={() => setOpen(open === "email" ? null : "email")}
+              className="shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] font-medium hover:bg-secondary">{open === "email" ? "Cancel" : "Change"}</button>
+          </div>
+          {sentTo && (
+            <div className="mt-3 space-y-2 rounded-xl bg-primary/10 p-3 text-[13px]">
+              <p>Confirmation sent to <strong>{sentTo}</strong>. Open it to switch. Until then, keep signing in with <strong>{email}</strong>.</p>
+              <p className="text-muted-foreground">Check spam. Your old email may also get a link to approve the change.</p>
+            </div>
           )}
-        </form>
+          {open === "email" && !sentTo && (
+            <form onSubmit={saveEmail} className="mt-3 space-y-3">
+              <div className="space-y-1.5">
+                <label htmlFor="acct-new-email" className="text-[13px] font-medium">New email</label>
+                <input id="acct-new-email" type="email" autoComplete="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="you@gmail.com" className={authInput} autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="acct-email-pass" className="text-[13px] font-medium">Current password</label>
+                <input id="acct-email-pass" type="password" autoComplete="current-password" value={emailPass} onChange={(e) => setEmailPass(e.target.value)} className={authInput} />
+              </div>
+              <button type="submit" className={authButton} disabled={busy !== null || !newEmail || !emailPass}>{busy === "email" ? "Sending…" : "Send confirmation"}</button>
+            </form>
+          )}
+        </div>
 
-        <form onSubmit={savePassword} className="space-y-3 rounded-xl border p-4">
-          <p className="flex items-center gap-2 font-medium"><KeyRound className="h-4 w-4 text-primary" /> Change password</p>
-          <div>
-            <Label htmlFor="acct-cur-pass">Current password</Label>
-            <Input id="acct-cur-pass" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} className="mt-1.5 h-10" />
+        {/* Password */}
+        <div className="py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-medium"><KeyRound className="h-4 w-4 text-primary" /> Password</p>
+              <p className="text-[13px] text-muted-foreground">Use 8 or more characters</p>
+            </div>
+            <button type="button" onClick={() => setOpen(open === "pass" ? null : "pass")}
+              className="shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] font-medium hover:bg-secondary">{open === "pass" ? "Cancel" : "Change"}</button>
           </div>
-          <div>
-            <Label htmlFor="acct-new-pass">New password</Label>
-            <Input id="acct-new-pass" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="At least 8 characters" className="mt-1.5 h-10" />
-          </div>
-          <Button type="submit" variant="outline" className="h-10 w-full" disabled={busy !== null || !current || next.length < 8}>{busy === "pass" ? "Saving…" : "Change password"}</Button>
-        </form>
+          {open === "pass" && (
+            <form onSubmit={savePassword} className="mt-3 space-y-3">
+              <div className="space-y-1.5">
+                <label htmlFor="acct-cur-pass" className="text-[13px] font-medium">Current password</label>
+                <input id="acct-cur-pass" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} className={authInput} autoFocus />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="acct-new-pass" className="text-[13px] font-medium">New password</label>
+                <input id="acct-new-pass" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="At least 8 characters" className={authInput} />
+              </div>
+              <PasswordStrength value={next} />
+              <button type="submit" className={authButton} disabled={busy !== null || !current || next.length < 8}>{busy === "pass" ? "Saving…" : "Change password"}</button>
+            </form>
+          )}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
