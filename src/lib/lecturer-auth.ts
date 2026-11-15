@@ -100,7 +100,7 @@ export async function sendLecturerPasswordReset(email: string): Promise<void> {
     // Don't reveal whether the email has an account, but do report sending problems
     const status = (error as { status?: number }).status ?? 0;
     if (status >= 500 || status === 429 || error.message.trim() === "{}" || /rate|too many|seconds|429|error sending|smtp|not authori[sz]ed|mail/i.test(error.message)) {
-      throw new Error(explainEmailError(error.message, status));
+      throw new Error(`${explainEmailError(error.message, status)} ${supabaseDetail(error)}`);
     }
   }
 }
@@ -162,6 +162,13 @@ export async function setNewLecturerPassword(next: string): Promise<void> {
   }
 }
 
+/** Supabase's own reply, shown in brackets so the exact cause can be checked */
+function supabaseDetail(error: unknown): string {
+  const e = error as { status?: number; code?: string; name?: string; message?: string };
+  const parts = [e.status ? `status ${e.status}` : "", e.code ?? "", e.message && e.message !== "{}" ? e.message : e.name ?? ""].filter(Boolean);
+  return parts.length ? `(Supabase: ${parts.join(" · ")})` : "";
+}
+
 /** Plain-language reason when Supabase can't send an auth email */
 export function explainEmailError(message: string, status?: number): string {
   // Supabase answers a failed email send with a server error and no readable message
@@ -207,7 +214,7 @@ export async function changeLecturerEmail(newEmail: string, password: string): P
     console.warn("Change email:", error.message);
     throw new Error(/already|registered|exists/i.test(error.message)
       ? "Another account already uses that email."
-      : explainEmailError(error.message, (error as { status?: number }).status));
+      : `${explainEmailError(error.message, (error as { status?: number }).status)} ${supabaseDetail(error)}`);
   }
   return { pending: (upd.user?.email ?? "").toLowerCase() !== clean };
 }
