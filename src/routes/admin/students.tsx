@@ -58,13 +58,13 @@ function StudentsPage() {
             {students.length} registered · students register once at <code className="rounded bg-secondary px-1">/register</code>
           </p>
         </div>
-        <div className="flex gap-2">
-          <div className="relative">
+        <div className="flex w-full gap-2 sm:w-auto">
+          <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or matric" className="h-10 w-56 pl-9" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or matric" className="h-10 w-full pl-9 sm:w-56" />
           </div>
-          <Button variant="outline" size="sm" className="h-10" onClick={load} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+          <Button variant="outline" size="sm" className="h-10 shrink-0" onClick={load} disabled={loading} aria-label="Refresh">
+            <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? "animate-spin" : ""}`} /> <span className="hidden sm:inline">Refresh</span>
           </Button>
         </div>
       </div>

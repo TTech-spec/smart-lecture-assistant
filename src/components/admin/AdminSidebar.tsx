@@ -2,8 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, BookOpen, ClipboardList, Download, LayoutGrid, Link2, LogOut, MonitorPlay,
-  Settings2, SlidersHorizontal, Users,
-} from "lucide-react";
+  Settings2, SlidersHorizontal, Users, KeyRound } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { isLinkValid, type AttendanceLink, type AttendanceRecord } from "@/lib/attendance-store";
 
@@ -80,6 +79,10 @@ export function AdminSidebar({
 
       <Group label="Attendance" items={attendance} onNavigate={onNavigate} />
       <Group label="Teaching" items={teaching} onNavigate={onNavigate} className="mt-4" />
+
+      {/* Account: sign-in email and password, easy to find */}
+      <p className="mt-4 px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7d8aa0]">Account</p>
+      <SideButton onClick={() => { onAccount?.(); onNavigate?.(); }} icon={<KeyRound className="h-[17px] w-[17px]" />} label="Email & password" />
 
       <div className="flex-grow" />
 

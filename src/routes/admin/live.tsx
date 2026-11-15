@@ -78,10 +78,10 @@ function LivePage() {
         </>}
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 [&>*]:min-w-0">
         <div className="rounded-2xl bg-[#121a2b] px-5 py-4 text-white">
           <p className="text-[13px] text-[#9aa6b8]">Class code</p>
-          <p className="mt-1.5 font-display text-[34px] font-semibold leading-none tracking-[0.08em]">{code ?? "····"}</p>
+          <p className="mt-1.5 font-display text-[28px] font-semibold leading-none tracking-[0.08em] sm:text-[34px]">{code ?? "····"}</p>
           <div className="mt-3 h-[3px] rounded bg-[#283349]"><div className="h-full rounded bg-[#4fd8a8] transition-[width] duration-1000 ease-linear" style={{ width: `${(secondsLeft / 30) * 100}%` }} /></div>
         </div>
         <Stat label="Checked in" value={mine.length} hint={`Closes in ${Math.max(0, Math.ceil((end.getTime() - now) / 60000))} min`} />
@@ -89,7 +89,7 @@ function LivePage() {
         <Stat label="Blocked attempts" value={attempts.length} hint={Object.entries(blockedByReason).map(([k, v]) => `${v} ${(ATTEMPT_LABEL[k] ?? k).toLowerCase()}`).join(" · ") || "None"} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid gap-4 lg:grid-cols-5 [&>*]:min-w-0">
         <Panel className="flex min-h-[420px] flex-col lg:col-span-3">
           <PanelTitle action={live.anchorRadius ? <span className="text-xs text-muted-foreground">Allowed: within {live.anchorRadius} m of you</span> : null}>
             Where students checked in from

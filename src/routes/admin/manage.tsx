@@ -3,12 +3,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { LeafletMap } from "@/components/LeafletMap";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  MapPin, Lock, Unlock, Users, Loader2,
-  Plus, X, GraduationCap, ClipboardList, Activity,
-  FileQuestion, Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp,
-  Upload, Hash, KeyRound, RefreshCw, Banknote, ArrowDownToLine, CheckCircle2, AlertCircle,
-} from "lucide-react";
+import { MapPin, Lock, Unlock, Users, Loader2, Plus, X, GraduationCap, ClipboardList, Activity, FileQuestion, Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Upload, Hash, KeyRound, RefreshCw, Banknote, ArrowDownToLine, CheckCircle2, AlertCircle, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -622,8 +617,14 @@ function SettingsCard() {
           </p>
         )}
 
-        <button type="button" onClick={() => setAccountOpen(true)} className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors">
-          Change sign-in email or password
+        <button type="button" onClick={() => setAccountOpen(true)}
+          className="flex w-full items-center gap-3 rounded-xl border bg-secondary/40 p-3 text-left transition-colors hover:bg-secondary">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><KeyRound className="h-4 w-4" /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold">Your account</span>
+            <span className="block truncate text-xs text-muted-foreground">Change sign-in email or password</span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         </button>
         {accountOpen && <AccountSettings onClose={() => setAccountOpen(false)} />}
       </div>

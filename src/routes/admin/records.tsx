@@ -720,11 +720,11 @@ function RecordsPage() {
           </p>
           <h1 className="mt-1.5 font-display text-[28px] font-bold leading-tight tracking-tight sm:text-[32px]">Records</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => setShowAi(true)} className="h-10 rounded-full px-4"><Sparkles className="mr-1.5 h-4 w-4" /> Ask AI</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" onClick={() => setShowAi(true)} className="h-10 rounded-full px-3 sm:px-4"><Sparkles className="mr-1.5 h-4 w-4" /> Ask AI</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" disabled={shown.length === 0} className="h-10 rounded-full px-4"><Download className="mr-1.5 h-4 w-4" /> Export</Button>
+              <Button variant="outline" disabled={shown.length === 0} className="h-10 rounded-full px-3 sm:px-4"><Download className="mr-1.5 h-4 w-4" /> Export</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => exportCSV(shown, testResultMap, linkMap)}><FileText className="mr-2 h-4 w-4" /> CSV ({shown.length})</DropdownMenuItem>
@@ -733,7 +733,7 @@ function RecordsPage() {
               <DropdownMenuItem onClick={clearAll} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Clear all records…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button onClick={openAdd} className="h-10 rounded-full bg-foreground px-4 text-background hover:bg-foreground/85"><Plus className="mr-1.5 h-4 w-4" /> Add</Button>
+          <Button onClick={openAdd} className="h-10 rounded-full bg-foreground px-3 text-background sm:px-4 hover:bg-foreground/85"><Plus className="mr-1.5 h-4 w-4" /> Add</Button>
         </div>
       </div>
 

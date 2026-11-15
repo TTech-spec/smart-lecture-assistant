@@ -6,7 +6,7 @@ export function PageHeader({ eyebrow, title, actions }: { eyebrow?: ReactNode; t
     <div className="flex flex-wrap items-end gap-3">
       <div className="min-w-0 flex-grow">
         {eyebrow && <p className="text-[13px] text-muted-foreground">{eyebrow}</p>}
-        <h1 className="mt-0.5 font-display text-2xl font-semibold sm:text-[28px]">{title}</h1>
+        <h1 className="mt-0.5 break-words font-display text-2xl font-semibold sm:text-[28px]">{title}</h1>
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
@@ -15,13 +15,13 @@ export function PageHeader({ eyebrow, title, actions }: { eyebrow?: ReactNode; t
 
 /** Raised surface: one step up from the page with a hairline border. */
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-[18px] border border-[rgba(27,36,57,0.08)] bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] ${className}`}>{children}</section>;
+  return <section className={`min-w-0 rounded-[18px] border border-[rgba(27,36,57,0.08)] bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] ${className}`}>{children}</section>;
 }
 
 export function PanelTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <h2 className="text-[15px] font-semibold">{children}</h2>
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <h2 className="min-w-0 text-[15px] font-semibold">{children}</h2>
       {action}
     </div>
   );
