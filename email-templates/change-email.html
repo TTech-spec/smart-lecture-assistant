@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light only">
+<title>Confirm your new email</title>
+</head>
+<body style="margin:0;padding:0;background:#f5faf8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f1b2d;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Confirm your new sign-in email for Attendly.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5faf8;">
+  <tr><td align="center" style="padding:32px 16px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+      <!-- Logo -->
+      <tr><td style="padding:0 4px 20px 4px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="width:36px;height:36px;background:#12b886;border-radius:10px;text-align:center;vertical-align:middle;font-size:18px;line-height:36px;color:#ffffff;font-weight:700;">A</td>
+          <td style="padding-left:10px;font-size:18px;font-weight:700;color:#0f1b2d;letter-spacing:-0.2px;">Attendly</td>
+        </tr></table>
+      </td></tr>
+      <!-- Card -->
+      <tr><td style="background:#ffffff;border:1px solid #e3ece8;border-radius:20px;padding:32px 28px;">
+        <h1 style="margin:0 0 8px 0;font-size:24px;line-height:30px;font-weight:700;color:#0f1b2d;letter-spacing:-0.3px;">Confirm your new email</h1>
+        <p style="margin:0 0 24px 0;font-size:15px;line-height:23px;color:#5b6b73;">You asked to change the sign-in email of your Attendly lecturer account from <strong style="color:#0f1b2d;">{{ .Email }}</strong> to <strong style="color:#0f1b2d;">{{ .NewEmail }}</strong>. Password reset codes will go to the new email.</p>
+        
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td align="center" bgcolor="#0f1b2d" style="border-radius:12px;">
+            <a href="{{ .ConfirmationURL }}" style="display:block;padding:14px 20px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:12px;">Confirm new email</a>
+          </td></tr>
+        </table>
+        <p style="margin:20px 0 0 0;font-size:13px;line-height:20px;color:#5b6b73;"><strong style="color:#0f1b2d;">Didn't ask for this?</strong> Don't tap the button. Your sign-in email stays the same. Consider changing your password.</p>
+      </td></tr>
+      <!-- Footer -->
+      <tr><td style="padding:20px 8px 0 8px;font-size:12px;line-height:18px;color:#8a979e;text-align:center;">
+        You got this email because someone asked to change your Attendly sign-in email.<br>
+        Attendly &middot; GPS-verified class attendance &middot; EKSU
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
