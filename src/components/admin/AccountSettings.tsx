@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { KeyRound, Mail, X } from "lucide-react";
+import { KeyRound, LogOut, Mail, X } from "lucide-react";
 import { toast } from "sonner";
 import { PasswordStrength, authButton, authInput } from "@/components/auth/AuthUI";
 import { changeLecturerEmail, changeLecturerPassword, currentLecturerEmail } from "@/lib/lecturer-auth";
 import { friendlyError } from "@/lib/friendly-error";
 
 /** Lecturer account: change the sign-in email (where reset codes go) and the password. */
-export function AccountSettings({ onClose }: { onClose: () => void }) {
+export function AccountSettings({ onClose, onSignOut }: { onClose: () => void; onSignOut?: () => void }) {
   const [email, setEmail] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [emailPass, setEmailPass] = useState("");
@@ -120,6 +120,12 @@ export function AccountSettings({ onClose }: { onClose: () => void }) {
             </form>
           )}
         </div>
+        {onSignOut && (
+          <button type="button" onClick={() => { onClose(); onSignOut(); }}
+            className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-medium text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30">
+            <LogOut className="h-4 w-4" /> Sign out
+          </button>
+        )}
       </div>
     </div>,
     document.body,

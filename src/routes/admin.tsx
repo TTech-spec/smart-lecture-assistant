@@ -1,4 +1,5 @@
 import { TourPlayer } from "@/components/TourPlayer";
+import { AccountSettings } from "@/components/admin/AccountSettings";
 import { AuthShell, AuthMark, AuthTitle, CodeBoxes, authInput, authButton } from "@/components/auth/AuthUI";
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
@@ -19,7 +20,7 @@ import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { IOSInstallHelp } from "@/components/IOSInstallHelp";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { useStore } from "@/hooks/use-store";
-import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth, sendLecturerPasswordReset, verifyPasswordResetCode } from "@/lib/lecturer-auth";
+import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth, sendLecturerPasswordReset, verifyPasswordResetCode, currentLecturerEmail } from "@/lib/lecturer-auth";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -190,6 +191,9 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
 
 function AdminShell({ onLogout }: { onLogout: () => void }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [myEmail, setMyEmail] = useState<string | null>(null);
+  useEffect(() => { currentLecturerEmail().then(setMyEmail); }, [accountOpen]);
   const [themeId, setThemeId] = useState<ThemeId>(() => loadDashboardTheme());
   const [wizardOpen, setWizardOpen] = useState(false);
   const { canPromptInstall, isIOS, installed, promptInstall } = useInstallPrompt();
@@ -235,6 +239,7 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
       onSetup={() => { setWizardOpen(true); onNavigate?.(); }}
       onInstall={() => { handleInstallClick(); onNavigate?.(); }}
       showInstall={!installed}
+      onAccount={() => setAccountOpen(true)}
     />
   );
 
@@ -248,14 +253,21 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
         <Link to="/admin" className="flex items-center gap-2 font-display text-lg font-semibold">
           <ShieldCheck className="h-5 w-5 text-[#4fd8a8]" /> Attendly
         </Link>
-        <button
-          onClick={() => setMobileMenuOpen(true)}
-          aria-label="Open menu"
-          className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-white/10"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => setAccountOpen(true)} aria-label={`Your account${myEmail ? `: ${myEmail}` : ""}`}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#12b886]/20 text-xs font-semibold text-[#4fd8a8] ring-1 ring-white/10 hover:ring-[#4fd8a8]/60">
+            {(myEmail ?? "L").slice(0, 2).toUpperCase()}
+          </button>
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open menu"
+            className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-white/10"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
       </header>
+      {accountOpen && <AccountSettings onClose={() => setAccountOpen(false)} onSignOut={onLogout} />}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
           <button aria-label="Close menu" className="absolute inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />

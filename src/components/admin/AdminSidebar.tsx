@@ -26,12 +26,13 @@ export function isUnverified(r: AttendanceRecord): boolean {
 }
 
 export function AdminSidebar({
-  links, records, onNavigate, onLogout, onSetup, onInstall, showInstall,
+  links, records, onNavigate, onLogout, onSetup, onInstall, showInstall, onAccount,
 }: {
   links: AttendanceLink[];
   records: AttendanceRecord[];
   onNavigate?: () => void;
   onLogout: () => void;
+  onAccount?: () => void;
   onSetup: () => void;
   onInstall: () => void;
   showInstall: boolean;
@@ -88,11 +89,14 @@ export function AdminSidebar({
       <SideButton onClick={onSetup} icon={<Settings2 className="h-[17px] w-[17px]" />} label="Setup wizard" />
 
       <div className="mt-2.5 flex items-center gap-2.5 border-t border-white/10 px-2.5 pt-3">
-        <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-[#283349] text-xs font-semibold text-white">{initials}</span>
-        <div className="min-w-0 flex-grow">
-          <p className="truncate text-[13px] font-semibold text-white">Lecturer</p>
-          <p className="truncate text-xs text-[#7d8aa0]">{email ?? "Signed in"}</p>
-        </div>
+        <button type="button" onClick={() => { onAccount?.(); onNavigate?.(); }} title="Your account: email and password"
+          className="-ml-1 flex min-w-0 flex-grow items-center gap-2.5 rounded-xl p-1 text-left transition-colors hover:bg-white/5">
+          <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-[#12b886]/20 text-xs font-semibold text-[#4fd8a8]">{initials}</span>
+          <span className="min-w-0">
+            <span className="block truncate text-[13px] font-semibold text-white">Your account</span>
+            <span className="block truncate text-xs text-[#9aa6b8]">{email ?? "Signed in"}</span>
+          </span>
+        </button>
         <button
           onClick={onLogout} aria-label="Sign out" title="Sign out"
           className="flex h-8 w-8 items-center justify-center rounded-lg text-[#7d8aa0] transition-colors hover:bg-white/5 hover:text-white"
