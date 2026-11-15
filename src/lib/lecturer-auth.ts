@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { passwordIsCorrect, supabase } from "@/lib/supabase";
 
 /**
  * Lecturer authentication.
@@ -73,8 +73,8 @@ export async function changeLecturerPassword(current: string, next: string): Pro
     const { data } = await supabase.auth.getUser();
     const email = data.user?.email;
     if (!email) throw new Error("You are not signed in.");
-    const check = await supabase.auth.signInWithPassword({ email, password: current });
-    if (check.error) throw new Error("Wrong current password.");
+    const check = await passwordIsCorrect(email, current);
+    if (!check.ok) throw new Error(/invalid login/i.test(check.message ?? "") ? "That isn't your current password." : check.message ?? "Couldn't check your password.");
     const { error } = await supabase.auth.updateUser({ password: next });
     if (error) throw new Error(error.message);
     return;
@@ -204,8 +204,8 @@ export async function changeLecturerEmail(newEmail: string, password: string): P
   const email = data.user?.email;
   if (!email) throw new Error("You are not signed in.");
   if (email.toLowerCase() === clean) throw new Error("That's already your sign-in email.");
-  const check = await supabase.auth.signInWithPassword({ email, password });
-  if (check.error) throw new Error(/invalid login/i.test(check.error.message) ? "That isn't your current password." : explainEmailError(check.error.message));
+  const check = await passwordIsCorrect(email, password);
+  if (!check.ok) throw new Error(/invalid login/i.test(check.message ?? "") ? "That isn't your current password." : check.message ?? "Couldn't check your password.");
   const { data: upd, error } = await supabase.auth.updateUser(
     { email: clean },
     { emailRedirectTo: `${window.location.origin}/admin` },

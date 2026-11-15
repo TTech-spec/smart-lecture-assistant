@@ -35,3 +35,16 @@ function makeClient() {
 }
 
 export const supabase = makeClient();
+
+/**
+ * Check an email + password without touching the signed-in session (used
+ * before changing email or password). A throwaway client that stores nothing.
+ */
+export async function passwordIsCorrect(email: string, password: string): Promise<{ ok: boolean; message?: string }> {
+  if (!configured) return { ok: false, message: "Supabase isn't configured." };
+  const temp = createClient(url!, key!, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "attendly-password-check" },
+  });
+  const { error } = await temp.auth.signInWithPassword({ email, password });
+  return error ? { ok: false, message: error.message } : { ok: true };
+}
