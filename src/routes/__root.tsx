@@ -44,6 +44,17 @@ function NotFoundComponent() {
   );
 }
 
+/** Remove old service workers and cached files, then load the newest version */
+async function freshReload() {
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    await Promise.all((regs ?? []).map((r) => r.unregister()));
+    const keys = await caches?.keys?.();
+    await Promise.all((keys ?? []).map((k) => caches.delete(k)));
+  } catch { /* still reload */ }
+  window.location.reload();
+}
+
 function ErrorComponent({ error: rawError, reset }: { error: unknown; reset: () => void }) {
   const error = rawError instanceof Error ? rawError : new Error(String(rawError));
   console.error(error);
@@ -70,12 +81,18 @@ function ErrorComponent({ error: rawError, reset }: { error: unknown; reset: () 
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">This page didn't load</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
+          Tap <strong className="text-foreground">Fix and reload</strong>. It clears the old saved copy of the app on this device and loads the latest version. Your records are not affected.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
-            onClick={() => { router.invalidate(); reset(); }}
+            onClick={() => { void freshReload(); }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
+          >
+            Fix and reload
+          </button>
+          <button
+            onClick={() => { router.invalidate(); reset(); }}
+            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Try again
           </button>
@@ -86,6 +103,10 @@ function ErrorComponent({ error: rawError, reset }: { error: unknown; reset: () 
             Go home
           </a>
         </div>
+        <details className="mt-6 text-left text-xs text-muted-foreground">
+          <summary className="cursor-pointer text-center">Details for support</summary>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 font-mono">{`${error.name}: ${error.message}\n${typeof window !== "undefined" ? window.location.pathname : ""}\n${(error.stack ?? "").split("\n").slice(1, 5).join("\n")}`}</pre>
+        </details>
       </div>
     </div>
   );

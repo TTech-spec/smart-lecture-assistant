@@ -22,7 +22,7 @@ export function needsReview(r: AttendanceRecord): boolean {
 /** A check-in the server never checked, that the lecturer didn't add by hand */
 export function isUnverified(r: AttendanceRecord): boolean {
   const cf = r.customFields ?? {};
-  return !cf.serverChecked && !cf.flags && !cf.reviewed && !cf.addedByLecturer && !r.id.startsWith("manual-");
+  return !cf.serverChecked && !cf.flags && !cf.reviewed && !cf.addedByLecturer && !String(r.id ?? "").startsWith("manual-");
 }
 
 export function AdminSidebar({
