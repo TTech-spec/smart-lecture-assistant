@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Check, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, Check, ShieldCheck, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/hooks/use-store";
@@ -101,17 +102,47 @@ function ReviewPage() {
             )}
           </div>
 
-          {current ? (
-            <ReviewDetail
-              r={current}
-              registered={students.find((s) => s.matricNumber.toUpperCase() === current.matricNumber.toUpperCase()) ?? null}
-              onDecide={(d) => decide(current, d)}
-            />
-          ) : (
-            <Panel className="py-16 text-center text-sm text-muted-foreground">No check-ins waiting.</Panel>
-          )}
+          {/* Laptop: details beside the list */}
+          <div className="hidden lg:block">
+            {current ? (
+              <ReviewDetail
+                r={current}
+                registered={students.find((s) => s.matricNumber.toUpperCase() === current.matricNumber.toUpperCase()) ?? null}
+                onDecide={(d) => decide(current, d)}
+              />
+            ) : (
+              <Panel className="py-16 text-center text-sm text-muted-foreground">No check-ins waiting.</Panel>
+            )}
+          </div>
         </div>
       )}
+
+      {/* Phone / tablet: tapping a student opens their details full screen */}
+      <AnimatePresence>
+        {id && current && current.id === id && (
+          <motion.div key="sheet" className="fixed inset-0 z-50 flex flex-col bg-background lg:hidden"
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", stiffness: 320, damping: 34 }}
+            role="dialog" aria-modal="true" aria-label={`Review ${current.fullName}`}>
+            <div className="flex items-center gap-3 border-b px-4 pb-3 pt-[max(12px,env(safe-area-inset-top))]">
+              <button type="button" onClick={() => navigate({ to: "/admin/review", search: { id: undefined } })}
+                className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-secondary" aria-label="Back to the list">
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{current.fullName}</p>
+                <p className="text-xs text-muted-foreground">{queue.findIndex((q) => q.id === current.id) + 1} of {queue.length} to review</p>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 pb-[max(16px,env(safe-area-inset-bottom))] pt-3">
+              <ReviewDetail
+                r={current}
+                registered={students.find((s) => s.matricNumber.toUpperCase() === current.matricNumber.toUpperCase()) ?? null}
+                onDecide={(d) => decide(current, d)}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
@@ -148,10 +179,10 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
       : "Compare the two photos and approve if it's the same person.";
 
   return (
-    <Panel className="flex flex-col gap-5 p-6">
+    <Panel className="flex flex-col gap-5 p-4 sm:p-6">
       <div>
         <p className="text-xs font-semibold uppercase text-amber-700 dark:text-amber-400">{checkStatus(cf).label}</p>
-        <h2 className="mt-1 font-display text-2xl font-semibold">{r.fullName} · <span className="font-mono text-lg">{r.matricNumber}</span></h2>
+        <h2 className="mt-1 font-display text-xl font-semibold sm:text-2xl">{r.fullName} <span className="block font-mono text-base sm:inline sm:text-lg">· {r.matricNumber}</span></h2>
         <p className="mt-0.5 text-[13px] text-muted-foreground">{r.courseCode} · {new Date(r.submittedAt).toLocaleString()} · {r.level ? `${r.level} Level · ` : ""}{r.department}</p>
       </div>
 
@@ -187,11 +218,11 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
 
       <p className="text-[13px] leading-relaxed text-muted-foreground">{hint}</p>
 
-      <div className="flex flex-wrap justify-end gap-2.5">
+      <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-col-reverse gap-2.5 border-t bg-card px-4 py-4 sm:static sm:m-0 sm:flex-row sm:flex-wrap sm:justify-end sm:border-0 sm:p-0">
         <Button variant="outline" className="h-11 rounded-xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-700" onClick={() => onDecide("rejected")}>
           <X className="mr-1.5 h-4 w-4" /> Reject · mark absent
         </Button>
-        <Button className="h-11 rounded-xl px-6" onClick={() => onDecide("approved")}>
+        <Button className="h-11 rounded-xl px-6 sm:w-auto" onClick={() => onDecide("approved")}>
           <Check className="mr-1.5 h-4 w-4" /> Approve
         </Button>
       </div>
