@@ -22,8 +22,17 @@ export function AccountSettings({ onClose, onSignOut }: { onClose: () => void; o
     e.preventDefault();
     setBusy("email");
     try {
-      await changeLecturerEmail(newEmail, emailPass);
-      setSentTo(newEmail.trim().toLowerCase());
+      const { pending } = await changeLecturerEmail(newEmail, emailPass);
+      if (pending) {
+        setSentTo(newEmail.trim().toLowerCase());
+      } else {
+        // Supabase's email confirmation is off: the change is already done
+        const changed = newEmail.trim().toLowerCase();
+        setEmail(changed);
+        setNewEmail("");
+        setOpen(null);
+        toast.success(`Email changed. Sign in with ${changed} from now on.`);
+      }
       setEmailPass("");
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : "Couldn't change your email.", { duration: 12000 });
@@ -90,7 +99,7 @@ export function AccountSettings({ onClose, onSignOut }: { onClose: () => void; o
                 <label htmlFor="acct-email-pass" className="text-[13px] font-medium">Current password</label>
                 <PasswordInput id="acct-email-pass" autoComplete="current-password" value={emailPass} onChange={(e) => setEmailPass(e.target.value)} />
               </div>
-              <button type="submit" className={authButton} disabled={busy !== null || !newEmail || !emailPass}>{busy === "email" ? "Sending…" : "Send confirmation"}</button>
+              <button type="submit" className={authButton} disabled={busy !== null || !newEmail || !emailPass}>{busy === "email" ? "Saving…" : "Change email"}</button>
             </form>
           )}
         </div>
