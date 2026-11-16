@@ -49,6 +49,12 @@ export default defineConfig({
         navigateFallback: null,
         // Phone notifications: show a notice when the server wakes this phone
         importScripts: ["/push-sw.js"],
+        // Face-check files (6.5 MB): download once, then load from the phone
+        runtimeCaching: [{
+          urlPattern: ({ url }) => url.pathname.startsWith("/models/"),
+          handler: "CacheFirst",
+          options: { cacheName: "face-models", expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 90 } },
+        }],
       },
       devOptions: {
         // Off in development: the production build makes the real service worker

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, MapPin, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { distanceMeters, type Coords } from "@/lib/geo";
-import { currentWeather, reverseGeocode, stampPhoto, type StampInfo } from "@/lib/photo-stamp";
+import { currentWeather, reverseGeocode, stampPhoto, type StampInfo, prefetchMiniMap } from "@/lib/photo-stamp";
 
 type Props = {
   /** Called with the stamped JPEG (data URL) and the info used, or null when retaking. */
@@ -81,6 +81,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
   // Live data
   const [livePos, setLivePos] = useState<Coords | null>(null);
   const samplesRef = useRef<{ pos: Coords; at: number }[]>([]);
+  const mapPrefetched = useRef(false);
   const [watchStarted, setWatchStarted] = useState(0);
   const [liveAddress, setLiveAddress] = useState<string | null>(null);
   const [liveWeather, setLiveWeather] = useState<Weather | null>(null);
@@ -203,6 +204,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
         const pos = fuseFixes(samplesRef.current.map((x) => x.pos)) ?? sample;
         setLivePos(pos);
         refreshAddress(pos);
+        if (!mapPrefetched.current) { mapPrefetched.current = true; prefetchMiniMap(pos); }
         if (!weatherLoaded) {
           weatherLoaded = true;
           currentWeather(pos).then(setLiveWeather);
@@ -232,7 +234,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     setWatchStarted(Date.now());
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
+        video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } },
         audio: false,
       });
       streamRef.current = stream;

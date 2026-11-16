@@ -145,7 +145,8 @@ function AttendTokenPage() {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => warmUpGps(), []); // GPS gets a strong fix while the student fills in their details
+  useEffect(() => warmUpGps(), []);
+  useEffect(() => { preloadFaceModels(); }, []); // face files download while the student types // GPS gets a strong fix while the student fills in their details
   useEffect(() => {
     let cancelled = false;
 

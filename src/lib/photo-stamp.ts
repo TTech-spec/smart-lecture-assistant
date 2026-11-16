@@ -63,14 +63,26 @@ export async function currentWeather(pos: Coords): Promise<{ temperatureC: numbe
   return { temperatureC: null, weather: "—" };
 }
 
-function loadImage(src: string): Promise<HTMLImageElement | null> {
+function loadImage(src: string, timeoutMs = 2500): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
+    // Never let a slow map download hold up the photo
+    const t = setTimeout(() => resolve(null), timeoutMs);
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
+    img.onload = () => { clearTimeout(t); resolve(img); };
+    img.onerror = () => { clearTimeout(t); resolve(null); };
     img.src = src;
   });
+}
+
+/** Start downloading the stamp's map early (while the camera is open) so stamping is instant */
+export function prefetchMiniMap(pos: Coords): void {
+  if (typeof window === "undefined") return;
+  const z = 16, n = 2 ** z;
+  const tx = Math.floor(((pos.lng + 180) / 360) * n);
+  const latRad = (pos.lat * Math.PI) / 180;
+  const ty = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) void loadImage(`https://tile.openstreetmap.org/${z}/${tx + dx}/${ty + dy}.png`, 15_000);
 }
 
 /** Draws a small OpenStreetMap thumbnail centred on the position with a red pin. */
