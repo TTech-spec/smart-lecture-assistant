@@ -129,6 +129,7 @@ function GenerateLinkForm({
   const [creating, setCreating] = useState(false);
   const [linkType, setLinkType] = useState<"attendance" | "test" | null>(null); // null = not answered yet
   const [assignClassCode, setAssignClassCode] = useState<boolean | null>(null); // null = not answered yet
+  const [requireRoomCode, setRequireRoomCode] = useState(false); // projector code: off unless the lecturer wants it
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null); // for test links
   // Lecturer-verified location (attendance links)
   const [anchor, setAnchor] = useState<Coords | null>(null);
@@ -237,6 +238,7 @@ function GenerateLinkForm({
           createdAt: now.toISOString(),
           expiresAt,
           assignClassCode: linkType === "attendance" ? (assignClassCode ?? false) : false,
+          requireRoomCode: linkType === "attendance" ? requireRoomCode : false,
           linkType: linkType,
           ...(anchor
             ? {
@@ -257,6 +259,7 @@ function GenerateLinkForm({
       setCourseCode("");
       setLinkType(null);
       setAssignClassCode(null);
+      setRequireRoomCode(false);
       setSelectedTestId(null);
       setAnchor(null);
       setVenueId("");
@@ -365,6 +368,17 @@ function GenerateLinkForm({
             </p>
           )}
         </div>
+      )}
+
+      {/* ── Projector code (optional) ── */}
+      {linkType === "attendance" && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border bg-secondary/40 p-4">
+          <input id="require-room-code" type="checkbox" checked={requireRoomCode} onChange={(e) => setRequireRoomCode(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-primary" />
+          <span className="text-sm">
+            <span className="block font-semibold">Ask for the projector code</span>
+            <span className="block text-xs text-muted-foreground">Off: students just enter their matric number, take a selfie and submit. Live GPS and the face match prove they're in class. On: they must also type the code shown on your projector.</span>
+          </span>
+        </label>
       )}
 
       {/* ── Lecturer location (attendance links) ── */}

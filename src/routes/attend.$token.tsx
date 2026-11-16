@@ -205,6 +205,10 @@ function AttendTokenPage() {
     }
   }, [photo]);
 
+  // The projector code step only appears when the lecturer switched it on for this link
+  const needsCode = Boolean(link && link !== "loading" && link.requireRoomCode);
+  const totalSteps = needsCode ? 3 : 2;
+
   function goNext(e: React.FormEvent) {
     e.preventDefault();
     if (stage === 1) {
@@ -219,6 +223,7 @@ function AttendTokenPage() {
       setStage(2);
     } else if (stage === 2) {
       if (!photo) return toast.error("Take your live photo first.");
+      if (!needsCode) { void onSubmit(e); return; }
       setStage(3);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -292,7 +297,7 @@ function AttendTokenPage() {
     if (!photo)                    return toast.error("Please take your live photo first.");
     if (Date.now() - photo.info.takenAt.getTime() > 5 * 60_000)
       return toast.error("Your photo is older than 5 minutes. Please retake it.");
-    if (roomCode.trim().length !== 4) return toast.error("Enter the 4-character room code from the projector.");
+    if (needsCode && roomCode.trim().length !== 4) return toast.error("Enter the 4-character room code from the projector.");
 
     const today = todayKey();
 
@@ -595,10 +600,10 @@ function AttendTokenPage() {
           >
             <div className="sm:col-span-2">
               <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-                <span className="h-2 w-2 rounded-full bg-primary" /> Step {stage} of 3 · {["Your details", "Live selfie", "Class code"][stage - 1]}
+                <span className="h-2 w-2 rounded-full bg-primary" /> Step {stage} of {totalSteps} · {["Your details", "Live selfie", "Projector code"][stage - 1]}
               </p>
-              <div className="mt-2 grid grid-cols-3 gap-1.5">
-                {[1, 2, 3].map((i) => <div key={i} className={`h-[5px] rounded-full transition-colors duration-300 ${i <= stage ? "bg-primary" : "bg-border"}`} />)}
+              <div className={`mt-2 grid gap-1.5 ${totalSteps === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+                {Array.from({ length: totalSteps }, (_, k) => k + 1).map((i) => <div key={i} className={`h-[5px] rounded-full transition-colors duration-300 ${i <= stage ? "bg-primary" : "bg-border"}`} />)}
               </div>
             </div>
 
@@ -759,7 +764,7 @@ function AttendTokenPage() {
                 </div>
               </div>
             ) : null}
-            <Field label="Class code — look at the projector" className="sm:col-span-2">
+            <Field label="Projector code — look at the screen" className="sm:col-span-2">
               <Input
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 4))}
@@ -789,7 +794,13 @@ function AttendTokenPage() {
               )}
             </Field>
             <div className="sm:col-span-2 flex flex-col gap-2 pt-1">
-              <Button type="submit" disabled={!photo} className="h-12 w-full rounded-full text-base">Continue <ArrowRight className="ml-1 h-4 w-4" /></Button>
+              {needsCode ? (
+                <Button type="submit" disabled={!photo} className="h-12 w-full rounded-full text-base">Continue <ArrowRight className="ml-1 h-4 w-4" /></Button>
+              ) : (
+                <Button type="submit" disabled={submitting || !photo || (alreadyMarked && !!form.matricNumber.trim())} className="h-12 w-full rounded-full text-base">
+                  {submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : <><CheckCircle2 className="mr-2 h-4 w-4" /> Mark my attendance</>}
+                </Button>
+              )}
               <Button type="button" variant="ghost" className="h-11 w-full rounded-full" onClick={() => setStage(1)}>Back</Button>
             </div>
             </div>
@@ -798,7 +809,7 @@ function AttendTokenPage() {
               <Button
                 type="submit"
                 className="h-12 w-full rounded-full text-base"
-                disabled={submitting || !photo || roomCode.length !== 4 || (alreadyMarked && !!form.matricNumber.trim())}
+                disabled={submitting || !photo || (needsCode && roomCode.length !== 4) || (alreadyMarked && !!form.matricNumber.trim())}
               >
                 {submitting
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
@@ -806,7 +817,7 @@ function AttendTokenPage() {
                 }
               </Button>
               <p className="mt-2 text-center text-xs text-muted-foreground">
-                Your class code, location and photo are checked on the server before attendance is saved.
+                Your projector code, location and photo are checked on the server before attendance is saved.
               </p>
               <Button type="button" variant="ghost" className="mt-1 h-11 w-full rounded-full" onClick={() => setStage(2)}>Back</Button>
             </div>

@@ -91,6 +91,8 @@ export type AttendanceLink = {
   expiresAt: string;
   /** When true, a unique class code is auto-generated and shown to the student on submission */
   assignClassCode: boolean;
+  /** Students must type the code shown on the projector (off by default) */
+  requireRoomCode?: boolean;
   /** Type of link: 'attendance' or 'test' */
   linkType?: "attendance" | "test";
   /** For test links, the ID of the test to associate with */
@@ -578,6 +580,7 @@ function linkToDb(l: AttendanceLink): Row {
     created_at: l.createdAt,
     expires_at: l.expiresAt,
     assign_class_code: l.assignClassCode ?? false,
+    ...(l.requireRoomCode ? { require_room_code: true } : {}),
     link_type: l.linkType ?? "attendance",
     test_id: l.testId ?? null,
     // Only sent when the lecturer verified a location, so databases that
@@ -605,6 +608,7 @@ function linkFromDb(row: Row): AttendanceLink {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     assignClassCode: Boolean(row.assign_class_code),
+    requireRoomCode: Boolean(row.require_room_code),
     linkType: (row.link_type as "attendance" | "test" | undefined) || undefined,
     testId: row.test_id || undefined,
     anchorLat: row.anchor_lat ?? undefined,
@@ -658,6 +662,9 @@ async function addLinkInner(l: AttendanceLink): Promise<void> {
       throw new Error(
         "Lecturer location columns are missing. Run lecturer-location-migration.sql in the Supabase SQL Editor, then try again.",
       );
+    }
+    if (error && /require_room_code/.test(error.message)) {
+      throw new Error("The projector code option needs simple-checkin.sql. Run it in the Supabase SQL Editor, or switch the projector code off.");
     }
     if (error) {
       // If the error is because assign_class_code or link_type column doesn't exist yet

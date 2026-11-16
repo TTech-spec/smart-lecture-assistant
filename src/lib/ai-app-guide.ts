@@ -35,7 +35,7 @@ HOW A STUDENT SIGNS IN
 2. They open the class link or scan the projector QR.
 3. Step 1: type matric number; their details and personal class code fill in.
 4. Step 2: live selfie with a location stamp.
-5. Step 3: type the projector code; the server checks distance, code and face, then saves.
+5. Tap Mark my attendance; the server checks live GPS distance and face, then saves. If the lecturer ticked "Ask for the projector code" on the link, there is a third step to type the projector code.
 Students can add Attendly to their home screen and turn on notifications at /app ("Get the app"; on iPhone they must add it to the home screen first). Students register once at /register (name, matric, department, level, phone, gender, face scan). /me lets them see their check-ins and fix name, matric or department.
 
 COMMON TASKS
@@ -54,7 +54,7 @@ FIXES FOR COMMON PROBLEMS
 - Student "out of range": check the radius in Tests & settings and that you verified your location in the hall when creating the link.
 - Everyone locked out after wrong codes on campus Wi-Fi: run scale-2000.sql (it relaxes the shared-network lock).
 - "This page isn't switched on yet" on My attendance: run student-edits.sql. Blocking not working: run session-blocks.sql. Class codes "not switched on": run class-codes.sql.
-- Order of SQL files: security-hardening.sql, students-migration.sql, security-fixes.sql (then make sure your account is in the lecturers table), student-edits.sql, session-blocks.sql, class-codes.sql, payments-secure.sql, scale-2000.sql, fix-link-creation.sql, gps-help.sql, photo-storage.sql (then gps-help.sql again), push-notifications.sql, test-integrity.sql, tests-secure.sql (run it again after any older test migration, which would switch protection off).
+- Order of SQL files: security-hardening.sql, students-migration.sql, security-fixes.sql (then make sure your account is in the lecturers table), student-edits.sql, session-blocks.sql, class-codes.sql, payments-secure.sql, scale-2000.sql, fix-link-creation.sql, gps-help.sql, photo-storage.sql (then gps-help.sql again), push-notifications.sql, simple-checkin.sql, test-integrity.sql, tests-secure.sql (run it again after any older test migration, which would switch protection off).
 - "function is_lecturer() does not exist": run security-fixes.sql first.
 - Can't see admin pages after security-fixes.sql: add your account: insert into lecturers (user_id) select id from auth.users where email = 'YOUR EMAIL'.
 - "Payment system not configured": on Vercel set SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL and SQUAD_SECRET_KEY (never with a VITE_ prefix), then redeploy. "API key is empty or invalid": use the Squad SECRET key (sandbox_sk_ or sk_), not the public key. OPay bank code is 100004.

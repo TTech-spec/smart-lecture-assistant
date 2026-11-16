@@ -848,8 +848,15 @@ function RecordsPage() {
                         : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary text-xs font-semibold text-muted-foreground">{initials(r.fullName)}</span>}
                       <span className="min-w-0">
                         <span className="block truncate font-semibold">{r.fullName}</span>
-                        <span className="block truncate font-mono text-[12px] text-muted-foreground">{r.matricNumber}{r.assignedClassCode ? ` · ${r.assignedClassCode}` : ""}</span>
-                        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold md:hidden ${pillClass(s)}`}>{st.label}</span>
+                        <span className="block truncate font-mono text-[12px] text-muted-foreground">{r.matricNumber}</span>
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {r.assignedClassCode && (
+                            <span title="Class code" className="inline-flex items-center gap-1 rounded-full bg-[#121a2b] px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-[#4fd8a8]">
+                              <KeyRound className="h-3 w-3" />{r.assignedClassCode}
+                            </span>
+                          )}
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold md:hidden ${pillClass(s)}`}>{st.label}</span>
+                        </span>
                       </span>
                     </span>
                     <span className="hidden min-w-0 md:block">
