@@ -1,4 +1,5 @@
 import { passwordIsCorrect, supabase } from "@/lib/supabase";
+import { changeEmailNow } from "@/lib/account-server";
 
 /**
  * Lecturer authentication.
@@ -204,6 +205,24 @@ export async function changeLecturerEmail(newEmail: string, password: string): P
   const email = data.user?.email;
   if (!email) throw new Error("You are not signed in.");
   if (email.toLowerCase() === clean) throw new Error("That's already your sign-in email.");
+
+  // Preferred: the server changes it directly, so no confirmation email is needed
+  try {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (token) {
+      const r = await changeEmailNow({ data: { accessToken: token, password, newEmail: clean } });
+      if (r.ok) {
+        await supabase.auth.refreshSession().catch(() => {});
+        return { pending: false };
+      }
+      if (r.reason !== "not_configured") throw new Error(r.message);
+    }
+  } catch (e) {
+    // A real refusal (wrong password, email taken…) is shown; a missing server function falls back below
+    if (e instanceof Error && !/not_configured|fetch|server function|404|Not Found/i.test(e.message)) throw e;
+  }
+
   const check = await passwordIsCorrect(email, password);
   if (!check.ok) throw new Error(/invalid login/i.test(check.message ?? "") ? "That isn't your current password." : check.message ?? "Couldn't check your password.");
   const { data: upd, error } = await supabase.auth.updateUser(
