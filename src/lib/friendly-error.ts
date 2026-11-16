@@ -39,3 +39,29 @@ export function friendlyError(err: unknown, fallback = "Something went wrong. Pl
   if (LOOKS_TECHNICAL.test(raw) || raw.length > 220) return fallback;
   return raw;
 }
+
+/** Extra situations students run into, in plain words */
+const STUDENT_RULES: { test: RegExp; message: string }[] = [
+  { test: /rate limit|too many|try again later|429/i,
+    message: "Too many tries in a short time. Wait a minute, then try again." },
+  { test: /not_configured|isn't switched on|not set up|does not exist|schema cache/i,
+    message: "This isn't switched on yet. Please let your lecturer know." },
+  { test: /camera|notallowederror|notreadableerror|notfounderror|getusermedia|videoinput/i,
+    message: "We couldn't use your camera. Allow camera access for this site, close other apps using the camera, and try again." },
+  { test: /quota|storage full|exceeded the quota/i,
+    message: "Your phone's browser storage is full. Clear some browsing data and try again." },
+];
+
+/**
+ * For student pages: always a short, friendly sentence. Never shows the
+ * server's own error text, whatever it says; unknown errors get `fallback`.
+ */
+export function studentError(err: unknown, fallback = "Something went wrong. Please try again."): string {
+  const raw = err instanceof Error ? `${err.name} ${err.message}` : typeof err === "string" ? err : "";
+  if (!raw.trim()) return fallback;
+  // Student wording first (camera, limits…), then the shared network rule; anything else gets the fallback
+  for (const r of STUDENT_RULES) if (r.test.test(raw)) return r.message;
+  if (RULES[0].test.test(raw)) return RULES[0].message; // can't reach the server
+  if (/duplicate key|already exists|23505/i.test(raw)) return "This was already saved. You don't need to do it again.";
+  return fallback;
+}

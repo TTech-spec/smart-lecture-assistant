@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { friendlyError } from "@/lib/friendly-error";
+import { studentError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2, XCircle, Loader2, ArrowLeft, ArrowRight, MapPin, ChevronDown, KeyRound, Copy,
@@ -356,7 +356,7 @@ function AttendTokenPage() {
         if (err.code === "duplicate_device") setDeviceBlocked(true);
         else setFailure(err);
       } else {
-        toast.error(friendlyError(err, "We couldn't save your attendance. Please try again."));
+        toast.error(studentError(err, "We couldn't save your attendance. Check your internet and try again."));
       }
     } finally {
       setSubmitting(false);

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { friendlyError } from "@/lib/friendly-error";
+
 import { useEffect, useState } from "react";
 import { ArrowLeft, Camera, CheckCircle2, Clock, Loader2, Lock, MapPin, Pencil } from "lucide-react";
 import { toast } from "sonner";
@@ -184,7 +184,7 @@ function EditForm({ matric, name, department, onCancel, onSaved }: {
         matric_conflict: "That matric number is already marked present for the same class. Ask your lecturer if this is a mistake.",
         too_many_edits: "You've made several changes today. Try again tomorrow or ask your lecturer.",
         invalid: "Check that all three fields are filled in.",
-        not_configured: friendlyError(err, "Editing isn't set up yet."),
+        not_configured: "Editing isn't switched on yet. Please let your lecturer know.",
         unknown: "Couldn't save. Check your connection and try again.",
       }[code], { duration: 7000 });
     } finally {

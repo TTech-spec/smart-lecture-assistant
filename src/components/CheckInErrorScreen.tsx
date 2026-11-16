@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { friendlyError } from "@/lib/friendly-error";
+import { studentError } from "@/lib/friendly-error";
 import { Clock, KeyRound, LocateOff, MapPinOff, RefreshCw, ShieldAlert, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CheckInError } from "@/lib/attendance-store";
@@ -206,14 +206,14 @@ function describe(e: CheckInError, course: string): View {
         tone: "grey",
         icon: <ShieldAlert className="h-6 w-6" />,
         title: "Check-in isn't switched on yet",
-        body: friendlyError(e, "Check-in isn't switched on yet. Please let your lecturer know."),
+        body: "Check-in isn't switched on yet. Please let your lecturer know.",
       };
     default:
       return {
         tone: "red",
         icon: <ShieldAlert className="h-6 w-6" />,
         title: "Something went wrong",
-        body: friendlyError(e, "We couldn't save your attendance. Please try again."),
+        body: studentError(e, "We couldn't save your attendance. Check your internet and try again."),
         retry: "Try again",
       };
   }

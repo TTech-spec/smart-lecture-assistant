@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { friendlyError } from "@/lib/friendly-error";
+import { studentError } from "@/lib/friendly-error";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, MapPin, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -94,7 +94,7 @@ function RegisterPage() {
       setStep(3);
     } catch (err) {
       if (err instanceof RegisterError) setFailure(err);
-      else toast.error(friendlyError(err, "We couldn't save your registration. Please try again."));
+      else toast.error(studentError(err, "We couldn't save your registration. Check your internet and try again."));
       setStep(1);
       setScreen(1);
     } finally {
@@ -358,8 +358,8 @@ function describeFailure(e: RegisterError) {
         action: "Go back",
       };
     case "not_configured":
-      return { title: "Registration isn't set up yet", body: e.message, action: "Back" };
+      return { title: "Registration isn't set up yet", body: "Registration isn't switched on yet. Please let your lecturer know.", action: "Back" };
     default:
-      return { title: "Something went wrong", body: e.message || "Please try again.", action: "Try again" };
+      return { title: "Something went wrong", body: studentError(e, "We couldn't finish your registration. Check your internet and try again."), action: "Try again" };
   }
 }

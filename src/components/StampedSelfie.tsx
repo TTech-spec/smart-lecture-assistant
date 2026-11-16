@@ -1,4 +1,5 @@
 import { fuseFixes } from "@/lib/geo";
+import { studentError } from "@/lib/friendly-error";
 import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, MapPin, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -295,7 +296,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       setState("done");
       onChange({ dataUrl, info, pos, frame, gps });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not read your location.");
+      setError(e instanceof Error && e.message.startsWith("Couldn't find your location") ? e.message : studentError(e, "We couldn't finish your photo. Tap Take live photo and try again."));
       setPreview(null);
       setState("idle");
     }

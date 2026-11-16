@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { friendlyError } from "@/lib/friendly-error";
+import { studentError } from "@/lib/friendly-error";
 import { Loader2, CreditCard, AlertCircle, CheckCircle2, Info, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,7 +154,7 @@ export function PaymentModal({
       setStep("processing");
     } catch (err) {
       console.error("Payment initiation error:", err);
-      toast.error(friendlyError(err, "We couldn't start the payment. Please try again."));
+      toast.error(studentError(err, "We couldn't start the payment. Please try again in a minute."));
       setLoading(false);
     }
   }
