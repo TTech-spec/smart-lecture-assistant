@@ -14,7 +14,7 @@ import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { AdminAssistant } from "@/components/AdminAssistant";
 import {
   loadDashboardTheme, getThemeVars, loadDeveloperAccess, loadDeveloperAccessEmail,
-  fetchDashboardPreferences, isOnboardingDone, type ThemeId,
+  fetchDashboardPreferences, type ThemeId,
 } from "@/lib/dashboard-preferences";
 import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { IOSInstallHelp } from "@/components/IOSInstallHelp";
@@ -213,7 +213,11 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
   }
 
   useEffect(() => {
-    if (!isOnboardingDone()) setWizardOpen(true);
+    // Show the setup wizard every time the dashboard is opened (once per visit,
+    // not on every page change within the visit)
+    let shown = false;
+    try { shown = sessionStorage.getItem("att.wizard.shown") === "1"; sessionStorage.setItem("att.wizard.shown", "1"); } catch { /* private mode */ }
+    if (!shown) setWizardOpen(true);
     const syncTheme = () => setThemeId(loadDashboardTheme());
     window.addEventListener("att:theme", syncTheme);
 

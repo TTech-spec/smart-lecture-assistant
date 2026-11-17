@@ -64,7 +64,10 @@ export async function signInLecturer(email: string, password: string): Promise<v
 
 export async function signOutLecturer(): Promise<void> {
   if (supabase) await supabase.auth.signOut();
-  if (typeof window !== "undefined") sessionStorage.removeItem(LOCAL_AUTH_KEY);
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(LOCAL_AUTH_KEY);
+    sessionStorage.removeItem("att.wizard.shown"); // setup wizard shows again at the next sign-in
+  }
 }
 
 /** Change the lecturer password; verifies the current one first. */
