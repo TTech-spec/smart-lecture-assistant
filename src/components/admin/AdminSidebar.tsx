@@ -69,7 +69,7 @@ export function AdminSidebar({
   const initials = (email ?? "L").slice(0, 2).toUpperCase();
 
   return (
-    <aside className="flex h-full w-[248px] flex-col bg-[#121a2b] px-3.5 py-5 text-[#c9d1dc]">
+    <aside className="flex h-full w-[248px] flex-col bg-[#121a2b] px-3.5 py-5 text-[#eef2f7]">
       <Link to="/admin" onClick={onNavigate} className="flex items-center gap-2.5 px-2.5 pb-5">
         <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#12b886] text-[#0e1a17]">
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><path d="M9 9.5l2 2 4-4" /></svg>
@@ -81,7 +81,7 @@ export function AdminSidebar({
       <Group label="Teaching" items={teaching} onNavigate={onNavigate} className="mt-4" />
 
       {/* Account: sign-in email and password, easy to find */}
-      <p className="mt-4 px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7d8aa0]">Account</p>
+      <p className="mx-2.5 mb-2 mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-[#aeb9cb]">Account</p>
       <SideButton onClick={() => { onAccount?.(); onNavigate?.(); }} icon={<KeyRound className="h-[17px] w-[17px]" />} label="Email & password" />
 
       <div className="flex-grow" />
@@ -97,12 +97,12 @@ export function AdminSidebar({
           <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-[#12b886]/20 text-xs font-semibold text-[#4fd8a8]">{initials}</span>
           <span className="min-w-0">
             <span className="block truncate text-[13px] font-semibold text-white">Your account</span>
-            <span className="block truncate text-xs text-[#9aa6b8]">{email ?? "Signed in"}</span>
+            <span className="block truncate text-[13px] text-[#c7d0dd]">{email ?? "Signed in"}</span>
           </span>
         </button>
         <button
           onClick={onLogout} aria-label="Sign out" title="Sign out"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[#7d8aa0] transition-colors hover:bg-white/5 hover:text-white"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-[#c7d0dd] transition-colors hover:bg-white/5 hover:text-white"
         >
           <LogOut className="h-4 w-4" />
         </button>
@@ -114,7 +114,7 @@ export function AdminSidebar({
 function Group({ label, items, onNavigate, className }: { label: string; items: Item[]; onNavigate?: () => void; className?: string }) {
   return (
     <nav className={className} aria-label={label}>
-      <p className="mx-2.5 mb-2 mt-1.5 text-[11px] font-semibold text-[#7d8aa0]">{label}</p>
+      <p className="mx-2.5 mb-2 mt-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[#aeb9cb]">{label}</p>
       <div className="flex flex-col gap-0.5">
         {items.map((it) => (
           <Link
@@ -122,7 +122,7 @@ function Group({ label, items, onNavigate, className }: { label: string; items: 
             to={it.to}
             onClick={onNavigate}
             activeOptions={{ exact: it.exact ?? false }}
-            className="flex items-center gap-2.5 rounded-[9px] px-2.5 py-2.5 text-sm text-[#c9d1dc] transition-colors hover:bg-white/5 hover:text-white [&.active]:bg-[#4fd8a8]/[0.12] [&.active]:font-medium [&.active]:text-white [&.active_svg]:text-[#4fd8a8]"
+            className="flex items-center gap-2.5 rounded-[9px] px-2.5 py-2.5 text-[15px] font-medium text-[#eef2f7] transition-colors hover:bg-white/10 hover:text-white [&.active]:bg-[#4fd8a8]/[0.12] [&.active]:font-medium [&.active]:text-white [&.active_svg]:text-[#4fd8a8]"
           >
             {it.icon}
             {it.label}
@@ -138,7 +138,7 @@ function SideButton({ onClick, icon, label }: { onClick: () => void; icon: React
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2.5 rounded-[9px] px-2.5 py-2.5 text-left text-sm text-[#c9d1dc] transition-colors hover:bg-white/5 hover:text-white"
+      className="flex items-center gap-2.5 rounded-[9px] px-2.5 py-2.5 text-left text-[15px] font-medium text-[#eef2f7] transition-colors hover:bg-white/10 hover:text-white"
     >
       {icon}
       {label}
