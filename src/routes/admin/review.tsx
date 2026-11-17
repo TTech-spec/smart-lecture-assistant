@@ -219,10 +219,10 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
       <p className="text-[13px] leading-relaxed text-muted-foreground">{hint}</p>
 
       <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-col-reverse gap-2.5 border-t bg-card px-4 py-4 sm:static sm:m-0 sm:flex-row sm:flex-wrap sm:justify-end sm:border-0 sm:p-0">
-        <Button variant="outline" className="h-11 rounded-xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-700" onClick={() => onDecide("rejected")}>
+        <Button data-tour="reject" variant="outline" className="h-11 rounded-xl border-red-200 text-red-700 hover:bg-red-50 hover:text-red-700" onClick={() => onDecide("rejected")}>
           <X className="mr-1.5 h-4 w-4" /> Reject · mark absent
         </Button>
-        <Button className="h-11 rounded-xl px-6 sm:w-auto" onClick={() => onDecide("approved")}>
+        <Button data-tour="approve" className="h-11 rounded-xl px-6 sm:w-auto" onClick={() => onDecide("approved")}>
           <Check className="mr-1.5 h-4 w-4" /> Approve
         </Button>
       </div>

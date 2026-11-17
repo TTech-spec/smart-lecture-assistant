@@ -1,12 +1,24 @@
 /**
- * Guided "show me how" walkthroughs. Each step opens a page and points at an
- * element found by its visible text (a button, tab or heading). If the element
- * isn't on screen (for example no check-in is running), the caption still
- * explains the step.
+ * Guided "show me how" walkthroughs. Each step opens a page and points at one
+ * element, found by its data-tour marker (exact) or, failing that, by its
+ * visible text.
+ *
+ * - action "tap": the lecturer taps the highlighted control to go on
+ *   (or presses "Do it for me"); the walkthrough waits for them.
+ * - action "look": just explains; moves on by itself after a few seconds.
+ * - missing: what to tell the lecturer when the control isn't on screen.
  */
-/** press: tap the target when moving on, so the next step can show what it opens */
-export type TourStep = { path: string; target?: string; caption: string; press?: boolean };
+export type TourStep = {
+  path: string;
+  tour?: string;
+  text?: string;
+  caption: string;
+  action?: "tap" | "look";
+  missing?: string;
+};
 export type Tour = { id: string; title: string; keywords: RegExp; steps: TourStep[] };
+
+const NEEDS_LIVE = "This button only shows while a check-in is running. Create a link first (Links → New link), then come back to Live session.";
 
 export const TOURS: Tour[] = [
   {
@@ -14,12 +26,13 @@ export const TOURS: Tour[] = [
     title: "Create a check-in link",
     keywords: /\b(create|new|make|generate)\b.*\blink\b|\blink\b.*\b(create|new|make)|start (a )?class|start check.?in/i,
     steps: [
-      { path: "/admin/links", target: "Attendance links", caption: "Check-in links live on the Links page." },
-      { path: "/admin/links", target: "New link", caption: "Tap New link to start one.", press: true },
-      { path: "/admin/links", target: "Attendance", caption: "Choose Attendance (pick Test for a test link). Give it a title and course code.", press: true },
-      { path: "/admin/links", target: "Verify my location", caption: "Stand in the lecture hall and tap Verify my location. Drag the pin if it's off, then pick the radius." },
-      { path: "/admin/links", target: "Expires in", caption: "Choose how long the link stays open, then create it." },
-      { path: "/admin/links", caption: "Share the link or tap its QR code to show it on the projector. Students can now sign in." },
+      { path: "/admin/links", tour: "new-link", action: "tap", caption: "1. Tap New link." },
+      { path: "/admin/links", tour: "link-type-attendance", action: "tap", caption: "2. Tap Attendance (choose Test only for a test link)." },
+      { path: "/admin/links", tour: "class-code-yes", action: "tap", caption: "3. Tap Yes, assign class codes so each student gets their own code." },
+      { path: "/admin/links", tour: "verify-location", action: "tap", caption: "4. Stand in the lecture hall and tap Verify my location. Wait until it says Verified (about ±30 m or better)." },
+      { path: "/admin/links", tour: "expires-in", action: "look", caption: "5. Choose how long the link stays open, e.g. 15 minutes." },
+      { path: "/admin/links", tour: "projector-code", action: "look", caption: "6. Leave Ask for the projector code off. Students just enter their matric number and take a selfie." },
+      { path: "/admin/links", tour: "generate-link", action: "tap", caption: "7. Tap Generate link. Then share it in your class WhatsApp group, or show its QR code." },
     ],
   },
   {
@@ -27,9 +40,10 @@ export const TOURS: Tour[] = [
     title: "Review flagged check-ins",
     keywords: /\breview|approve|reject|unverified|face mismatch|suspicious/i,
     steps: [
-      { path: "/admin/review", target: "To review", caption: "Check-ins that need a look are listed on To review." },
-      { path: "/admin/review", caption: "Tap a student on the left. Compare their registered photo with the selfie they took." },
-      { path: "/admin/review", caption: "Look at the selfie background: is it your lecture hall? Then tap Approve, or Reject to remove the check-in." },
+      { path: "/admin/review", text: "To review", action: "look", caption: "1. To review lists check-ins that need your decision: unverified, face mismatch, different phone or suspicious location." },
+      { path: "/admin/review", action: "look", caption: "2. Tap a student in the list. Compare their registered photo with today's selfie, and check the selfie background is your hall." },
+      { path: "/admin/review", tour: "approve", action: "look", caption: "3. Same person and in the hall? Tap Approve.", missing: "Tap a student in the list first; their Approve and Reject buttons then appear." },
+      { path: "/admin/review", tour: "reject", action: "look", caption: "4. Not the same person, or not in the hall? Tap Reject. The check-in is removed and they're marked absent.", missing: "Tap a student in the list first." },
     ],
   },
   {
@@ -37,9 +51,9 @@ export const TOURS: Tour[] = [
     title: "Download attendance",
     keywords: /\b(export|download|csv|excel|spreadsheet)\b/i,
     steps: [
-      { path: "/admin/records", target: "Records", caption: "All check-ins are on the Records page." },
-      { path: "/admin/records", target: "Filters", caption: "Optional: use Filters to pick a course, level or class code first." },
-      { path: "/admin/records", target: "Export", caption: "Tap Export, then CSV. It opens in Excel or Google Sheets." },
+      { path: "/admin/records", tour: "filters", action: "look", caption: "1. Optional: tap Filters to pick one course, level or class code first." },
+      { path: "/admin/records", tour: "export", action: "tap", caption: "2. Tap Export." },
+      { path: "/admin/records", action: "look", caption: "3. Tap CSV for what's on screen, or CSV, all time for everything. It opens in Excel or Google Sheets." },
     ],
   },
   {
@@ -47,8 +61,8 @@ export const TOURS: Tour[] = [
     title: "Add a student by hand",
     keywords: /\b(add|enter|record)\b.*\b(student|record|manually|by hand)\b|manual/i,
     steps: [
-      { path: "/admin/records", target: "Add", caption: "On Records, tap Add.", press: true },
-      { path: "/admin/records", caption: "Fill in the student's name, matric number and course, then save. It shows as Added by you." },
+      { path: "/admin/records", tour: "add-record", action: "tap", caption: "1. Tap Add." },
+      { path: "/admin/records", action: "look", caption: "2. Fill in name, matric number and course, then tap Save. It's marked Added by you." },
     ],
   },
   {
@@ -56,8 +70,8 @@ export const TOURS: Tour[] = [
     title: "Block a student from a check-in",
     keywords: /\b(block|sent out|send out|ban|unblock)\b/i,
     steps: [
-      { path: "/admin/live", target: "Blocked students", caption: "Open Live session while a check-in is running, then tap Blocked students." },
-      { path: "/admin/live", caption: "Type the matric number and tap Block. They can't sign this session. Unblock them here any time." },
+      { path: "/admin/live", tour: "block-form", action: "look", caption: "1. Under Blocked students, type the student's matric number (and a reason if you like), then tap Block. They can't sign this check-in.", missing: NEEDS_LIVE },
+      { path: "/admin/live", action: "look", caption: "2. To undo, tap Unblock next to their name in the same list." },
     ],
   },
   {
@@ -65,9 +79,9 @@ export const TOURS: Tour[] = [
     title: "Help a student whose GPS fails",
     keywords: /\bgps\b|location (is )?(not|wrong|weak)|can'?t sign|scan (a )?student|out of range/i,
     steps: [
-      { path: "/admin/live", target: "Scan student", caption: "On Live session, tap Scan student." },
-      { path: "/admin/live", caption: "The student taps \"Ask your lecturer to scan me\" on their error screen. Scan the code on their phone." },
-      { path: "/admin/live", caption: "Compare the photos and tap Approve. They are signed in at your location and labelled GPS help." },
+      { path: "/admin/live", action: "look", caption: "1. On the student's phone, their error screen shows Ask your lecturer to scan me. They tap it and a code appears." },
+      { path: "/admin/live", tour: "scan-student", action: "tap", caption: "2. Tap Scan student and point your camera at their code.", missing: NEEDS_LIVE },
+      { path: "/admin/live", action: "look", caption: "3. Compare the two photos and tap Approve. They're signed in at your location, labelled GPS help." },
     ],
   },
   {
@@ -75,29 +89,30 @@ export const TOURS: Tour[] = [
     title: "Send a notification to students",
     keywords: /\b(notify|notification|alert|announce|push)\b/i,
     steps: [
-      { path: "/admin/live", target: "Notify students", caption: "On Live session, tap Notify students." },
-      { path: "/admin/live", caption: "Write a short title like \"CSC401 check-in is open\" and send. Students who turned on notifications get it on their phone." },
+      { path: "/admin/live", tour: "notify", action: "tap", caption: "1. Tap Notify students.", missing: NEEDS_LIVE },
+      { path: "/admin/live", action: "look", caption: "2. Type a short title like \"CSC401 check-in is open\" and tap Send. Students who turned on notifications get it on their phone." },
     ],
   },
   {
     id: "create_test",
     title: "Create a test",
-    keywords: /\b(test|quiz|exam|c1|c2|c3|theory|question|pdf)\b/i,
+    keywords: /\b(test|quiz|exam|c1|c2|c3|question|pdf)\b/i,
     steps: [
-      { path: "/admin/manage", target: "Tests & quizzes", caption: "Tests are on Tests & settings, under Tests & quizzes." },
-      { path: "/admin/manage", target: "New test", caption: "Tap New test to type questions, or Upload PDF to import them.", press: true },
-      { path: "/admin/manage", caption: "Add multiple-choice or theory questions, then Save test. You'll be asked what to warn students about cheating." },
-      { path: "/admin/manage", target: "Inactive", caption: "When you're ready, switch the test to Active so students can open it." },
+      { path: "/admin/manage", tour: "new-test", action: "tap", caption: "1. Tap New test. (Or tap Upload PDF to import questions from a PDF.)" },
+      { path: "/admin/manage", action: "look", caption: "2. Type the title, course code, time limit and C1, C2 or C3." },
+      { path: "/admin/manage", tour: "add-theory", action: "look", caption: "3. Add questions: Add multiple-choice question, or Add theory question for written answers." },
+      { path: "/admin/manage", tour: "save-test", action: "tap", caption: "4. Tap Save test, then write your warning about cheating and tap Save warning." },
+      { path: "/admin/manage", tour: "test-toggle", action: "look", caption: "5. When students should start, switch the test on here, or create a test link in Links.", missing: "Save a test first; it then appears in the list with this switch." },
     ],
   },
   {
     id: "class_settings",
     title: "Change class location or radius",
-    keywords: /\b(radius|class location|settings|distance|range|venue)\b/i,
+    keywords: /\b(radius|class location|distance|range|venue)\b/i,
     steps: [
-      { path: "/admin/manage", target: "Tests & settings", caption: "Open Tests & settings." },
-      { path: "/admin/manage", target: "Auto-detect my location", caption: "In the hall, tap Auto-detect my location to set the class location." },
-      { path: "/admin/manage", target: "Save settings", caption: "Set the allowed distance and tap Save settings." },
+      { path: "/admin/manage", tour: "auto-detect", action: "tap", caption: "1. In the lecture hall, tap Auto-detect my location." },
+      { path: "/admin/manage", tour: "radius", action: "look", caption: "2. Set Allowed radius in metres. 100 m covers a normal lecture hall." },
+      { path: "/admin/manage", tour: "save-settings", action: "tap", caption: "3. Tap Save settings." },
     ],
   },
   {
@@ -105,8 +120,8 @@ export const TOURS: Tour[] = [
     title: "Upload study materials",
     keywords: /\b(material|notes|handout|upload|sell)\b/i,
     steps: [
-      { path: "/admin/materials", target: "Study Materials", caption: "Study materials are on the Materials page." },
-      { path: "/admin/materials", target: "Add New Material", caption: "Tap Add New Material, add a title and file, choose Free or Paid, then save." },
+      { path: "/admin/materials", tour: "add-material", action: "tap", caption: "1. Tap Add New Material." },
+      { path: "/admin/materials", action: "look", caption: "2. Add a title and the file, choose Free or Paid (paid needs your bank), then tap Save Material." },
     ],
   },
   {
@@ -114,28 +129,27 @@ export const TOURS: Tour[] = [
     title: "Run a live check-in",
     keywords: /\b(live session|extend|more time|\+ ?5|end (the )?check.?in|close (the )?check.?in|stop check.?in)\b/i,
     steps: [
-      { path: "/admin/live", caption: "Live session shows the check-in that's running now: your pin, the allowed circle and each student on the map." },
-      { path: "/admin/live", target: "+5 minutes", caption: "Students running late? Tap +5 minutes to keep it open longer." },
-      { path: "/admin/live", target: "End check-in", caption: "When class has started, tap End check-in. Nobody can sign after that." },
+      { path: "/admin/live", action: "look", caption: "1. Live session shows the running check-in: your pin, the allowed circle and each student who signed." },
+      { path: "/admin/live", tour: "extend", action: "look", caption: "2. Students running late? Tap +5 minutes.", missing: NEEDS_LIVE },
+      { path: "/admin/live", tour: "end-checkin", action: "look", caption: "3. When you're done, tap End check-in. Nobody can sign after that.", missing: NEEDS_LIVE },
     ],
   },
   {
     id: "projector",
-    title: "Show the code on the projector",
-    keywords: /\b(projector|screen|qr|room code|4.?letter|code changes)\b/i,
+    title: "Show the link on the projector",
+    keywords: /\b(projector|screen|qr|room code|4.?letter)\b/i,
     steps: [
-      { path: "/admin/live", target: "Open projector", caption: "On Live session, tap Open projector." },
-      { path: "/admin/projector", caption: "Put this page on the projector. Students scan the QR code and type the 4-letter code. It changes every 30 seconds, so a WhatsApp photo is useless." },
+      { path: "/admin/live", tour: "open-projector", action: "tap", caption: "1. Tap Open projector.", missing: NEEDS_LIVE },
+      { path: "/admin/projector", action: "look", caption: "2. Put this page on the projector. Students scan the QR code to open the sign-in page." },
     ],
   },
   {
     id: "student_phone_reset",
     title: "Reset a student who changed phones",
-    keywords: /\b(changed|new|lost|different) phone\b|\breset\b|registered students/i,
+    keywords: /\b(changed|new|lost|different) phone\b|\breset (a )?student|registered students/i,
     steps: [
-      { path: "/admin/students", target: "Registered students", caption: "Students who registered with a face scan are on the Students page." },
-      { path: "/admin/students", target: "Approve reset", caption: "If a student asked for a reset after changing phones, tap Approve reset. They can then register again on the new phone." },
-      { path: "/admin/students", caption: "To reset someone yourself, find them in the list and tap Reset." },
+      { path: "/admin/students", text: "Registered students", action: "look", caption: "1. Students page lists everyone who registered with a face scan." },
+      { path: "/admin/students", text: "Approve reset", action: "tap", caption: "2. A student asked for a reset after changing phones? Tap Approve reset. They can then register again on the new phone.", missing: "No student has asked for a reset right now. To reset someone yourself, find them below and tap Reset." },
     ],
   },
   {
@@ -143,10 +157,10 @@ export const TOURS: Tour[] = [
     title: "Mark theory answers",
     keywords: /\b(mark|grade|score)\b.*\b(theory|written|essay|answer)\b|\b(theory|written)\b.*\b(mark|grade)\b|edit (a )?score/i,
     steps: [
-      { path: "/admin/records", target: "Records", caption: "Test scores are on Records. A score with * still has written answers to mark." },
-      { path: "/admin/records", caption: "Tap the student, then tap their test score (it says \"to mark\")." },
-      { path: "/admin/records", caption: "Read each answer and how it was typed. Tap \"Suggest mark + AI check\" for a suggested mark and an AI-written rating." },
-      { path: "/admin/records", caption: "Type your mark for each answer and tap Save result. The student's score updates." },
+      { path: "/admin/records", action: "look", caption: "1. In Records, a test score with * still has written answers to mark. Tap that student." },
+      { path: "/admin/records", action: "look", caption: "2. In their panel, tap the test score that says \"to mark\"." },
+      { path: "/admin/records", action: "look", caption: "3. Read each answer and how it was typed. Tap Suggest mark + AI check for a suggestion." },
+      { path: "/admin/records", action: "look", caption: "4. Type your mark for each answer and tap Save result." },
     ],
   },
   {
@@ -154,8 +168,8 @@ export const TOURS: Tour[] = [
     title: "Turn on personal class codes",
     keywords: /\bclass code/i,
     steps: [
-      { path: "/admin/manage", target: "Class code", caption: "In Tests & settings, find Class code." },
-      { path: "/admin/manage", caption: "Switch it on and choose the format. Each student gets their own code, shown only on their phone when they sign in." },
+      { path: "/admin/manage", tour: "class-code-toggle", action: "look", caption: "1. Here in Class settings, switch Class code to Active and choose the format, then tap Save settings." },
+      { path: "/admin/links", tour: "new-link", action: "look", caption: "2. When you create a link, tap Yes, assign class codes. Each student's code then fills in by itself when they type their matric number." },
     ],
   },
   {
@@ -163,8 +177,8 @@ export const TOURS: Tour[] = [
     title: "Open or lock the sign-in form",
     keywords: /\b(open|lock|close) (the )?form\b|form (is )?(locked|closed)/i,
     steps: [
-      { path: "/admin/manage", target: "Open form", caption: "Open form lets students sign for the time you set." },
-      { path: "/admin/manage", target: "Lock form", caption: "Lock form stops all sign-ins straight away." },
+      { path: "/admin/manage", tour: "open-form", action: "look", caption: "1. Open form lets students sign for the time you set." },
+      { path: "/admin/manage", tour: "lock-form", action: "look", caption: "2. Lock form stops all sign-ins straight away." },
     ],
   },
   {
@@ -172,8 +186,8 @@ export const TOURS: Tour[] = [
     title: "Ask students for extra details",
     keywords: /\b(custom|extra) (field|detail|question)|add (a )?field/i,
     steps: [
-      { path: "/admin/manage", target: "Custom form fields", caption: "Custom form fields add questions to the sign-in form, like Faculty or State of origin." },
-      { path: "/admin/manage", target: "Add field", caption: "Tap Add field, name it and choose if it's required, then Save settings." },
+      { path: "/admin/manage", tour: "custom-fields", action: "look", caption: "1. Custom form fields add questions to the sign-in form, like Faculty or State of origin. Tap + Add field." },
+      { path: "/admin/manage", tour: "save-settings", action: "tap", caption: "2. Name the field, choose if it's required, then tap Save settings." },
     ],
   },
   {
@@ -181,16 +195,17 @@ export const TOURS: Tour[] = [
     title: "See earnings and get paid",
     keywords: /\b(earning|payout|pay ?out|withdraw|money|bank|paid material|sales)\b/i,
     steps: [
-      { path: "/admin/manage", target: "Earnings from materials", caption: "Money from paid materials shows under Earnings from materials." },
-      { path: "/admin/manage", caption: "Check Total earned and Still owed to you. Tap Pay out now to send it to the bank you added on Materials." },
+      { path: "/admin/manage", tour: "earnings", action: "look", caption: "1. Earnings from materials shows total earned and what's still owed to you." },
+      { path: "/admin/manage", tour: "payout", action: "look", caption: "2. Tap Pay out now to send it to the bank you added on Materials.", missing: "Nothing is owed right now, so there's no payout button yet." },
     ],
   },
   {
-    id: "change_password",
-    title: "Change your password",
-    keywords: /\bpassword\b/i,
+    id: "account",
+    title: "Change your email or password",
+    keywords: /\b(password|change (my )?email|sign.?in email|account)\b/i,
     steps: [
-      { path: "/admin/manage", target: "Change admin password", caption: "At the bottom of Class settings, tap Change admin password and enter the new one." },
+      { path: "/admin/manage", tour: "account-card", action: "tap", caption: "1. Tap Your account." },
+      { path: "/admin/manage", action: "look", caption: "2. Next to Sign-in email or Password, tap Change. Enter your current password, then the new email or password, and save." },
     ],
   },
   {
@@ -198,7 +213,7 @@ export const TOURS: Tour[] = [
     title: "Install Attendly on your phone",
     keywords: /\b(install|home screen|download (the )?app|app icon)\b/i,
     steps: [
-      { path: "/admin", target: "Install app", caption: "Tap Install app in the menu to add Attendly to your home screen. It opens like an app and works on slow data." },
+      { path: "/admin", text: "Install app", action: "tap", caption: "Open the menu and tap Install app to add Attendly to your home screen.", missing: "Open the menu (☰ at the top right) and tap Install app. On iPhone: Share, then Add to Home Screen." },
     ],
   },
 ];
@@ -208,7 +223,7 @@ export const tourById = (id: string) => TOURS.find((t) => t.id === id);
 /** Best walkthrough for a question, if any (used when the AI can't answer) */
 export function tourForQuestion(q: string): Tour | undefined {
   // Specific tasks first, so "mark theory answers" isn't taken by "create a test"
-  const first = ["mark_theory", "class_codes", "student_phone_reset", "run_checkin", "projector", "open_lock_form", "custom_fields", "change_password", "earnings_payout"];
+  const first = ["mark_theory", "class_codes", "student_phone_reset", "run_checkin", "projector", "open_lock_form", "custom_fields", "account", "earnings_payout"];
   const ordered = [...first.map(tourById).filter((t): t is Tour => !!t), ...TOURS.filter((t) => !first.includes(t.id))];
   return ordered.find((t) => t.keywords.test(q));
 }

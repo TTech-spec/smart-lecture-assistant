@@ -360,7 +360,7 @@ function SettingsCard() {
               Enter coordinates or auto-detect to see the map
             </div>
           )}
-          <Button onClick={pinHere} disabled={pinning} className="mt-3 w-full" variant="outline">
+          <Button data-tour="auto-detect" onClick={pinHere} disabled={pinning} className="mt-3 w-full" variant="outline">
             {pinning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reading GPS…</> : <><MapPin className="mr-2 h-4 w-4" /> Auto-detect my location</>}
           </Button>
           <p className="mt-1.5 text-xs text-muted-foreground">
@@ -368,7 +368,7 @@ function SettingsCard() {
           </p>
         </div>
 
-        <div>
+        <div data-tour="radius">
           <Label className="text-sm">Allowed radius (meters)</Label>
           <Input type="number" min={10} max={5000} value={draft.radiusMeters ?? 100} onChange={(e) => update("radiusMeters", Math.max(10, Number(e.target.value) || 0))} />
           <RadiusHint meters={draft.radiusMeters} />
@@ -440,7 +440,7 @@ function SettingsCard() {
         </div>
 
         <div>
-          <div className="flex items-center justify-between">
+          <div data-tour="custom-fields" className="flex items-center justify-between">
             <Label className="text-sm">Custom form fields</Label>
             {!addingField && (
               <button type="button" onClick={() => setAddingField(true)} className="flex items-center gap-1 text-xs text-[color:var(--color-primary)] hover:underline">
@@ -548,7 +548,7 @@ function SettingsCard() {
         {/* Class Code */}
         <div className="rounded-xl border bg-secondary p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="flex items-center gap-1.5 text-sm font-medium">
+            <p data-tour="class-code-toggle" className="flex items-center gap-1.5 text-sm font-medium">
               <KeyRound className="h-4 w-4 text-[color:var(--color-primary)]" /> Class code
             </p>
             <button type="button" onClick={() => {
@@ -598,14 +598,14 @@ function SettingsCard() {
           )}
         </div>
 
-        <Button onClick={save} className="w-full" variant="secondary">Save settings</Button>
+        <Button data-tour="save-settings" onClick={save} className="w-full" variant="secondary">Save settings</Button>
 
         <div className="grid grid-cols-2 gap-2">
-          <Button onClick={openWindow} className="w-full text-xs sm:text-sm px-2 sm:px-4">
+          <Button data-tour="open-form" onClick={openWindow} className="w-full text-xs sm:text-sm px-2 sm:px-4">
             <Unlock className="mr-1.5 h-4 w-4 shrink-0" />
             <span className="truncate">Open form</span>
           </Button>
-          <Button onClick={closeWindow} variant="outline" className="w-full text-xs sm:text-sm px-2 sm:px-4">
+          <Button data-tour="lock-form" onClick={closeWindow} variant="outline" className="w-full text-xs sm:text-sm px-2 sm:px-4">
             <Lock className="mr-1.5 h-4 w-4 shrink-0" />
             <span className="truncate">Lock form</span>
           </Button>
@@ -617,7 +617,7 @@ function SettingsCard() {
           </p>
         )}
 
-        <button type="button" onClick={() => setAccountOpen(true)}
+        <button data-tour="account-card" type="button" onClick={() => setAccountOpen(true)}
           className="flex w-full items-center gap-3 rounded-xl border bg-secondary/40 p-3 text-left transition-colors hover:bg-secondary">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><KeyRound className="h-4 w-4" /></span>
           <span className="min-w-0 flex-1">
@@ -709,7 +709,7 @@ function EarningsDisplay() {
   return (
     <section className="rounded-2xl border bg-card p-4 shadow-soft sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-lg font-semibold">Earnings from materials</h2>
+        <h2 data-tour="earnings" className="flex items-center gap-2 text-lg font-semibold">Earnings from materials</h2>
         <Button variant="ghost" size="sm" onClick={load}>Refresh</Button>
       </div>
       {error ? (
@@ -727,7 +727,7 @@ function EarningsDisplay() {
             Each sale is paid automatically to the bank account saved on that material. If a transfer fails, it shows here as owed.
           </p>
           {summary.owed > 0 && (
-            <Button className="mt-3" onClick={payNow} disabled={paying}>
+            <Button data-tour="payout" className="mt-3" onClick={payNow} disabled={paying}>
               {paying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Pay out ₦{summary.owed.toLocaleString()} now
             </Button>
           )}
@@ -1043,12 +1043,12 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" className="sr-only" onChange={handlePdfUpload} />
-          <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={parsing} className="flex-1 sm:flex-none">
+          <Button data-tour="upload-pdf" size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={parsing} className="flex-1 sm:flex-none">
             {parsing ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-2 h-3.5 w-3.5" />}
             {parsing ? "Reading…" : "Upload PDF"}
           </Button>
           {!creating && (
-            <Button size="sm" onClick={() => { setInputMode("manual"); setCreating(true); }} className="flex-1 sm:flex-none">
+            <Button data-tour="new-test" size="sm" onClick={() => { setInputMode("manual"); setCreating(true); }} className="flex-1 sm:flex-none">
               <Plus className="mr-2 h-3.5 w-3.5" /> New test
             </Button>
           )}
@@ -1200,7 +1200,7 @@ Guide: TCP is reliable and connection-oriented; UDP is faster and connectionless
                   <Button type="button" variant="outline" size="sm" onClick={addQuestion}>
                     <Plus className="mr-2 h-3.5 w-3.5" /> Add multiple-choice question
                   </Button>
-                  <Button type="button" variant="outline" size="sm"
+                  <Button data-tour="add-theory" type="button" variant="outline" size="sm"
                     onClick={() => setQuestions((qs) => [...qs, { ...emptyQuestion(), kind: "theory", marks: 5 }])}>
                     <Plus className="mr-2 h-3.5 w-3.5" /> Add theory question
                   </Button>
@@ -1209,7 +1209,7 @@ Guide: TCP is reliable and connection-oriented; UDP is faster and connectionless
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button onClick={saveTest} className="flex-1">Save test</Button>
+                <Button data-tour="save-test" onClick={saveTest} className="flex-1">Save test</Button>
                 <Button variant="outline" onClick={resetForm} className="flex-1">Cancel</Button>
               </div>
             </div>
@@ -1244,7 +1244,7 @@ Guide: TCP is reliable and connection-oriented; UDP is faster and connectionless
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <Button size="sm" variant={t.isActive ? "destructive" : "outline"} onClick={() => toggleActive(t)} className="text-xs px-2 sm:px-3">
+                  <Button data-tour="test-toggle" size="sm" variant={t.isActive ? "destructive" : "outline"} onClick={() => toggleActive(t)} className="text-xs px-2 sm:px-3">
                     {t.isActive
                       ? <><ToggleRight className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="hidden xs:inline">Deactivate</span></>
                       : <><ToggleLeft className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="hidden xs:inline">Activate</span></>

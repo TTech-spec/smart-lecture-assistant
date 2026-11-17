@@ -34,7 +34,7 @@ export function NotifyStudents({ defaultTitle, defaultBody, defaultUrl = "/atten
 
   return (
     <>
-      <Button variant="outline" className="h-10 rounded-xl" onClick={() => { setTitle(defaultTitle); setBody(defaultBody ?? ""); setOpen(true); }}>
+      <Button data-tour="notify" variant="outline" className="h-10 rounded-xl" onClick={() => { setTitle(defaultTitle); setBody(defaultBody ?? ""); setOpen(true); }}>
         <Bell className="mr-1.5 h-4 w-4" /> {label}
       </Button>
       <AnimatePresence>

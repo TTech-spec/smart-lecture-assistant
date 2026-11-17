@@ -327,7 +327,7 @@ function MaterialsAdmin() {
                   <Upload className="h-4 w-4" />
                   Yes, upload materials
                 </Button>
-                <Button
+                <Button data-tour="add-material"
                   variant="outline"
                   onClick={() => setPromptAnswer(false)}
                 >

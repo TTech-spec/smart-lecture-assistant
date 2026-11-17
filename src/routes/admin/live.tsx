@@ -70,11 +70,11 @@ function LivePage() {
         eyebrow={<span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-[#12b886]" />Live · started {start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · closes {end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
         title={`${live.courseCode} · ${live.title}`}
         actions={<>
-          <Button variant="outline" className="h-10 rounded-xl" onClick={() => extend(5)}>+5 minutes</Button>
-          <Button variant="outline" className="h-10 rounded-xl text-red-700 hover:text-red-700" onClick={() => { if (confirm("End check-in now?")) { disableLink(live.id); toast.success("Check-in ended."); } }}>End check-in</Button>
+          <Button data-tour="extend" variant="outline" className="h-10 rounded-xl" onClick={() => extend(5)}>+5 minutes</Button>
+          <Button data-tour="end-checkin" variant="outline" className="h-10 rounded-xl text-red-700 hover:text-red-700" onClick={() => { if (confirm("End check-in now?")) { disableLink(live.id); toast.success("Check-in ended."); } }}>End check-in</Button>
           <NotifyStudents defaultTitle={`${live.courseCode} check-in is open`} defaultBody="Open Attendly and sign attendance now." />
-          <Button variant="outline" className="h-10 rounded-xl" onClick={() => setScanOpen(true)}><ScanLine className="mr-1.5 h-4 w-4" /> Scan student</Button>
-          <Button asChild className="h-10 rounded-xl"><Link to="/admin/projector" search={{ link: live.id }}>Open projector</Link></Button>
+          <Button data-tour="scan-student" variant="outline" className="h-10 rounded-xl" onClick={() => setScanOpen(true)}><ScanLine className="mr-1.5 h-4 w-4" /> Scan student</Button>
+          <Button data-tour="open-projector" asChild className="h-10 rounded-xl"><Link to="/admin/projector" search={{ link: live.id }}>Open projector</Link></Button>
         </>}
       />
 
@@ -250,7 +250,7 @@ function BlockPanel({ link, records, allRecords, registerBlock }: {
     <Panel className="flex flex-col gap-4">
       <PanelTitle action={<span className="text-xs text-muted-foreground">{blocks.length} blocked</span>}>Blocked students</PanelTitle>
       <p className="-mt-2 text-sm text-muted-foreground">Sent someone out? Block their matric number and they can't sign this session from anywhere, even outside the door. Unblock any time.</p>
-      <form onSubmit={(e) => { e.preventDefault(); block(matric, reason); }} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+      <form data-tour="block-form" onSubmit={(e) => { e.preventDefault(); block(matric, reason); }} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
         <Input id="block-matric" list="block-matric-list" value={matric} onChange={(e) => setMatric(e.target.value)} placeholder="Matric number, e.g. CSC/2021/001" className="h-11 rounded-xl text-base" autoComplete="off" />
         <datalist id="block-matric-list">{records.map((r) => <option key={r.id} value={r.matricNumber}>{r.fullName}</option>)}</datalist>
         <Input id="block-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="h-11 rounded-xl text-base" />

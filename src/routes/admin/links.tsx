@@ -296,7 +296,7 @@ function GenerateLinkForm({
           Select whether this link is for attendance or for a test.
         </p>
         <div className="flex gap-2">
-          <button
+          <button data-tour="link-type-attendance"
             type="button"
             onClick={() => { setLinkType("attendance"); setAssignClassCode(null); setSelectedTestId(null); }}
             className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
@@ -334,7 +334,7 @@ function GenerateLinkForm({
             If yes, each student will see their personal class code immediately after marking attendance. The code is tied to their name and matric number.
           </p>
           <div className="flex gap-2">
-            <button
+            <button data-tour="class-code-yes"
               type="button"
               onClick={() => setAssignClassCode(true)}
               className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
@@ -372,7 +372,7 @@ function GenerateLinkForm({
 
       {/* ── Projector code (optional) ── */}
       {linkType === "attendance" && (
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border bg-secondary/40 p-4">
+        <label data-tour="projector-code" className="flex cursor-pointer items-start gap-3 rounded-xl border bg-secondary/40 p-4">
           <input id="require-room-code" type="checkbox" checked={requireRoomCode} onChange={(e) => setRequireRoomCode(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-primary" />
           <span className="text-sm">
             <span className="block font-semibold">Ask for the projector code</span>
@@ -412,7 +412,7 @@ function GenerateLinkForm({
               <p className="mt-2 text-center text-xs text-muted-foreground">— or —</p>
             </div>
           )}
-          <Button type="button" variant={anchor ? "outline" : "default"} className="w-full" onClick={verifyLocation} disabled={locating}>
+          <Button data-tour="verify-location" type="button" variant={anchor ? "outline" : "default"} className="w-full" onClick={verifyLocation} disabled={locating}>
             {locating ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 {locAccuracy != null ? `Improving accuracy… ±${Math.round(locAccuracy)} m` : "Getting your location…"}</>
@@ -561,7 +561,7 @@ function GenerateLinkForm({
             Type any course — saved courses appear as suggestions.
           </p>
         </div>
-        <div>
+        <div data-tour="expires-in">
           <Label className="text-sm">Expires in</Label>
           <Select value={String(expiryMinutes)} onValueChange={(v) => setExpiryMinutes(Number(v))}>
             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
@@ -574,7 +574,7 @@ function GenerateLinkForm({
         </div>
       </div>
 
-      <Button type="submit" className="w-full" disabled={creating || linkType === null || (linkType === "attendance" && (assignClassCode === null || !anchor)) || (linkType === "test" && !selectedTestId)}>
+      <Button data-tour="generate-link" type="submit" className="w-full" disabled={creating || linkType === null || (linkType === "attendance" && (assignClassCode === null || !anchor)) || (linkType === "test" && !selectedTestId)}>
         <Plus className="mr-2 h-4 w-4" /> Generate link
       </Button>
     </form>
@@ -948,7 +948,7 @@ function LinksPage() {
             <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button size="sm" onClick={() => setShowForm((s) => !s)}>
+          <Button data-tour="new-link" size="sm" onClick={() => setShowForm((s) => !s)}>
             {showForm
               ? <><X className="mr-1.5 h-3.5 w-3.5" /> Cancel</>
               : <><Plus className="mr-1.5 h-3.5 w-3.5" /> New link</>}
