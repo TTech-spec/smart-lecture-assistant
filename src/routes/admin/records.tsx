@@ -201,6 +201,11 @@ function RecordModal({ mode, initial, onSave, onClose }: {
   const [d, setD] = useState<RecordDraft>(initial);
   const u = <K extends keyof RecordDraft>(k: K, v: RecordDraft[K]) =>
     setD((prev) => ({ ...prev, [k]: v }));
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   function save(e: { preventDefault(): void }) {
     e.preventDefault();
@@ -219,7 +224,7 @@ function RecordModal({ mode, initial, onSave, onClose }: {
       <motion.div initial={{ opacity: 0, scale: 0.93, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.93, y: 12 }} transition={{ duration: 0.22, ease: "circOut" }}
         className="relative w-full max-w-lg rounded-2xl border bg-card p-6 shadow-soft max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+        <button type="button" aria-label="Close" onClick={onClose} className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
           <X className="h-4 w-4" />
         </button>
         <h2 className="mb-5 text-lg font-semibold">{mode === "add" ? "Add attendance record" : "Edit record"}</h2>
