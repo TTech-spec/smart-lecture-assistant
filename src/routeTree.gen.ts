@@ -28,7 +28,7 @@ import { Route as AdminRecordsRouteImport } from './routes/admin/records'
 import { Route as AdminReviewRouteImport } from './routes/admin/review'
 import { Route as AdminStudentsRouteImport } from './routes/admin/students'
 import { Route as AttendTokenRouteImport } from './routes/attend.$token'
-import { Route as TestTokenRouteImport } from './routes/test.$token'
+import { Route as TestTokenRouteImport } from './routes/test_.$token'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -126,9 +126,9 @@ const AttendTokenRoute = AttendTokenRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const TestTokenRoute = TestTokenRouteImport.update({
-  id: '/$token',
-  path: '/$token',
-  getParentRoute: () => TestRoute,
+  id: '/test_/$token',
+  path: '/test/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -140,7 +140,7 @@ export interface FileRoutesByFullPath {
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/test': typeof TestRouteWithChildren
+  '/test': typeof TestRoute
   '/admin/links': typeof AdminLinksRoute
   '/admin/live': typeof AdminLiveRoute
   '/admin/manage': typeof AdminManageRoute
@@ -161,7 +161,7 @@ export interface FileRoutesByTo {
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/test': typeof TestRouteWithChildren
+  '/test': typeof TestRoute
   '/admin/links': typeof AdminLinksRoute
   '/admin/live': typeof AdminLiveRoute
   '/admin/manage': typeof AdminManageRoute
@@ -184,7 +184,7 @@ export interface FileRoutesById {
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/test': typeof TestRouteWithChildren
+  '/test': typeof TestRoute
   '/admin/links': typeof AdminLinksRoute
   '/admin/live': typeof AdminLiveRoute
   '/admin/manage': typeof AdminManageRoute
@@ -194,7 +194,7 @@ export interface FileRoutesById {
   '/admin/review': typeof AdminReviewRoute
   '/admin/students': typeof AdminStudentsRoute
   '/attend/$token': typeof AttendTokenRoute
-  '/test/$token': typeof TestTokenRoute
+  '/test_/$token': typeof TestTokenRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -261,7 +261,7 @@ export interface FileRouteTypes {
     | '/admin/review'
     | '/admin/students'
     | '/attend/$token'
-    | '/test/$token'
+    | '/test_/$token'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -274,8 +274,9 @@ export interface RootRouteChildren {
   MeRoute: typeof MeRoute
   RegisterRoute: typeof RegisterRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
-  TestRoute: typeof TestRouteWithChildren
+  TestRoute: typeof TestRoute
   AttendTokenRoute: typeof AttendTokenRoute
+  TestTokenRoute: typeof TestTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -413,12 +414,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AttendTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/test/$token': {
-      id: '/test/$token'
-      path: '/$token'
+    '/test_/$token': {
+      id: '/test_/$token'
+      path: '/test/$token'
       fullPath: '/test/$token'
       preLoaderRoute: typeof TestTokenRouteImport
-      parentRoute: typeof TestRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -449,16 +450,6 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
-interface TestRouteChildren {
-  TestTokenRoute: typeof TestTokenRoute
-}
-
-const TestRouteChildren: TestRouteChildren = {
-  TestTokenRoute: TestTokenRoute,
-}
-
-const TestRouteWithChildren = TestRoute._addFileChildren(TestRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
@@ -468,8 +459,9 @@ const rootRouteChildren: RootRouteChildren = {
   MeRoute: MeRoute,
   RegisterRoute: RegisterRoute,
   ResetPasswordRoute: ResetPasswordRoute,
-  TestRoute: TestRouteWithChildren,
+  TestRoute: TestRoute,
   AttendTokenRoute: AttendTokenRoute,
+  TestTokenRoute: TestTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -46,7 +46,7 @@ import {
 
 const LEVEL_OPTIONS = ["100", "200", "300", "400", "500", "600"];
 
-export const Route = createFileRoute("/test/$token")({
+export const Route = createFileRoute("/test_/$token")({
   head: () => ({
     meta: [
       { title: "Take Test — Attendly" },
