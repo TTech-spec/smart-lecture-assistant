@@ -26,6 +26,7 @@ import {
   CheckInError,
   type StudentProfile,
   getDeviceId,
+  claimRoomPass,
   hasMarkedAttendanceForCourseToday,
   hasDeviceMarkedAttendanceToday,
   hasDeviceMarkedAttendanceTodayRemote,
@@ -140,6 +141,13 @@ function AttendTokenPage() {
   // Face comparison of the selfie against the registered face
   const [face, setFace] = useState<{ state: "checking" | "match" | "mismatch" | "noface"; distance?: number } | null>(null);
   const [roomCode, setRoomCode] = useState("");
+  // Set when the student scanned the projector QR: the code is filled in for them
+  const [roomPass, setRoomPass] = useState<string | null>(null);
+  const [qrCode] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const c = new URLSearchParams(window.location.hash.slice(1)).get("c") ?? "";
+    return c.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 4);
+  });
   // Set when the server refuses the check-in; shows a full-screen explanation
   const [failure, setFailure] = useState<CheckInError | null>(null);
 
@@ -208,7 +216,20 @@ function AttendTokenPage() {
 
   // The projector code step only appears when the lecturer switched it on for this link
   const needsCode = Boolean(link && link !== "loading" && link.requireRoomCode);
-  const totalSteps = needsCode ? 3 : 2;
+  const totalSteps = needsCode && !roomPass ? 3 : 2;
+
+  // Scanned QR: swap its live code for a pass straight away (the code changes every 30 s)
+  useEffect(() => {
+    if (!qrCode || !needsCode || roomPass) return;
+    let cancelled = false;
+    claimRoomPass(token, qrCode, deviceId).then((pass) => {
+      if (cancelled) return;
+      if (pass) setRoomPass(pass);
+      else setRoomCode("");
+      try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch { /* ignore */ }
+    });
+    return () => { cancelled = true; };
+  }, [qrCode, needsCode, roomPass, token, deviceId]);
 
   function goNext(e: React.FormEvent) {
     e.preventDefault();
@@ -224,7 +245,7 @@ function AttendTokenPage() {
       setStage(2);
     } else if (stage === 2) {
       if (!photo) return toast.error("Take your live photo first.");
-      if (!needsCode) { void onSubmit(e); return; }
+      if (!needsCode || roomPass) { void onSubmit(e); return; }
       setStage(3);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -298,7 +319,7 @@ function AttendTokenPage() {
     if (!photo)                    return toast.error("Please take your live photo first.");
     if (Date.now() - photo.info.takenAt.getTime() > 5 * 60_000)
       return toast.error("Your photo is older than 5 minutes. Please retake it.");
-    if (needsCode && roomCode.trim().length !== 4) return toast.error("Enter the 4-character room code from the projector.");
+    if (needsCode && !roomPass && roomCode.trim().length !== 4) return toast.error("Enter the 4-character room code from the projector.");
 
     const today = todayKey();
 
@@ -328,6 +349,7 @@ function AttendTokenPage() {
         topic: settings.topic || "",
         sessionId: settings.activeSessionId || "",
         roomCode: roomCode.trim().toUpperCase(),
+        roomPass,
         lat: pos.source === "gps" ? pos.lat : null,
         lng: pos.source === "gps" ? pos.lng : null,
         accuracy: pos.source === "gps" ? (pos.accuracy ?? null) : null,
@@ -369,6 +391,7 @@ function AttendTokenPage() {
     // Location problems need a fresh photo; a wrong code only needs a new code
     if (code !== "wrong_code") { setPhoto(null); setFace(null); setStage(2); } else { setStage(3); }
     setRoomCode("");
+    if (code === "wrong_code") setRoomPass(null);
   }
 
   function copyCode() {
@@ -795,7 +818,12 @@ function AttendTokenPage() {
               )}
             </Field>
             <div className="sm:col-span-2 flex flex-col gap-2 pt-1">
-              {needsCode ? (
+              {needsCode && roomPass && (
+                <p className="flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">
+                  <CheckCircle2 className="h-4 w-4" /> Projector code filled in from the QR you scanned
+                </p>
+              )}
+              {needsCode && !roomPass ? (
                 <Button type="submit" disabled={!photo} className="h-12 w-full rounded-full text-base">Continue <ArrowRight className="ml-1 h-4 w-4" /></Button>
               ) : (
                 <Button type="submit" disabled={submitting || !photo || (alreadyMarked && !!form.matricNumber.trim())} className="h-12 w-full rounded-full text-base">
@@ -810,7 +838,7 @@ function AttendTokenPage() {
               <Button
                 type="submit"
                 className="h-12 w-full rounded-full text-base"
-                disabled={submitting || !photo || (needsCode && roomCode.length !== 4) || (alreadyMarked && !!form.matricNumber.trim())}
+                disabled={submitting || !photo || (needsCode && !roomPass && roomCode.length !== 4) || (alreadyMarked && !!form.matricNumber.trim())}
               >
                 {submitting
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>

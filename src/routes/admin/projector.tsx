@@ -118,10 +118,10 @@ function ProjectorPage() {
 
       <div className="flex flex-grow flex-col items-center justify-center gap-10 px-8 lg:flex-row lg:gap-28">
         <div className="rounded-3xl bg-white p-4 sm:p-5">
-          <QrImage value={url} size={256} alt={`QR code for ${link.title}`} className="h-48 w-48 sm:h-64 sm:w-64" />
+          <QrImage value={code ? `${url}#c=${code}` : url} size={256} alt={`QR code for ${link.title}`} className="h-48 w-48 sm:h-64 sm:w-64" />
         </div>
         <div className="flex flex-col items-center gap-4 lg:items-start">
-          <p className="text-base text-[#9aa6b8] sm:text-lg">Scan, then enter this code</p>
+          <p className="text-base text-[#9aa6b8] sm:text-lg">Scan the QR — the code fills in by itself</p>
           {error ? (
             <p className="max-w-md text-center text-lg text-amber-300 lg:text-left">{error}</p>
           ) : code ? (

@@ -1437,6 +1437,8 @@ export type SubmitAttendanceInput = {
   topic: string;
   sessionId: string;
   roomCode: string;
+  /** Pass from scanning the projector QR (stands in for the typed code) */
+  roomPass?: string | null;
   lat: number | null;
   lng: number | null;
   accuracy: number | null;
@@ -1446,6 +1448,16 @@ export type SubmitAttendanceInput = {
   gps?: { n: number; coordDistinct: number; accDistinct: number; spreadM: number };
   customFields: Record<string, string>;
 };
+
+/** Swap the live code in the projector QR for a 10-minute pass on this phone. */
+export async function claimRoomPass(token: string, code: string, deviceId: string): Promise<string | null> {
+  try {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc("claim_room_pass", { p_token: token, p_code: code, p_device: deviceId });
+    if (error) return null;
+    return typeof data === "string" && data ? data : null;
+  } catch { return null; }
+}
 
 export type SubmitAttendanceResult = {
   id: string;
