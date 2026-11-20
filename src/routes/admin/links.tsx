@@ -117,6 +117,9 @@ const EXPIRY_OPTIONS = [
 
 // A measured location is only used when it is at least this exact
 const ANCHOR_MAX_ACCURACY_M = 60;
+// Rougher than that but still usable: the link is made, and students whose GPS
+// doesn't agree are asked for the projector code. Beyond this the pin must be placed by hand.
+const ANCHOR_USABLE_ACCURACY_M = 500;
 // A measured or hand-placed location must be this fresh when the link is made
 const ANCHOR_MAX_AGE_MS = 10 * 60_000;
 
@@ -197,8 +200,16 @@ function GenerateLinkForm({
         setVenueId("");
         setPinMoved(false);
         toast.success(`Location found (±${acc} m).`);
+      } else if (pos.accuracy != null && pos.accuracy <= ANCHOR_USABLE_ACCURACY_M) {
+        // Rough but usable: never stop the lecturer from making the link
+        setAnchor({ lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, source: "gps" });
+        setAnchorTakenAt(pos.takenAt);
+        setRoughFix(null);
+        setVenueId("");
+        setPinMoved(false);
+        toast.warning(`Location found, but it's rough (±${acc} m). You can create the link. Keep the Projector screen open: students whose GPS doesn't match will be asked for the code on it.`, { duration: 10000 });
       } else {
-        // Too rough to measure students from: show it on the map only
+        // Far too rough to measure students from: show it on the map only
         if (!anchor) setRoughFix({ lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, source: "gps" });
         toast.warning(tooRoughMessage(acc), { duration: 10000 });
       }
@@ -220,6 +231,14 @@ function GenerateLinkForm({
     setPinMoved(true);
   }
   const mapCentre = anchor ?? roughFix;
+  // What still has to be done before the link can be made (shown under the button)
+  const missing = !title.trim() ? "enter a title."
+    : !courseCode.trim() ? "enter a course code."
+    : linkType === null ? "choose Attendance or Test."
+    : linkType === "test" ? (!selectedTestId ? "choose a test." : null)
+    : assignClassCode === null ? "answer the class code question (Yes or No)."
+    : !anchor ? (roughFix ? "drag the pin onto your hall on the map, or tap “The pin is already on my hall”." : "tap “Verify my location” and wait for it to finish (about 12 seconds).")
+    : null;
   const tests = loadTests();
 
   // Suggestions: courses that match what's been typed
@@ -476,6 +495,11 @@ function GenerateLinkForm({
                   {pinMoved
                     ? "Pin placed by hand — students are measured from here."
                     : "Is the pin on your lecture hall? If not, drag it onto the exact building."}
+                  {!pinMoved && !venueId && (anchor.accuracy ?? 0) > ANCHOR_MAX_ACCURACY_M && (
+                    <span className="mt-1 block text-amber-700 dark:text-amber-300">
+                      This reading is rough (±{Math.round(anchor.accuracy ?? 0)} m). You can still create the link. Keep the Projector screen open during check-in.
+                    </span>
+                  )}
                 </p>
               ) : (
                 <>
@@ -625,9 +649,11 @@ function GenerateLinkForm({
         </div>
       </div>
 
-      <Button data-tour="generate-link" type="submit" className="w-full" disabled={creating || linkType === null || (linkType === "attendance" && (assignClassCode === null || !anchor)) || (linkType === "test" && !selectedTestId)}>
-        <Plus className="mr-2 h-4 w-4" /> Generate link
+      {/* Never a silent grey button: tapping it says what is missing */}
+      <Button data-tour="generate-link" type="submit" className="w-full" disabled={creating}>
+        {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />} Generate link
       </Button>
+      {missing && <p className="text-center text-xs text-amber-700 dark:text-amber-300">Before you can generate: {missing}</p>}
     </form>
   );
 }
