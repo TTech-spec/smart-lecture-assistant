@@ -6,6 +6,7 @@ import { LeafletMap } from "@/components/LeafletMap";
 import { reverseGeocode } from "@/lib/photo-stamp";
 import { distanceMeters, type Coords } from "@/lib/geo";
 import { APP_VERSION } from "@/lib/version";
+import { fetchActiveAttendance, type ActiveAttendance } from "@/lib/attendance-store";
 
 export const Route = createFileRoute("/attendance")({
   head: () => ({
@@ -39,6 +40,18 @@ function AttendancePage() {
   const lastGeo = useRef<{ pos: Coords; at: number } | null>(null);
 
   useEffect(() => setMounted(true), []);
+
+  // Open check-ins: re-checked every 20 seconds so the button appears by itself
+  const [active, setActive] = useState<ActiveAttendance[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => fetchActiveAttendance().then((a) => { if (!cancelled) { setActive(a); setNow(Date.now()); } });
+    load();
+    const t = setInterval(load, 20_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+  const open = active.filter((a) => new Date(a.expiresAt).getTime() > now);
 
   function start() {
     if (typeof navigator === "undefined" || !navigator.geolocation) { setLoc({ kind: "unsupported" }); return; }
@@ -110,6 +123,25 @@ function AttendancePage() {
           <p className="mt-2 text-base leading-6 text-muted-foreground">We check your live location first, so you know you're inside the class radius before you sign.</p>
 
           {/* Live location card */}
+          {open.length > 0 && (
+            <section className="mb-6 mt-5 flex flex-col gap-3" aria-label="Open attendance">
+              {open.map((a) => {
+                const mins = Math.max(1, Math.round((new Date(a.expiresAt).getTime() - now) / 60_000));
+                return (
+                  <div key={a.token} className="rounded-2xl border-2 border-primary/40 bg-primary/5 p-4">
+                    <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-primary">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-primary" /> Attendance is open
+                    </p>
+                    <p className="mt-1 text-base font-semibold leading-6">{a.courseCode}{a.title ? ` · ${a.title}` : ""}</p>
+                    <p className="text-[13px] text-muted-foreground">Closes in about {mins} min</p>
+                    <Button asChild className="mt-3 h-[52px] w-full rounded-full text-base font-semibold">
+                      <Link to="/attend/$token" params={{ token: a.token }}>Mark attendance now</Link>
+                    </Button>
+                  </div>
+                );
+              })}
+            </section>
+          )}
           <section className="mt-6 overflow-hidden rounded-3xl border bg-card" aria-live="polite">
             <div className="relative h-52 bg-secondary">
               {live && mounted ? (
@@ -148,7 +180,7 @@ function AttendancePage() {
 
           <p className="mt-4 flex gap-2 text-[13px] leading-[18px] text-muted-foreground">
             <QrCode className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            To mark attendance, tap the link your lecturer shared, or point your phone camera at the QR code on the projector.
+            When your lecturer opens attendance, a “Mark attendance now” button appears here. You can also scan the QR code on the projector.
           </p>
           <p className="mt-6 text-center text-[13px] text-muted-foreground">
             Not registered yet? <Link to="/register" className="font-medium text-primary underline-offset-4 hover:underline">Register once</Link>

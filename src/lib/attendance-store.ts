@@ -1449,6 +1449,19 @@ export type SubmitAttendanceInput = {
   customFields: Record<string, string>;
 };
 
+export type ActiveAttendance = { token: string; courseCode: string; title: string; expiresAt: string };
+
+/** Check-ins that are open right now, for the "Mark attendance now" button. */
+export async function fetchActiveAttendance(): Promise<ActiveAttendance[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase.rpc("get_active_attendance");
+    if (error || !Array.isArray(data)) return [];
+    return (data as { token: string; course_code: string; title: string; expires_at: string }[])
+      .map((r) => ({ token: r.token, courseCode: r.course_code, title: r.title, expiresAt: r.expires_at }));
+  } catch { return []; }
+}
+
 /** Swap the live code in the projector QR for a 10-minute pass on this phone. */
 export async function claimRoomPass(token: string, code: string, deviceId: string): Promise<string | null> {
   try {
