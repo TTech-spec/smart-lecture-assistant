@@ -5,12 +5,12 @@ import { startLiveness, updateLiveness, type LivenessFrame, type LivenessState }
 
 export type FaceScanResult = { descriptor: number[]; photo: string };
 
-type Step = "hold" | "blink" | "turn" | "done";
+type Step = "hold" | "mouth" | "turn" | "done";
 
 /**
- * Live face enrolment with simple liveness: hold still → blink → turn head.
- * Saves automatically once all three pass; a printed photo or a video on
- * another screen can't blink and turn on request.
+ * Live face enrolment with simple liveness: hold still → open mouth → turn head.
+ * Saves automatically once all three pass; a printed photo can't open its
+ * mouth and turn on request. It never hangs: see src/lib/liveness.ts.
  */
 export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -21,10 +21,15 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
   const [hint, setHint] = useState("Loading face scanner (first time only)…");
   const [error, setError] = useState<string | null>(null);
   const doneRef = useRef(false);
+  // Set when the checks could not be finished; "Start again" bumps `attempt`
+  const [stuck, setStuck] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let raf = 0;
+    doneRef.current = false;
+    setStuck(false); setStep("hold"); setFaceSeen(false);
     // Liveness state
     let stillFrames = 0;
     // Eye/head readings while holding still → this student's own baseline
@@ -97,7 +102,7 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
             lastBox = { x: f.box.x, y: f.box.y };
 
             if (current === "hold") {
-              steadyReadings.push({ eyeOpenness: f.eyeOpenness, yaw: f.yaw });
+              steadyReadings.push({ mouthOpen: f.mouthOpen, jawDrop: f.jawDrop, yaw: f.yaw });
               if (steadyReadings.length > 8) steadyReadings.shift();
               if (!capturing) {
                 // Forgiving: small wobbles only slow the count, they don't restart it
@@ -106,22 +111,34 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
                 const slow = Date.now() - holdStartedAt > 12_000;
                 setHint(capturing ? "Capturing…" : slow ? "Hold the phone steady, at eye level" : "Hold still…");
               }
+              if (Date.now() - holdStartedAt > 45_000) {
+                // Couldn't get a clear picture of the face on this phone: stop with tips
+                stop();
+                setStuck(true);
+                return;
+              }
               if (capturing && f.descriptor.length === 128) {
                 baselineDescriptor = f.descriptor;
                 const c = document.createElement("canvas");
                 c.width = v.videoWidth; c.height = v.videoHeight;
                 c.getContext("2d")!.drawImage(v, 0, 0);
                 baselineSource = c;
-                live = startLiveness(steadyReadings);
-                current = "blink"; setStep("blink");
-                setHint("Close your eyes for a second");
+                live = startLiveness(steadyReadings, Date.now());
+                current = "mouth"; setStep("mouth");
+                setHint("Open your mouth wide");
               }
             } else if (live) {
-              // Close eyes, then turn head — measured against this student's own baseline
-              const r = updateLiveness(live, { eyeOpenness: f.eyeOpenness, yaw: f.yaw });
+              // Open mouth, then turn head — measured against this student's own baseline
+              const r = updateLiveness(live, { mouthOpen: f.mouthOpen, jawDrop: f.jawDrop, yaw: f.yaw }, Date.now());
               live = r.state;
               setHint(r.hint);
               if (live.step === "turn" && current !== "turn") { current = "turn"; setStep("turn"); }
+              if (live.step === "stuck") {
+                // Never hang: stop the camera and offer a fresh start with tips
+                stop();
+                setStuck(true);
+                return;
+              }
               if (live.step === "done") {
                 current = "done"; setStep("done");
                 finish();
@@ -156,19 +173,34 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
 
     start();
     return () => { cancelled = true; clearTimeout(raf); stop(); };
-  }, [onDone]);
+  }, [onDone, attempt]);
 
   const checks: { key: Step; label: string }[] = [
     { key: "hold", label: "Hold still" },
-    { key: "blink", label: "Close eyes" },
+    { key: "mouth", label: "Open mouth" },
     { key: "turn", label: "Turn head" },
   ];
-  const order: Step[] = ["hold", "blink", "turn", "done"];
+  const order: Step[] = ["hold", "mouth", "turn", "done"];
   const idx = order.indexOf(step);
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative overflow-hidden rounded-2xl bg-[#283349]" style={{ aspectRatio: "3 / 4" }}>
+      {stuck && (
+        <div className="rounded-2xl border bg-card p-5 text-center">
+          <p className="text-lg font-semibold">Let's try that again</p>
+          <ul className="mx-auto mt-3 max-w-xs space-y-1.5 text-left text-sm text-muted-foreground">
+            <li>• Face a window or a light, so your face is bright</li>
+            <li>• Hold the phone at eye level, an arm's length away</li>
+            <li>• Take off caps, masks and dark glasses</li>
+            <li>• Turn your head slowly until you can see your ear, then look back</li>
+          </ul>
+          <button type="button" onClick={() => setAttempt((n) => n + 1)}
+            className="mt-4 h-12 w-full rounded-full bg-primary text-base font-semibold text-primary-foreground">
+            Start again
+          </button>
+        </div>
+      )}
+      <div className={`relative overflow-hidden rounded-2xl bg-[#283349] ${stuck ? "hidden" : ""}`} style={{ aspectRatio: "3 / 4" }}>
         <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover [transform:scaleX(-1)]" />
         {/* Oval mask */}
         <div

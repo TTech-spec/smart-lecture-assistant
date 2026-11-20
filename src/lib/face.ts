@@ -57,6 +57,10 @@ export type FaceFrame = {
   descriptor: Float32Array;
   /** 0..1, how open the eyes are (eye aspect ratio); blinks dip below ~0.2 */
   eyeOpenness: number;
+  /** Mouth height ÷ mouth width (outer lips): about 0.3–0.45 closed, 0.7+ wide open */
+  mouthOpen: number;
+  /** Nose-bridge-to-chin ÷ eye-corner-to-eye-corner: grows about 10%+ when the jaw drops */
+  jawDrop: number;
   /** -1 (turned left) .. 0 (facing camera) .. 1 (turned right), from nose vs cheeks */
   yaw: number;
   /** Face box relative to the frame, 0..1 */
@@ -129,6 +133,10 @@ export async function analyseFace(
   };
   const eyeOpenness = (ear(res.landmarks.getLeftEye()) + ear(res.landmarks.getRightEye())) / 2;
 
+  const dist = (a: FaceApi.Point, b: FaceApi.Point) => Math.hypot(a.x - b.x, a.y - b.y);
+  const mouthOpen = dist(pts[51], pts[57]) / (dist(pts[48], pts[54]) || 1);
+  const jawDrop = dist(pts[27], pts[8]) / (dist(pts[36], pts[45]) || 1);
+
   const nose = pts[30];
   const leftCheek = pts[2];
   const rightCheek = pts[14];
@@ -141,6 +149,8 @@ export async function analyseFace(
   return {
     descriptor: "descriptor" in res ? (res as { descriptor: Float32Array }).descriptor : new Float32Array(0),
     eyeOpenness,
+    mouthOpen,
+    jawDrop,
     yaw,
     box: { x: b.x / w, y: b.y / h, w: b.width / w, h: b.height / h },
   };
