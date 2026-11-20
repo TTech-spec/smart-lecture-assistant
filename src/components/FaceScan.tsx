@@ -124,8 +124,8 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
                 c.getContext("2d")!.drawImage(v, 0, 0);
                 baselineSource = c;
                 live = startLiveness(steadyReadings, Date.now());
-                current = "mouth"; setStep("mouth");
-                setHint("Open your mouth wide");
+                current = "turn"; setStep("turn");
+                setHint("Now turn your head to one side");
               }
             } else if (live) {
               // Open mouth, then turn head — measured against this student's own baseline
@@ -177,10 +177,9 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
 
   const checks: { key: Step; label: string }[] = [
     { key: "hold", label: "Hold still" },
-    { key: "mouth", label: "Open mouth" },
     { key: "turn", label: "Turn head" },
   ];
-  const order: Step[] = ["hold", "mouth", "turn", "done"];
+  const order: Step[] = ["hold", "turn", "done"];
   const idx = order.indexOf(step);
 
   return (
@@ -220,7 +219,7 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
             <>
               <p className="text-lg font-semibold">{hint}</p>
               <p className="mt-1 text-xs text-gray-300">
-                {step === "done" ? "Saving…" : `${Math.min(idx + 1, 3)} of 3 checks`}
+                {step === "done" ? "Saving…" : `Step ${Math.min(idx + 1, 2)} of 2`}
               </p>
             </>
           )}
