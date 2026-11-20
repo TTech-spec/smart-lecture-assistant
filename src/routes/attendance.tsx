@@ -1,8 +1,7 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Loader2, LocateFixed, MapPin, QrCode, RefreshCw, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Loader2, LocateFixed, MapPin, QrCode, RefreshCw, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { LeafletMap } from "@/components/LeafletMap";
 import { reverseGeocode } from "@/lib/photo-stamp";
 import { distanceMeters, type Coords } from "@/lib/geo";
@@ -25,15 +24,6 @@ type LocState =
   | { kind: "error"; message: string }
   | { kind: "live"; pos: Coords; at: number };
 
-/** Pull the class token out of a pasted link or a bare token. */
-function tokenFrom(text: string): string | null {
-  const t = text.trim();
-  if (!t) return null;
-  const m = t.match(/\/attend\/([A-Za-z0-9_-]+)/);
-  if (m) return m[1];
-  return /^[A-Za-z0-9_-]{6,}$/.test(t) ? t : null;
-}
-
 function accuracyLabel(acc?: number) {
   if (acc == null) return { text: "Checking signal…", tone: "muted" as const };
   if (acc <= 25) return { text: `Strong signal · ±${Math.round(acc)} m`, tone: "good" as const };
@@ -42,11 +32,8 @@ function accuracyLabel(acc?: number) {
 }
 
 function AttendancePage() {
-  const navigate = useNavigate();
   const [loc, setLoc] = useState<LocState>({ kind: "waiting" });
   const [address, setAddress] = useState<string | null>(null);
-  const [link, setLink] = useState("");
-  const [linkError, setLinkError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const watchRef = useRef<number | null>(null);
   const lastGeo = useRef<{ pos: Coords; at: number } | null>(null);
@@ -80,13 +67,6 @@ function AttendancePage() {
     return () => { if (watchRef.current != null) navigator.geolocation?.clearWatch(watchRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  function openClass(e: React.FormEvent) {
-    e.preventDefault();
-    const token = tokenFrom(link);
-    if (!token) { setLinkError("Paste the full class link your lecturer shared, for example …/attend/ab12cd34."); return; }
-    navigate({ to: "/attend/$token", params: { token } });
-  }
 
   const live = loc.kind === "live" ? loc : null;
   const acc = accuracyLabel(live?.pos.accuracy);
@@ -166,19 +146,9 @@ function AttendancePage() {
             </div>
           </section>
 
-          {/* Open the class */}
-          <form onSubmit={openClass} className="mt-6 flex flex-col gap-3">
-            <label htmlFor="class-link" className="text-sm font-medium">Class link</label>
-            <Input id="class-link" value={link} onChange={(e) => { setLink(e.target.value); setLinkError(null); }}
-              placeholder="Paste the link your lecturer shared" className="h-12 rounded-xl text-base" autoComplete="off" />
-            {linkError && <p className="text-[13px] font-medium leading-[18px] text-red-600">{linkError}</p>}
-            <Button type="submit" disabled={!live} className="h-[52px] w-full rounded-full bg-foreground text-base font-semibold text-background hover:bg-foreground/85">
-              {live ? <>Continue to sign <ArrowRight className="ml-1 h-4 w-4" /></> : "Waiting for live location…"}
-            </Button>
-          </form>
           <p className="mt-4 flex gap-2 text-[13px] leading-[18px] text-muted-foreground">
             <QrCode className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            In the hall? Point your phone camera at the QR code on the projector. It opens the same page.
+            To mark attendance, tap the link your lecturer shared, or point your phone camera at the QR code on the projector.
           </p>
           <p className="mt-6 text-center text-[13px] text-muted-foreground">
             Not registered yet? <Link to="/register" className="font-medium text-primary underline-offset-4 hover:underline">Register once</Link>
