@@ -158,10 +158,11 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 /**
  * Takes a captured frame and returns a JPEG data URL with a GPS-camera-style
  * stamp: mini map, address, date/time and weather along the bottom.
+ * With no position (`pos` null) the map and the coordinates are left out.
  */
 export async function stampPhoto(
   frame: HTMLCanvasElement,
-  pos: Coords,
+  pos: Coords | null,
   info: StampInfo,
 ): Promise<string> {
   const W = 960;
@@ -178,8 +179,8 @@ export async function stampPhoto(
   ctx.fillRect(0, top, W, band);
 
   const pad = 14;
-  const mapSize = band - pad * 2;
-  await drawMiniMap(ctx, pos, pad, top + pad, mapSize);
+  const mapSize = pos ? band - pad * 2 : 0;
+  if (pos) await drawMiniMap(ctx, pos, pad, top + pad, mapSize);
 
   // Weather column (right)
   const weatherW = 150;
@@ -195,7 +196,7 @@ export async function stampPhoto(
   }
 
   // Address + date (centre)
-  const textX = pad * 2 + mapSize;
+  const textX = pos ? pad * 2 + mapSize : pad;
   const textW = W - textX - weatherW - pad * 2;
   const cx = textX + textW / 2;
   ctx.font = "500 24px system-ui, sans-serif";
@@ -215,7 +216,7 @@ export async function stampPhoto(
   ctx.fillText(dateStr, cx, H - pad - 6);
   ctx.fillStyle = "#e5e7eb";
   ctx.font = "400 16px system-ui, sans-serif";
-  ctx.fillText(`Lat ${pos.lat.toFixed(5)}  Lng ${pos.lng.toFixed(5)}`, cx, H - pad - 40);
+  if (pos) ctx.fillText(`Lat ${pos.lat.toFixed(5)}  Lng ${pos.lng.toFixed(5)}`, cx, H - pad - 40);
 
   try {
     return c.toDataURL("image/jpeg", 0.7);

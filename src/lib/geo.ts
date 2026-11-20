@@ -189,6 +189,8 @@ function onSamplerFailure(err: GeolocationPositionError) {
 
 function startSamplerWatch() {
   if (samplerWatchId != null) return;
+  // A new watch starts with a clean slate: an old "denied" must not outlive the permission being given
+  samplerError = null;
   try {
     samplerWatchId = navigator.geolocation.watchPosition(onSamplerPosition, onSamplerFailure, {
       enableHighAccuracy: true,
@@ -242,6 +244,27 @@ export function startGpsSampler(): () => void {
   };
 }
 
+/** True when the GPS has reported a problem and has not given a single reading. */
+function samplerStuck(): boolean {
+  return samplerError != null && !samplerSamples.length;
+}
+
+/**
+ * Ask the phone for its location afresh. After "permission denied" the running
+ * watch is dead for good, so this is how location switched on later (site
+ * settings, the phone's quick settings) is picked up without reloading the page.
+ * By default it only does anything when the GPS is stuck (an error and no
+ * reading yet); pass `force` to restart regardless. Returns true when restarted.
+ */
+export function restartGpsSampler(force = false): boolean {
+  if (typeof navigator === "undefined" || !navigator.geolocation || samplerRefs === 0) return false;
+  if (!force && !samplerStuck()) return false;
+  stopSamplerWatch();
+  startSamplerWatch();
+  notifySampler();
+  return true;
+}
+
 /** The best position from the readings collected so far, or null when there are none yet. */
 export function getFusedFix(): Coords | null {
   return fuseFixes(samplerSamples.map((x) => x.pos));
@@ -285,7 +308,9 @@ export function onSamplerUpdate(cb: () => void): () => void {
  *   of time, or after `maxMs` at the latest. Returns at once when that is already true.
  * - When `minMs` is not smaller than `maxMs` it is a plain wait of `maxMs` for
  *   fresh readings (the quiet re-check after the server asks for more proof).
- * Returns early when location permission is denied, since nothing more will arrive.
+ * When location permission was denied the phone is asked once more first (it may
+ * have been allowed since); if it is still denied this returns early, since
+ * nothing more will arrive.
  */
 export function waitForFix(
   { minSamples = 3, minMs = 6000, maxMs = 8000 }: { minSamples?: number; minMs?: number; maxMs?: number } = {},
@@ -294,9 +319,13 @@ export function waitForFix(
   const plainWait = minMs >= maxMs;
   const enough = () => !plainWait && samplerSamples.length >= minSamples && getSamplerAgeMs() >= minMs;
   const hopeless = () => samplerError === 1 && !samplerSamples.length;
-  if (enough() || hopeless()) return Promise.resolve(getFusedFix());
+  if (enough()) return Promise.resolve(getFusedFix());
   return new Promise((resolve) => {
+    // Denied earlier: the old watch is dead, so start a new one. A phone that is
+    // still denied reports it again within a moment and the wait ends early.
+    if (hopeless()) restartGpsSampler();
     // Hold the sampler open for the wait, in case nobody else has started it
+    // (a watch started here begins with the old error cleared)
     const stop = startGpsSampler();
     const startedAt = Date.now();
     const tick = setInterval(() => {

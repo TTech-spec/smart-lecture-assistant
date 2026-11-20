@@ -8,6 +8,7 @@ import {
   getSamplerError,
   getSamplerStats,
   onSamplerUpdate,
+  restartGpsSampler,
   startGpsSampler,
   waitForFix,
   type Coords,
@@ -16,9 +17,12 @@ import {
 import { currentWeather, reverseGeocode, stampPhoto, type StampInfo, prefetchMiniMap } from "@/lib/photo-stamp";
 
 type Props = {
-  /** Called with the stamped JPEG (data URL) and the info used, or null when retaking. */
-  onChange: (photo: { dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement; gps: GpsStats } | null) => void;
-  /** Fallback one-shot location reader (used if live tracking is unavailable). */
+  /**
+   * Called with the stamped JPEG (data URL) and the info used, or null when retaking.
+   * `pos` is null when the phone gave no position at all (the photo then says "Location unavailable").
+   */
+  onChange: (photo: { dataUrl: string; info: StampInfo; pos: Coords | null; frame: HTMLCanvasElement; gps: GpsStats } | null) => void;
+  /** Fallback one-shot location reader (used if live tracking is unavailable). Should answer within a few seconds. */
   getPosition: () => Promise<Coords>;
 };
 
@@ -61,6 +65,9 @@ function isBlackFrame(c: HTMLCanvasElement): boolean {
     return sum / (d.length / 4) / 3 < 10;
   } catch { return false; }
 }
+
+/** With no GPS reading this long after the page opened, fetch a rough position for the stamp */
+const ROUGH_AFTER_MS = 7000;
 
 /** Resolve with `fallback` if the promise takes longer than `ms` */
 function within<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
@@ -204,9 +211,10 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
         loadWeather(fix);
         return;
       }
-      // No reading at all and the GPS reported a problem: get a rough position
-      // once, only so the photo can be stamped. It never replaces a real fix.
-      if (getSamplerError() == null || fallbackTried.current) return;
+      // No reading at all, and the GPS reported a problem or has been silent for
+      // a while: get a rough position once, only so the photo can be stamped.
+      // It never replaces a real fix.
+      if ((getSamplerError() == null && !slow) || fallbackTried.current) return;
       fallbackTried.current = true;
       getPositionRef.current()
         .then((pos) => {
@@ -217,14 +225,20 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
         })
         .catch(() => { /* the photo step asks again if it still has nothing */ });
     };
+    // A phone indoors with location on can stay silent for a minute before it
+    // reports anything; don't make the photo wait for that
+    let slow = false;
+    const slowTimer = setTimeout(() => { slow = true; sync(); }, ROUGH_AFTER_MS);
     const stop = startGpsSampler();
     const off = onSamplerUpdate(sync);
     sync();
-    return () => { alive = false; fallbackTried.current = false; off(); stop(); };
+    return () => { alive = false; fallbackTried.current = false; clearTimeout(slowTimer); off(); stop(); };
   }, []);
 
   async function start() {
     setError(null);
+    // Location refused earlier and allowed since: ask the phone again (this is the "try again")
+    restartGpsSampler();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } },
@@ -269,20 +283,29 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     setState("processing");
     try {
       // Best GPS position so far; if there is none yet, give it a few more seconds
-      // (no point waiting when location is switched off for this site)
+      // (less when a rough position is already in hand). Meanwhile fetch a rough
+      // position, so the two waits run side by side: at most about 8 s in all.
       let fix = getFusedFix();
-      if (!fix && getSamplerError() !== 1) fix = await waitForFix({ minSamples: 1, minMs: 0, maxMs: 8000 });
-      // Still nothing: a rough position is enough to stamp the photo. It is never sent as the check-in location.
-      const pos = fix ?? roughAtCapture ?? (await within(getPosition().catch(() => null), 8_000, null));
+      let rough = roughAtCapture;
+      if (!fix) {
+        const roughJob = rough ? null : getPosition().catch(() => null);
+        fix = await waitForFix({ minSamples: 1, minMs: 0, maxMs: rough ? 4000 : 8000 });
+        if (!fix && roughJob) rough = await within(roughJob, 500, null);
+      }
+      // A rough position is enough to stamp the photo. It is never sent as the check-in location.
+      // With no position at all the photo is still kept: the check-in then explains the
+      // location problem and offers the lecturer scan, instead of the photo being thrown away.
+      const pos = fix ?? rough;
       const gps = getSamplerStats();
-      if (!pos) throw new Error("Couldn't find your location. Turn on Location (Precise), then tap Take live photo again.");
       // Address and weather are nice to have: never let a slow network block the photo
-      const [address, w] = await Promise.all([
-        addrAtCapture ?? within(reverseGeocode(pos).catch(() => null), 4000, null),
-        weatherAtCapture ?? within(currentWeather(pos).catch(() => null), 3000, null),
-      ]);
+      const [address, w] = pos
+        ? await Promise.all([
+            addrAtCapture ?? within(reverseGeocode(pos).catch(() => null), 4000, null),
+            weatherAtCapture ?? within(currentWeather(pos).catch(() => null), 3000, null),
+          ])
+        : [null, null];
       const info: StampInfo = {
-        address: address ?? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`,
+        address: address ?? (pos ? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}` : "Location unavailable"),
         temperatureC: w?.temperatureC ?? null,
         weather: w?.weather ?? "",
         takenAt: new Date(),
@@ -292,7 +315,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       setState("done");
       onChange({ dataUrl, info, pos, frame, gps });
     } catch (e) {
-      setError(e instanceof Error && e.message.startsWith("Couldn't find your location") ? e.message : studentError(e, "We couldn't finish your photo. Tap Take live photo and try again."));
+      setError(studentError(e, "We couldn't finish your photo. Tap Take live photo and try again."));
       setPreview(null);
       setState("idle");
     }
@@ -397,7 +420,12 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       )}
 
       {locBlocked && state !== "done" && state !== "processing" && (
-        <p className="mt-2 text-xs text-destructive">Location is required. Allow location access and try again.</p>
+        <p className="mt-2 text-xs text-destructive">
+          Location is required. Allow location access, then{" "}
+          <button type="button" className="font-semibold underline underline-offset-2" onClick={() => restartGpsSampler()}>
+            tap here to try again
+          </button>.
+        </p>
       )}
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
     </div>

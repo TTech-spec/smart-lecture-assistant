@@ -368,7 +368,7 @@ function AttendTokenPage() {
     if (getSamplerStats().n >= 3 && getSamplerAgeMs() >= 6000) return;
     setBusyNote("Confirming your location…");
     const fix = await waitForFix();
-    if (fix || photo?.pos.source === "gps" || getSamplerError() !== 1) return;
+    if (fix || photo?.pos?.source === "gps" || getSamplerError() !== 1) return;
     // Location was switched on after the page first asked for it: ask the phone once more, directly
     const late = await getCurrentPosition({ timeout: 8000 }).catch(() => null);
     lateFixRef.current = late && late.source === "gps" ? late : null;
@@ -379,7 +379,7 @@ function AttendTokenPage() {
     if (!photo) throw new Error("Take your live photo first.");
     // Where the phone is now (all readings since the page opened), not where it was when the photo was taken.
     // The rough network position is only ever stamped on the photo; it is never sent.
-    const pos = getFusedFix() ?? (photo.pos.source === "gps" ? photo.pos : lateFixRef.current);
+    const pos = getFusedFix() ?? (photo.pos?.source === "gps" ? photo.pos : lateFixRef.current);
     const stored = uploadRef.current?.dataUrl === photo.dataUrl ? await withTimeout(uploadRef.current.job, 8000) : null;
     const input: SubmitAttendanceInput = {
       id: crypto.randomUUID(),
@@ -1026,7 +1026,7 @@ function AttendTokenPage() {
   );
 }
 
-type TakenPhoto = { dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement; gps: GpsStats };
+type TakenPhoto = { dataUrl: string; info: StampInfo; pos: Coords | null; frame: HTMLCanvasElement; gps: GpsStats };
 
 /**
  * The live selfie. When the student comes back to the form from another screen
@@ -1047,8 +1047,10 @@ function SelfieStep({ photo, onChange }: { photo: TakenPhoto | null; onChange: (
       </div>
     );
   }
-  // The rough network position is only ever used to stamp the photo
-  return <StampedSelfie onChange={onChange} getPosition={() => getCurrentPosition()} />;
+  // The rough network position is only ever used to stamp the photo. The phone's own
+  // GPS gets 3 s here (the shared sampler is already listening to it), so the answer
+  // comes back while the photo step is still waiting for it.
+  return <StampedSelfie onChange={onChange} getPosition={() => getCurrentPosition({ timeout: 3000 })} />;
 }
 
 /** "Your class code" strip shown with the student's details. */
