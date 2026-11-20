@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { studentError } from "@/lib/friendly-error";
 import { Clock, KeyRound, LocateOff, MapPinOff, RefreshCw, ShieldAlert, UserX } from "lucide-react";
@@ -9,13 +10,35 @@ type Props = {
   error: CheckInError;
   courseCode: string;
   onRetry: () => void;
-  /** Shown for GPS problems: the lecturer scans the student's phone instead */
+  /** Shown for location problems and a paused phone: the lecturer scans the student's phone instead */
   onAskHelp?: () => void;
 };
+
+/** How long the server pauses a phone after several failed tries */
+const LOCK_SECONDS = 5 * 60;
+
+/** Seconds left on the pause, counted from when this screen opened (0 for every other error). */
+function useLockCountdown(active: boolean): number {
+  const [left, setLeft] = useState(active ? LOCK_SECONDS : 0);
+  useEffect(() => {
+    if (!active) { setLeft(0); return; }
+    // Counted from the clock, so it stays right when the phone sleeps or the tab is in the background
+    const endsAt = Date.now() + LOCK_SECONDS * 1000;
+    const update = () => setLeft(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [active]);
+  return left;
+}
 
 /** Full-screen explanation when the server refuses a check-in, with what to do next. */
 export function CheckInErrorScreen({ error, courseCode, onRetry, onAskHelp }: Props) {
   const gpsProblem = error.code === "weak_gps" || error.code === "out_of_range" || error.code === "no_gps";
+  const locked = error.code === "locked";
+  const canAskHelp = (gpsProblem || locked) && Boolean(onAskHelp);
+  const secondsLeft = useLockCountdown(locked);
+  const waiting = locked && secondsLeft > 0;
   const v = describe(error, courseCode);
   const tone = v.tone;
   const ring = tone === "red" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
@@ -55,16 +78,18 @@ export function CheckInErrorScreen({ error, courseCode, onRetry, onAskHelp }: Pr
 
         <div className="flex-grow" />
 
-        {gpsProblem && onAskHelp && (
+        {canAskHelp && (
           <div className="mb-3 rounded-2xl bg-primary/10 p-4">
-            <p className="text-sm font-semibold">In the hall but GPS won't work?</p>
+            <p className="text-sm font-semibold">{locked ? "In the hall and can't wait?" : "In the hall but your location won't work?"}</p>
             <p className="mt-1 text-[13px] leading-5 text-muted-foreground">Your lecturer can scan a code on your phone to confirm you're here.</p>
             <Button className="mt-3 h-11 w-full rounded-full text-base" onClick={onAskHelp}>Ask your lecturer to scan me</Button>
           </div>
         )}
         {v.retry && (
-          <Button variant={gpsProblem && onAskHelp ? "outline" : "default"} className="h-12 w-full text-base" onClick={onRetry}>
-            <RefreshCw className="mr-2 h-4 w-4" /> {v.retry}
+          <Button variant={canAskHelp ? "outline" : "default"} className="h-12 w-full text-base tabular-nums" onClick={onRetry} disabled={waiting}>
+            {waiting
+              ? <><Clock className="mr-2 h-4 w-4" /> Try again in {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}</>
+              : <><RefreshCw className="mr-2 h-4 w-4" /> {v.retry}</>}
           </Button>
         )}
         <Button asChild variant="ghost" className="mt-2 w-full">
@@ -94,19 +119,14 @@ function describe(e: CheckInError, course: string): View {
       return {
         tone: "red",
         icon: <MapPinOff className="h-6 w-6" />,
-        title: "You're not in the class area",
-        body: "Your attendance was not saved. You must be inside the lecture venue, near your lecturer, to check in.",
-        facts: [
-          { label: "Your distance", value: e.meters != null ? formatDistance(e.meters) : "—", tone: "red" },
-          { label: "Allowed", value: `within ${e.radius ?? 100} m`, tone: "green" },
-        ],
+        title: "We couldn't confirm you're at the venue",
+        body: "Your phone's location shows you far from this class. If you're in the hall, ask your lecturer to scan you. Their class pin may also need re-checking.",
         stepsTitle: "In class already? Try this:",
         steps: [
           "Turn on Location and set it to high accuracy (Android: Google Location Accuracy; iPhone: Precise Location).",
           "Turn on WiFi, even without connecting — it helps indoors.",
           "Move near a window or the door and wait 10 seconds.",
         ],
-        note: "This attempt has been logged for your lecturer.",
         retry: "Try again",
       };
     case "weak_gps":
@@ -114,13 +134,15 @@ function describe(e: CheckInError, course: string): View {
         tone: "amber",
         icon: <LocateOff className="h-6 w-6" />,
         title: "Your location signal is too weak",
-        body: `Your phone could only place you to within about ${e.meters ?? "?"} m. We need better than 150 m to confirm you're in the venue.`,
+        body: e.meters
+          ? `Your phone could only place you to within about ${formatDistance(e.meters)}.`
+          : "Your phone couldn't work out where you are clearly enough.",
         stepsTitle: "To get a better signal:",
         steps: [
           "Android: Settings → Location → Google Location Accuracy → On.",
           "iPhone: Settings → Privacy → Location Services → Safari → Precise Location → On.",
           "Turn on WiFi and move near a window or the door.",
-          "Wait for the accuracy on the camera screen to drop below ±50 m, then capture.",
+          "Wait about 10 seconds, then try again.",
         ],
         retry: "Try again",
       };
@@ -161,8 +183,8 @@ function describe(e: CheckInError, course: string): View {
         tone: "red",
         icon: <ShieldAlert className="h-6 w-6" />,
         title: "Too many attempts",
-        body: "This phone made several failed check-ins in a short time, so it is paused for 5 minutes. Your lecturer has been notified.",
-        retry: "Try again in 5 minutes",
+        body: "This phone is paused for 5 minutes after several failed tries.",
+        retry: "Try again",
       };
     case "duplicate_device":
       return {

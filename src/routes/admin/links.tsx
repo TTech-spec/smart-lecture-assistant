@@ -6,7 +6,7 @@ import {
   Clock, CheckCircle2, XCircle, Users, RefreshCw, QrCode, Trash2, KeyRound, FileQuestion,
   MapPin, Loader2, MonitorPlay,
 } from "lucide-react";
-import { getPrecisePosition, type Coords } from "@/lib/geo";
+import { surveyAnchor, distanceMeters, type Coords, type SurveyProgress } from "@/lib/geo";
 import { QrCode as QrImage } from "@/components/QrCode";
 import { LeafletMap } from "@/components/LeafletMap";
 import { toast } from "sonner";
@@ -115,6 +115,15 @@ const EXPIRY_OPTIONS = [
   { label: "24 hours",   minutes: 1440 },
 ];
 
+// A measured location is only used when it is at least this exact
+const ANCHOR_MAX_ACCURACY_M = 60;
+// A measured or hand-placed location must be this fresh when the link is made
+const ANCHOR_MAX_AGE_MS = 10 * 60_000;
+
+function tooRoughMessage(acc: number): string {
+  return `Too rough to use (±${acc} m). Drag the pin onto your hall, or move to a door or window and try again. On a laptop? Verify from your phone.`;
+}
+
 function GenerateLinkForm({
   courses,
   onCreated,
@@ -133,7 +142,11 @@ function GenerateLinkForm({
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null); // for test links
   // Lecturer-verified location (attendance links)
   const [anchor, setAnchor] = useState<Coords | null>(null);
-  const [anchorRadius, setAnchorRadius] = useState(100);
+  const [anchorRadius, setAnchorRadius] = useState(150);
+  // When the anchor was measured or placed (ms). Not used for saved venues.
+  const [anchorTakenAt, setAnchorTakenAt] = useState<number | null>(null);
+  // A reading too rough to use: only centres the map so the pin can be placed by hand
+  const [roughFix, setRoughFix] = useState<Coords | null>(null);
   // Saved lecture halls; picking one replaces indoor GPS
   const [venues, setVenues] = useState<Venue[]>(() => loadSettings().venues ?? []);
   const [venueId, setVenueId] = useState<string>("");
@@ -143,12 +156,17 @@ function GenerateLinkForm({
   function pickVenue(id: string) {
     setVenueId(id);
     const v = venues.find((x) => x.id === id);
-    if (v) { setAnchor({ lat: v.lat, lng: v.lng, accuracy: v.accuracy, source: "gps" }); setPinMoved(false); }
+    if (v) {
+      setAnchor({ lat: v.lat, lng: v.lng, accuracy: Math.max(40, v.accuracy ?? 40), source: "gps" });
+      setAnchorTakenAt(null);
+      setRoughFix(null);
+      setPinMoved(false);
+    }
   }
 
   function saveVenue() {
     if (!anchor || !venueName.trim()) return toast.error("Give the venue a name first.");
-    const v: Venue = { id: `ven-${Date.now()}`, name: venueName.trim(), lat: anchor.lat, lng: anchor.lng, accuracy: Math.round(anchor.accuracy ?? 10) };
+    const v: Venue = { id: `ven-${Date.now()}`, name: venueName.trim(), lat: anchor.lat, lng: anchor.lng, accuracy: Math.max(40, Math.round(anchor.accuracy ?? 40)) };
     const next = [...venues.filter((x) => x.name.toLowerCase() !== v.name.toLowerCase()), v];
     saveSettings({ ...loadSettings(), venues: next });
     setVenues(next);
@@ -164,20 +182,25 @@ function GenerateLinkForm({
     if (venueId === id) setVenueId("");
   }
   const [locating, setLocating] = useState(false);
-  const [locAccuracy, setLocAccuracy] = useState<number | null>(null);
+  const [locProgress, setLocProgress] = useState<SurveyProgress | null>(null);
 
   async function verifyLocation() {
     setLocating(true);
-    setLocAccuracy(null);
+    setLocProgress(null);
     try {
-      const pos = await getPrecisePosition({ maxWaitMs: 20_000, targetAccuracy: 25 }, setLocAccuracy);
-      setAnchor(pos);
-      setVenueId("");
-      setPinMoved(false);
-      if ((pos.accuracy ?? 999) > 100) {
-        toast.warning(`Location is rough (±${Math.round(pos.accuracy ?? 0)} m). Move near a window or door and verify again for better results.`);
+      const pos = await surveyAnchor({ minMs: 12_000, maxMs: 25_000 }, setLocProgress);
+      const acc = Math.round(pos.accuracy ?? 0);
+      if (pos.accuracy != null && pos.accuracy <= ANCHOR_MAX_ACCURACY_M) {
+        setAnchor({ lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, source: "gps" });
+        setAnchorTakenAt(pos.takenAt);
+        setRoughFix(null);
+        setVenueId("");
+        setPinMoved(false);
+        toast.success(`Location found (±${acc} m).`);
       } else {
-        toast.success(`Location verified (±${Math.round(pos.accuracy ?? 0)} m).`);
+        // Too rough to measure students from: show it on the map only
+        if (!anchor) setRoughFix({ lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, source: "gps" });
+        toast.warning(tooRoughMessage(acc), { duration: 10000 });
       }
     } catch (err) {
       toast.error(friendlyError(err, "Could not read your location."));
@@ -185,6 +208,18 @@ function GenerateLinkForm({
       setLocating(false);
     }
   }
+
+  function movePin(p: { lat: number; lng: number }) {
+    const from = anchor ?? roughFix;
+    // A tiny nudge is not a new position
+    if (from && distanceMeters(from, p) < 10) return;
+    setAnchor({ ...p, accuracy: 40, source: "gps" });
+    setAnchorTakenAt(Date.now());
+    setRoughFix(null);
+    setVenueId("");
+    setPinMoved(true);
+  }
+  const mapCentre = anchor ?? roughFix;
   const tests = loadTests();
 
   // Suggestions: courses that match what's been typed
@@ -201,6 +236,8 @@ function GenerateLinkForm({
     if (linkType === "test" && !selectedTestId) return toast.error("Please select a test for this link.");
     if (linkType === "attendance" && !anchor)
       return toast.error("Verify your location first — stand in the lecture hall and tap “Verify my location”.");
+    if (linkType === "attendance" && !venueId && anchorTakenAt != null && Date.now() - anchorTakenAt > ANCHOR_MAX_AGE_MS)
+      return toast.error("Check your location again; it was taken a while ago");
     setCreating(true);
     try {
       const now = new Date();
@@ -246,7 +283,7 @@ function GenerateLinkForm({
                 anchorLng: anchor.lng,
                 anchorAccuracy: anchor.accuracy,
                 anchorRadius,
-                anchorAt: new Date().toISOString(),
+                anchorAt: new Date(!venueId && anchorTakenAt != null ? anchorTakenAt : Date.now()).toISOString(),
               }
             : {}),
         };
@@ -262,6 +299,8 @@ function GenerateLinkForm({
       setRequireRoomCode(false);
       setSelectedTestId(null);
       setAnchor(null);
+      setAnchorTakenAt(null);
+      setRoughFix(null);
       setVenueId("");
       setPinMoved(false);
     } catch (err) {
@@ -377,6 +416,7 @@ function GenerateLinkForm({
           <span className="text-sm">
             <span className="block font-semibold">Ask for the projector code</span>
             <span className="block text-xs text-muted-foreground">Off: students just enter their matric number, take a selfie and submit. Live GPS and the face match prove they're in class. On: they must also type the code shown on your projector.</span>
+            <span className="mt-1 block text-xs text-muted-foreground">Either way, keep the Projector screen open. Students whose GPS is off indoors are asked for the code on it.</span>
           </span>
         </label>
       )}
@@ -415,28 +455,34 @@ function GenerateLinkForm({
           <Button data-tour="verify-location" type="button" variant={anchor ? "outline" : "default"} className="w-full" onClick={verifyLocation} disabled={locating}>
             {locating ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {locAccuracy != null ? `Improving accuracy… ±${Math.round(locAccuracy)} m` : "Getting your location…"}</>
+                {locProgress ? `Checking your location… ${locProgress.n} reading${locProgress.n === 1 ? "" : "s"}, ±${Math.round(locProgress.accuracy)} m` : "Checking your location…"}</>
             ) : anchor ? (
-              <><CheckCircle2 className="mr-2 h-4 w-4 text-primary" /> {venueId ? "Using saved venue · use my GPS instead" : `Verified (±${Math.round(anchor.accuracy ?? 0)} m) · Verify again`}</>
+              <><CheckCircle2 className="mr-2 h-4 w-4 text-primary" /> {venueId ? "Using saved venue · use my GPS instead" : pinMoved ? "Pin placed by hand · Check again" : `Location found (±${Math.round(anchor.accuracy ?? 0)} m) · Check again`}</>
             ) : (
               <><MapPin className="mr-2 h-4 w-4" /> Verify my location</>
             )}
           </Button>
-          {anchor && (
+          {mapCentre && (
             <div className="space-y-2">
               <LeafletMap
-                center={{ lat: anchor.lat, lng: anchor.lng }}
+                center={{ lat: mapCentre.lat, lng: mapCentre.lng }}
                 radius={anchorRadius}
                 draggable
-                onMove={(p) => { setAnchor({ ...p, accuracy: 5, source: "gps" }); setVenueId(""); setPinMoved(true); }}
+                onMove={movePin}
                 className="h-56 w-full overflow-hidden rounded-lg border"
               />
-              <p className="text-xs text-muted-foreground">
-                {pinMoved
-                  ? "Pin placed by hand — students are measured from here."
-                  : "Is the pin on your lecture hall? If not, drag it onto the exact building."}
-              </p>
-              {!venueId && (
+              {anchor ? (
+                <p className="text-xs text-muted-foreground">
+                  {pinMoved
+                    ? "Pin placed by hand — students are measured from here."
+                    : "Is the pin on your lecture hall? If not, drag it onto the exact building."}
+                </p>
+              ) : (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
+                  {tooRoughMessage(Math.round(mapCentre.accuracy ?? 0))}
+                </p>
+              )}
+              {anchor && !venueId && (
                 <div className="flex gap-2">
                   <Input
                     value={venueName}
@@ -455,8 +501,8 @@ function GenerateLinkForm({
             <Select value={String(anchorRadius)} onValueChange={(v) => setAnchorRadius(Number(v))}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {[50, 100, 150, 200, 300].map((m) => (
-                  <SelectItem key={m} value={String(m)}>{m} m of me{m === 100 ? " (recommended)" : ""}</SelectItem>
+                {[100, 150, 200, 300].map((m) => (
+                  <SelectItem key={m} value={String(m)}>{m} m of me{m === 150 ? " (recommended)" : ""}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

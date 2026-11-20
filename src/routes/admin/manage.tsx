@@ -19,7 +19,7 @@ import {
   type CustomField, type TestConfig, type TestType,
 } from "@/lib/attendance-store";
 import { parsePdfQuestions } from "@/lib/pdf-parser";
-import { getCurrentPosition } from "@/lib/geo";
+import { surveyAnchor } from "@/lib/geo";
 import { changeLecturerPassword } from "@/lib/lecturer-auth";
 import { AccountSettings } from "@/components/admin/AccountSettings";
 import { useStore } from "@/hooks/use-store";
@@ -181,19 +181,17 @@ function SettingsCard() {
   async function pinHere() {
     setPinning(true);
     try {
-      const pos = await getCurrentPosition();
+      const pos = await surveyAnchor();
+      const acc = Math.round(pos.accuracy ?? 0);
+      if (pos.accuracy == null || pos.accuracy > 60) {
+        // Too rough to measure students from: keep the old pin
+        toast.warning(`Too rough to use (±${acc} m). Move to a door or window and try again, or enter the coordinates by hand. On a laptop? Do this from your phone.`, { duration: 10000 });
+        return;
+      }
       const next = { ...draft, classLat: pos.lat, classLng: pos.lng };
       setDraft(next);
       saveSettings(next);
-      const acc = pos.accuracy ? Math.round(pos.accuracy) : null;
-      // If accuracy is extremely high (>10km), it's likely using IP geolocation instead of GPS
-      if (acc && acc > 10000) {
-        toast.error(`Location accuracy is very poor (±${(acc / 1000).toFixed(0)} km). This device may be using IP-based location instead of GPS. Please use a mobile device or enter coordinates manually.`);
-      } else if (acc && acc > 100) {
-        toast.warning(`Location pinned but GPS accuracy is poor (±${acc} m). Students nearby may be wrongly rejected. Pin from a mobile phone or enter coordinates manually for better results.`);
-      } else {
-        toast.success(acc ? `Class location pinned (±${acc} m accuracy).` : "Class location pinned.");
-      }
+      toast.success(`Class location pinned (±${acc} m).`);
     } catch (e) {
       toast.error(friendlyError(e, "Could not read GPS."));
     } finally {
@@ -361,16 +359,16 @@ function SettingsCard() {
             </div>
           )}
           <Button data-tour="auto-detect" onClick={pinHere} disabled={pinning} className="mt-3 w-full" variant="outline">
-            {pinning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Reading GPS…</> : <><MapPin className="mr-2 h-4 w-4" /> Auto-detect my location</>}
+            {pinning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking your location… about 15 seconds</> : <><MapPin className="mr-2 h-4 w-4" /> Auto-detect my location</>}
           </Button>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            For best accuracy, auto-detect from a <strong>mobile phone</strong>. Laptops/desktops use IP geolocation which can be 100+ km off.
+            For best accuracy, auto-detect from a <strong>mobile phone</strong> while standing in the hall. It takes about 15 seconds. A rough reading is not saved.
           </p>
         </div>
 
         <div data-tour="radius">
           <Label className="text-sm">Allowed radius (meters)</Label>
-          <Input type="number" min={10} max={5000} value={draft.radiusMeters ?? 100} onChange={(e) => update("radiusMeters", Math.max(10, Number(e.target.value) || 0))} />
+          <Input type="number" min={100} max={5000} value={draft.radiusMeters || ""} onChange={(e) => update("radiusMeters", Math.max(0, Number(e.target.value) || 0))} onBlur={() => update("radiusMeters", Math.max(100, draft.radiusMeters || 0))} />
           <RadiusHint meters={draft.radiusMeters} />
         </div>
 

@@ -1,9 +1,18 @@
-import { fuseFixes } from "@/lib/geo";
 import { studentError } from "@/lib/friendly-error";
 import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, MapPin, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { distanceMeters, type Coords } from "@/lib/geo";
+import {
+  distanceMeters,
+  getFusedFix,
+  getSamplerError,
+  getSamplerStats,
+  onSamplerUpdate,
+  startGpsSampler,
+  waitForFix,
+  type Coords,
+  type GpsStats,
+} from "@/lib/geo";
 import { currentWeather, reverseGeocode, stampPhoto, type StampInfo, prefetchMiniMap } from "@/lib/photo-stamp";
 
 type Props = {
@@ -20,19 +29,8 @@ type Weather = { temperatureC: number | null; weather: string };
  * student's live address, time and weather are shown over the preview and
  * update as they move; the same details are stamped onto the captured photo.
  */
-/** How the raw GPS readings behaved while the camera was open (fake-GPS apps tend to be perfectly still). */
-export type GpsStats = { n: number; coordDistinct: number; accDistinct: number; spreadM: number };
-
-function gpsStats(samples: { pos: Coords }[]): GpsStats {
-  const n = samples.length;
-  if (!n) return { n: 0, coordDistinct: 0, accDistinct: 0, spreadM: 0 };
-  const coords = new Set(samples.map((x) => `${x.pos.lat.toFixed(7)},${x.pos.lng.toFixed(7)}`));
-  const accs = new Set(samples.map((x) => Math.round((x.pos.accuracy ?? 0) * 10)));
-  const lat = samples.reduce((t, x) => t + x.pos.lat, 0) / n;
-  const lng = samples.reduce((t, x) => t + x.pos.lng, 0) / n;
-  const spreadM = Math.max(...samples.map((x) => distanceMeters({ lat, lng }, x.pos)));
-  return { n, coordDistinct: coords.size, accDistinct: accs.size, spreadM: Math.round(spreadM * 10) / 10 };
-}
+/** How the raw GPS readings behaved (now worked out by the shared sampler in lib/geo). */
+export type { GpsStats };
 
 /** Decode a photo file; falls back to an <img> on older iPhones */
 async function decodePhoto(file: File): Promise<{ width: number; height: number } & CanvasImageSource> {
@@ -72,7 +70,6 @@ function within<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
 export function StampedSelfie({ onChange, getPosition }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const watchRef = useRef<number | null>(null);
   const lastGeocodeRef = useRef<{ pos: Coords; at: number } | null>(null);
 
   const [state, setState] = useState<"idle" | "live" | "processing" | "done">("idle");
@@ -81,20 +78,18 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
 
   // Live data
   const [livePos, setLivePos] = useState<Coords | null>(null);
-  const samplesRef = useRef<{ pos: Coords; at: number }[]>([]);
   const mapPrefetched = useRef(false);
-  const [watchStarted, setWatchStarted] = useState(0);
+  const weatherLoaded = useRef(false);
+  const fallbackTried = useRef(false);
+  const [locBlocked, setLocBlocked] = useState(false);
   const [liveAddress, setLiveAddress] = useState<string | null>(null);
   const [liveWeather, setLiveWeather] = useState<Weather | null>(null);
   const [now, setNow] = useState(() => new Date());
 
+  /** Stops the camera only. Location keeps running so the check-in has the freshest readings. */
   function stopAll() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    if (watchRef.current != null && typeof navigator !== "undefined") {
-      navigator.geolocation?.clearWatch(watchRef.current);
-    }
-    watchRef.current = null;
   }
   useEffect(() => stopAll, []);
 
@@ -187,52 +182,49 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     setLiveAddress(address);
   }
 
-  function startLocationWatch() {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
-    let weatherLoaded = false;
-    watchRef.current = navigator.geolocation.watchPosition(
-      (p) => {
-        const sample: Coords = {
-          lat: p.coords.latitude,
-          lng: p.coords.longitude,
-          accuracy: p.coords.accuracy,
-          source: "gps",
-        };
-        // Keep the last 30 s of readings and combine them into one stronger
-        // fix (clear readings count more, GPS jumps are dropped).
-        const nowMs = Date.now();
-        samplesRef.current = [...samplesRef.current, { pos: sample, at: nowMs }].filter((x) => nowMs - x.at < 30_000);
-        const pos = fuseFixes(samplesRef.current.map((x) => x.pos)) ?? sample;
-        setLivePos(pos);
-        refreshAddress(pos);
-        if (!mapPrefetched.current) { mapPrefetched.current = true; prefetchMiniMap(pos); }
-        if (!weatherLoaded) {
-          weatherLoaded = true;
-          currentWeather(pos).then(setLiveWeather);
-        }
-      },
-      () => {
-        // Live tracking failed — fall back to a one-shot reading
-        getPosition()
-          .then((pos) => {
-            setLivePos(pos);
-            refreshAddress(pos);
-            currentWeather(pos).then(setLiveWeather);
-          })
-          .catch(() => setError("Location is required. Allow location access and try again."));
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 },
-    );
-  }
+  // Location runs from the moment this appears (not only while the camera is
+  // open), so the "Use phone camera" path has readings too.
+  const getPositionRef = useRef(getPosition);
+  getPositionRef.current = getPosition;
+  useEffect(() => {
+    let alive = true;
+    const loadWeather = (pos: Coords) => {
+      if (weatherLoaded.current) return;
+      weatherLoaded.current = true;
+      currentWeather(pos).then((w) => { if (alive) setLiveWeather(w); }).catch(() => { weatherLoaded.current = false; });
+    };
+    const sync = () => {
+      if (!alive) return;
+      const fix = getFusedFix();
+      setLocBlocked(!fix && getSamplerError() === 1);
+      if (fix) {
+        setLivePos(fix);
+        void refreshAddress(fix);
+        if (!mapPrefetched.current) { mapPrefetched.current = true; prefetchMiniMap(fix); }
+        loadWeather(fix);
+        return;
+      }
+      // No reading at all and the GPS reported a problem: get a rough position
+      // once, only so the photo can be stamped. It never replaces a real fix.
+      if (getSamplerError() == null || fallbackTried.current) return;
+      fallbackTried.current = true;
+      getPositionRef.current()
+        .then((pos) => {
+          if (!alive || getFusedFix()) return;
+          setLivePos(pos);
+          void refreshAddress(pos);
+          loadWeather(pos);
+        })
+        .catch(() => { /* the photo step asks again if it still has nothing */ });
+    };
+    const stop = startGpsSampler();
+    const off = onSamplerUpdate(sync);
+    sync();
+    return () => { alive = false; fallbackTried.current = false; off(); stop(); };
+  }, []);
 
   async function start() {
     setError(null);
-    setLivePos(null);
-    setLiveAddress(null);
-    setLiveWeather(null);
-    lastGeocodeRef.current = null;
-    samplesRef.current = [];
-    setWatchStarted(Date.now());
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 960 }, height: { ideal: 720 } },
@@ -241,7 +233,6 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       streamRef.current = stream;
       setCamReady(false);
       setState("live");
-      startLocationWatch();
     } catch {
       setError("Camera access is required. Allow camera permission and try again.");
     }
@@ -271,14 +262,19 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     // Instant feedback: show the frozen photo straight away and buzz the phone
     try { navigator.vibrate?.(40); } catch { /* not supported */ }
     setPreview(frame.toDataURL("image/jpeg", 0.7));
-    const posAtCapture = livePos;
-    const gps = gpsStats(samplesRef.current);
+    const roughAtCapture = livePos;
     const addrAtCapture = liveAddress;
     const weatherAtCapture = liveWeather;
     stopAll();
     setState("processing");
     try {
-      const pos = posAtCapture ?? (await within(getPosition().catch(() => null), 8_000, null));
+      // Best GPS position so far; if there is none yet, give it a few more seconds
+      // (no point waiting when location is switched off for this site)
+      let fix = getFusedFix();
+      if (!fix && getSamplerError() !== 1) fix = await waitForFix({ minSamples: 1, minMs: 0, maxMs: 8000 });
+      // Still nothing: a rough position is enough to stamp the photo. It is never sent as the check-in location.
+      const pos = fix ?? roughAtCapture ?? (await within(getPosition().catch(() => null), 8_000, null));
+      const gps = getSamplerStats();
       if (!pos) throw new Error("Couldn't find your location. Turn on Location (Precise), then tap Take live photo again.");
       // Address and weather are nice to have: never let a slow network block the photo
       const [address, w] = await Promise.all([
@@ -308,13 +304,10 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
     start();
   }
 
-  // Allow capture once accuracy is good (≤50 m), or after 12 s if it is at
-  // least usable (≤150 m — the server refuses anything worse).
-  const acc = livePos?.accuracy ?? 999;
-  const waited = now.getTime() - watchStarted;
-  // Wait for a strong signal first; accept weaker ones only after giving the GPS time
-  // After 15 s the button opens whatever the signal; the server still checks distance
-  void waited;
+  // Capture is never held back by location: the check-in uses the readings
+  // gathered up to the moment the form is sent, and the server decides.
+  const hasFix = livePos?.source === "gps";
+  const acc = livePos?.accuracy ?? 0;
 
   const timeStr =
     now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
@@ -361,7 +354,7 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
             {camReady ? <><Camera className="mr-2 h-5 w-5" /> Capture</> : <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting camera… tap to capture</>}
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            {!livePos ? "Finding your location… you can still capture." : acc <= 30 ? `Strong location signal · ±${Math.round(acc)} m` : `Location ±${Math.round(acc)} m. Capture now, or wait a few seconds for a stronger signal.`}
+            {hasFix ? "Location found" : "Finding your location… you can capture now"}
           </p>
           {black && (
             <div className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
@@ -372,9 +365,14 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
               </Button>
             </div>
           )}
-          {livePos && acc > 100 && (
+          {hasFix && acc > 100 && acc <= 1000 && (
             <p className="text-center text-xs text-amber-700 dark:text-amber-400">
-              Weak signal (±{Math.round(acc)} m). Turn on WiFi and move near a window or the door.
+              Weak location signal. Turn on WiFi and move near a window or the door.
+            </p>
+          )}
+          {livePos && acc > 1000 && (
+            <p className="text-center text-xs text-amber-700 dark:text-amber-400">
+              iPhone: turn on Precise Location for Safari. Android: turn on Google Location Accuracy.
             </p>
           )}
         </div>
@@ -398,6 +396,9 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
         </div>
       )}
 
+      {locBlocked && state !== "done" && state !== "processing" && (
+        <p className="mt-2 text-xs text-destructive">Location is required. Allow location access and try again.</p>
+      )}
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
     </div>
   );

@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { studentError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2, XCircle, Loader2, ArrowLeft, ArrowRight, MapPin, ChevronDown, KeyRound, Copy,
+  CheckCircle2, XCircle, Loader2, ArrowLeft, ArrowRight, MapPin, ChevronDown, KeyRound, Copy, RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,8 +37,12 @@ import {
   type AttendanceLink,
   type Gender,
 } from "@/lib/attendance-store";
-import { getCurrentPosition, warmUpGps, type Coords } from "@/lib/geo";
+import {
+  getCurrentPosition, startGpsSampler, getFusedFix, getSamplerStats, getSamplerAgeMs, getSamplerError, waitForFix,
+  type Coords,
+} from "@/lib/geo";
 import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
+import { RoomProofSheet } from "@/components/RoomProofSheet";
 import { QrCode } from "@/components/QrCode";
 import { uploadCheckinPhoto, withTimeout } from "@/lib/checkin-photos";
 import { analyseFace, faceDistance, FACE_MATCH_THRESHOLD, preloadFaceModels } from "@/lib/face";
@@ -120,7 +124,7 @@ function AttendTokenPage() {
   // Device-level block: set to true if this phone already submitted today
   const [deviceBlocked, setDeviceBlocked] = useState(false);
   // Live stamped selfie (required before submit)
-  const [photo, setPhoto] = useState<{ dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement; gps: GpsStats } | null>(null);
+  const [photo, setPhoto] = useState<TakenPhoto | null>(null);
   // Registered profile for the typed matric (details come from it, not the form)
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -150,11 +154,24 @@ function AttendTokenPage() {
   });
   // Set when the server refuses the check-in; shows a full-screen explanation
   const [failure, setFailure] = useState<CheckInError | null>(null);
+  // The phone's location wasn't clear enough on its own: ask for the code on the lecturer's screen (a step, not an error)
+  const [proofNeeded, setProofNeeded] = useState(false);
+  // What the wait is for while a check-in is being sent ("Saving…" when null)
+  const [busyNote, setBusyNote] = useState<string | null>(null);
+  // Trying again from an error screen: a plain waiting screen instead of the form
+  const [resending, setResending] = useState(false);
+  // A pass claimed for a typed projector code, so a retry doesn't fail because the code has changed
+  const heldPassRef = useRef<string | null>(null);
+  // The pass already claimed on the "One more step" screen, reused if sending fails and the student confirms again
+  const proofPassRef = useRef<{ code: string; pass: string } | null>(null);
+  // Location read straight from the phone when it was switched on after the page opened
+  const lateFixRef = useRef<Coords | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => warmUpGps(), []);
-  useEffect(() => { preloadFaceModels(); }, []); // face files download while the student types // GPS gets a strong fix while the student fills in their details
+  // The phone starts reading its location while the student fills in their details, and keeps going until they submit
+  useEffect(() => startGpsSampler(), []);
+  useEffect(() => { preloadFaceModels(); }, []); // face files download while the student types
   useEffect(() => {
     let cancelled = false;
 
@@ -218,18 +235,19 @@ function AttendTokenPage() {
   const needsCode = Boolean(link && link !== "loading" && link.requireRoomCode);
   const totalSteps = needsCode && !roomPass ? 3 : 2;
 
-  // Scanned QR: swap its live code for a pass straight away (the code changes every 30 s)
+  // Scanned QR: swap its live code for a pass straight away (the code changes every 30 s).
+  // Done for every link: the pass also covers a phone whose location is unclear indoors.
+  // Tried once only: the scanned code is long out of date by the time anything is retried.
+  const qrTriedRef = useRef(false);
   useEffect(() => {
-    if (!qrCode || !needsCode || roomPass) return;
-    let cancelled = false;
+    if (!qrCode || qrTriedRef.current) return;
+    qrTriedRef.current = true;
     claimRoomPass(token, qrCode, deviceId).then((pass) => {
-      if (cancelled) return;
       if (pass) setRoomPass(pass);
       else setRoomCode("");
       try { history.replaceState(null, "", window.location.pathname + window.location.search); } catch { /* ignore */ }
     });
-    return () => { cancelled = true; };
-  }, [qrCode, needsCode, roomPass, token, deviceId]);
+  }, [qrCode, token, deviceId]);
 
   function goNext(e: React.FormEvent) {
     e.preventDefault();
@@ -303,6 +321,7 @@ function AttendTokenPage() {
   // ── Submit ─────────────────────────────────────────────────────────────────
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
     if (!link || link === "loading") return;
     if (!isLinkValid(link, new Date())) return toast.error("This link is no longer valid.");
 
@@ -334,64 +353,189 @@ function AttendTokenPage() {
 
     setSubmitting(true);
     try {
-      const pos = photo.pos;
-      const stored = uploadRef.current?.dataUrl === photo.dataUrl ? await withTimeout(uploadRef.current.job, 8000) : null;
-      const input: SubmitAttendanceInput = {
-        id: crypto.randomUUID(),
-        token,
-        deviceId,
-        fullName: form.fullName.trim(),
-        matricNumber: form.matricNumber.trim().toUpperCase(),
-        department: form.department.trim(),
-        phone: form.phone.trim(),
-        level: form.level,
-        gender: form.gender as Gender,
-        topic: settings.topic || "",
-        sessionId: settings.activeSessionId || "",
-        roomCode: roomCode.trim().toUpperCase(),
-        roomPass,
-        lat: pos.source === "gps" ? pos.lat : null,
-        lng: pos.source === "gps" ? pos.lng : null,
-        accuracy: pos.source === "gps" ? (pos.accuracy ?? null) : null,
-        faceDistance: face?.distance ?? null,
-        gps: photo.gps,
-        customFields: {
-          photo: stored?.photo ?? photo.dataUrl,
-          ...(stored ? { photoThumb: stored.photoThumb } : {}),
-          photoAddress: photo.info.address,
-          photoTemperatureC: photo.info.temperatureC != null ? String(photo.info.temperatureC) : "",
-          photoWeather: photo.info.weather,
-          photoTakenAt: photo.info.takenAt.toISOString(),
-        },
-      };
-      lastInputRef.current = input;
-      const result = await submitAttendance(input);
+      await settleLocation();
+      await attempt();
+    } finally {
+      setSubmitting(false);
+      setBusyNote(null);
+    }
+  }
 
+  const photoTooOld = () => !photo || Date.now() - photo.info.takenAt.getTime() > 5 * 60_000;
+
+  /** Give the phone a moment when it has only just started reading its location. */
+  async function settleLocation() {
+    if (getSamplerStats().n >= 3 && getSamplerAgeMs() >= 6000) return;
+    setBusyNote("Confirming your location…");
+    const fix = await waitForFix();
+    if (fix || photo?.pos.source === "gps" || getSamplerError() !== 1) return;
+    // Location was switched on after the page first asked for it: ask the phone once more, directly
+    const late = await getCurrentPosition({ timeout: 8000 }).catch(() => null);
+    lateFixRef.current = late && late.source === "gps" ? late : null;
+  }
+
+  /** Build the check-in from the form, the photo and the phone's location right now, and send it. */
+  async function send(extra?: { roomPass?: string }): Promise<SubmitAttendanceResult> {
+    if (!photo) throw new Error("Take your live photo first.");
+    // Where the phone is now (all readings since the page opened), not where it was when the photo was taken.
+    // The rough network position is only ever stamped on the photo; it is never sent.
+    const pos = getFusedFix() ?? (photo.pos.source === "gps" ? photo.pos : lateFixRef.current);
+    const stored = uploadRef.current?.dataUrl === photo.dataUrl ? await withTimeout(uploadRef.current.job, 8000) : null;
+    const input: SubmitAttendanceInput = {
+      id: crypto.randomUUID(),
+      token,
+      deviceId,
+      fullName: form.fullName.trim(),
+      matricNumber: form.matricNumber.trim().toUpperCase(),
+      department: form.department.trim(),
+      phone: form.phone.trim(),
+      level: form.level,
+      gender: form.gender as Gender,
+      topic: settings.topic || "",
+      sessionId: settings.activeSessionId || "",
+      roomCode: needsCode ? roomCode.trim().toUpperCase() : "",
+      roomPass: extra?.roomPass ?? roomPass ?? heldPassRef.current,
+      lat: pos ? pos.lat : null,
+      lng: pos ? pos.lng : null,
+      accuracy: pos ? (pos.accuracy ?? null) : null,
+      faceDistance: face?.distance ?? null,
+      gps: getSamplerStats(),
+      customFields: {
+        photo: stored?.photo ?? photo.dataUrl,
+        ...(stored ? { photoThumb: stored.photoThumb } : {}),
+        photoAddress: photo.info.address,
+        photoTemperatureC: photo.info.temperatureC != null ? String(photo.info.temperatureC) : "",
+        photoWeather: photo.info.weather,
+        photoTakenAt: photo.info.takenAt.toISOString(),
+      },
+    };
+    lastInputRef.current = input;
+    setBusyNote(null);
+    return submitAttendance(input);
+  }
+
+  /**
+   * The server just accepted the typed projector code but not the location. Swap the
+   * code for a pass now, because the code will have changed by the time we send again.
+   */
+  async function holdTypedCode() {
+    if (!needsCode || roomPass || heldPassRef.current || roomCode.trim().length !== 4) return;
+    const pass = await claimRoomPass(token, roomCode.trim().toUpperCase(), deviceId);
+    if (pass) heldPassRef.current = pass;
+  }
+
+  /**
+   * Send the check-in and act on the answer. Returns:
+   * "saved" (done), "need_code" (the "One more step" screen is showing),
+   * "refused" (an explanation screen is showing) or "offline" (a message was shown).
+   */
+  async function attempt(extra?: { roomPass?: string }, resample = true): Promise<"saved" | "need_code" | "refused" | "offline"> {
+    let heldCode = false;
+    try {
+      let result: SubmitAttendanceResult;
+      try {
+        result = await send(extra);
+      } catch (err) {
+        // A doubtful location often settles by itself: read it for 10 more seconds and send once more, quietly.
+        // (weak_gps and a numbered out_of_range are what the older server says in the same situation.)
+        const doubtful = err instanceof CheckInError
+          && (err.code === "need_room_code" || err.code === "weak_gps" || (err.code === "out_of_range" && !err.far));
+        if (!doubtful || !resample) throw err;
+        setBusyNote("Confirming your location…");
+        heldCode = true;
+        await Promise.all([waitForFix({ minMs: 10_000, maxMs: 10_000 }), holdTypedCode()]);
+        result = await send(extra);
+      }
       if (result.classCode) {
         markClassCodeUsed(form.matricNumber.trim());
         setAssignedCode(result.classCode);
       }
+      setProofNeeded(false);
       setDone(true);
       toast.success("Attendance marked successfully!");
+      return "saved";
     } catch (err) {
       if (err instanceof CheckInError) {
+        if (err.code === "need_room_code") {
+          // Not an error: the photo and details are kept and the student adds the code on the lecturer's screen
+          setProofNeeded(true);
+          return "need_code";
+        }
+        setProofNeeded(false);
         if (err.code === "duplicate_device") setDeviceBlocked(true);
         else setFailure(err);
-      } else {
-        toast.error(studentError(err, "We couldn't save your attendance. Check your internet and try again."));
+        if (!heldCode && (err.code === "weak_gps" || err.code === "out_of_range" || err.code === "no_gps")) void holdTypedCode();
+        return "refused";
       }
+      toast.error(studentError(err, "We couldn't save your attendance. Check your internet and try again."));
+      return "offline";
+    }
+  }
+
+  /** "One more step": swap the code on the lecturer's screen for a pass and send again. False = wrong code. */
+  async function confirmRoomCode(code: string): Promise<boolean> {
+    const pass = proofPassRef.current?.code === code ? proofPassRef.current.pass : await claimRoomPass(token, code, deviceId);
+    if (!pass) {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        toast.error("You're offline. Check your internet and try again.");
+        return true;
+      }
+      return false;
+    }
+    proofPassRef.current = { code, pass };
+    setRoomPass(pass);
+    setSubmitting(true);
+    try {
+      const outcome = await attempt({ roomPass: pass }, false);
+      if (outcome === "need_code") proofPassRef.current = null;
+      return outcome !== "need_code";
     } finally {
       setSubmitting(false);
+      setBusyNote(null);
+    }
+  }
+
+  /** Location trouble: the photo and details are kept, so read the location again and send straight away. */
+  async function resend() {
+    setResending(true);
+    setSubmitting(true);
+    setBusyNote("Confirming your location…");
+    try {
+      lateFixRef.current = null;
+      await settleLocation();
+      await attempt(undefined, false);
+    } finally {
+      setResending(false);
+      setSubmitting(false);
+      setBusyNote(null);
     }
   }
 
   function retryAfterFailure() {
     const code = failure?.code;
     setFailure(null);
-    // Location problems need a fresh photo; a wrong code only needs a new code
-    if (code !== "wrong_code") { setPhoto(null); setFace(null); setStage(2); } else { setStage(3); }
+    // A wrong code only needs a new code
+    if (code === "wrong_code") {
+      heldPassRef.current = null;
+      setRoomPass(null);
+      setRoomCode("");
+      setStage(3);
+      return;
+    }
+    // The location is read again when sending, so the photo is kept until it is 5 minutes old
+    if (photoTooOld()) {
+      if (photo) toast.error("Your photo is older than 5 minutes. Please retake it.");
+      setPhoto(null); setFace(null); setRoomCode(""); setStage(2);
+      return;
+    }
+    const typedCodeGone = needsCode && !roomPass && !heldPassRef.current;
+    if ((code === "weak_gps" || code === "out_of_range" || code === "no_gps") && !typedCodeGone) {
+      void resend();
+      return;
+    }
+    // The projector code has changed since it was typed: ask for the one showing now
     setRoomCode("");
-    if (code === "wrong_code") setRoomPass(null);
+    setStage(typedCodeGone ? 3 : 2);
   }
 
   function copyCode() {
@@ -439,11 +583,10 @@ function AttendTokenPage() {
   }
 
   // ── Server refused the check-in ────────────────────────────────────────────
-  async function askHelp() {
+  async function askHelp(reason: string) {
     const input = lastInputRef.current;
-    if (!input || !failure) return;
+    if (!input) return;
     setHelpBusy(true);
-    const reason = failure.code + (failure.meters != null ? `:${failure.meters}` : "");
     const r = await createHelpRequest(input, reason);
     setHelpBusy(false);
     if ("error" in r) {
@@ -460,7 +603,7 @@ function AttendTokenPage() {
         onState={setHelpState}
         onApproved={(res) => {
           if (res?.classCode) { markClassCodeUsed(form.matricNumber.trim()); setAssignedCode(res.classCode); }
-          setHelpId(null); setFailure(null); setDone(true);
+          setHelpId(null); setFailure(null); setProofNeeded(false); setDone(true);
           toast.success("Your lecturer confirmed you. Attendance marked!");
         }}
         onCancel={() => setHelpId(null)} />
@@ -468,8 +611,9 @@ function AttendTokenPage() {
   }
 
   if (failure) {
+    const reason = failure.code + (failure.meters != null ? `:${failure.meters}` : "");
     return <CheckInErrorScreen error={failure} courseCode={link ? (link as AttendanceLink).courseCode : "this course"} onRetry={retryAfterFailure}
-      onAskHelp={lastInputRef.current && !helpBusy ? askHelp : undefined} />;
+      onAskHelp={lastInputRef.current && !helpBusy ? () => askHelp(reason) : undefined} />;
   }
 
   // ── Success / done screen ──────────────────────────────────────────────────
@@ -531,6 +675,23 @@ function AttendTokenPage() {
             </Button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // ── One more step: the code on the lecturer's screen (photo and details are kept) ──
+  if (proofNeeded) {
+    return <RoomProofSheet onCode={confirmRoomCode} busy={submitting || helpBusy}
+      onAskHelp={lastInputRef.current ? () => askHelp("need_room_code") : undefined} />;
+  }
+
+  // ── Trying again after a location problem ──────────────────────────────────
+  if (resending) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-gradient-hero px-6 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-base font-medium">{busyNote ?? "Saving…"}</p>
+        <p className="text-sm text-muted-foreground">Keep this page open. Your photo and details are saved.</p>
       </div>
     );
   }
@@ -804,7 +965,7 @@ function AttendTokenPage() {
 
             <div className={stage === 2 ? "contents" : "hidden"}>
             <Field label="Live photo (with location stamp)" className="sm:col-span-2">
-              <StampedSelfie onChange={setPhoto} getPosition={() => getCurrentPosition()} />
+              <SelfieStep photo={photo} onChange={setPhoto} />
               {profile && photo && face && (
                 <p className={`mt-2 flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
                   face.state === "match" ? "bg-primary/10 text-primary"
@@ -827,10 +988,10 @@ function AttendTokenPage() {
                 <Button type="submit" disabled={!photo} className="h-12 w-full rounded-full text-base">Continue <ArrowRight className="ml-1 h-4 w-4" /></Button>
               ) : (
                 <Button type="submit" disabled={submitting || !photo || (alreadyMarked && !!form.matricNumber.trim())} className="h-12 w-full rounded-full text-base">
-                  {submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : <><CheckCircle2 className="mr-2 h-4 w-4" /> Mark my attendance</>}
+                  {submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {busyNote ?? "Saving…"}</> : <><CheckCircle2 className="mr-2 h-4 w-4" /> Mark my attendance</>}
                 </Button>
               )}
-              <Button type="button" variant="ghost" className="h-11 w-full rounded-full" onClick={() => setStage(1)}>Back</Button>
+              <Button type="button" variant="ghost" disabled={submitting} className="h-11 w-full rounded-full" onClick={() => setStage(1)}>Back</Button>
             </div>
             </div>
 
@@ -841,14 +1002,14 @@ function AttendTokenPage() {
                 disabled={submitting || !photo || (needsCode && !roomPass && roomCode.length !== 4) || (alreadyMarked && !!form.matricNumber.trim())}
               >
                 {submitting
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
+                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {busyNote ?? "Saving…"}</>
                   : <><CheckCircle2 className="mr-2 h-4 w-4" /> Mark my attendance</>
                 }
               </Button>
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 Your projector code, location and photo are checked on the server before attendance is saved.
               </p>
-              <Button type="button" variant="ghost" className="mt-1 h-11 w-full rounded-full" onClick={() => setStage(2)}>Back</Button>
+              <Button type="button" variant="ghost" disabled={submitting} className="mt-1 h-11 w-full rounded-full" onClick={() => setStage(2)}>Back</Button>
             </div>
           </form>
         )}
@@ -863,6 +1024,31 @@ function AttendTokenPage() {
       </main>
     </div>
   );
+}
+
+type TakenPhoto = { dataUrl: string; info: StampInfo; pos: Coords; frame: HTMLCanvasElement; gps: GpsStats };
+
+/**
+ * The live selfie. When the student comes back to the form from another screen
+ * (the camera was closed meanwhile), the photo they already took is shown
+ * instead of an empty camera, so they are not asked to take it again.
+ */
+function SelfieStep({ photo, onChange }: { photo: TakenPhoto | null; onChange: (p: TakenPhoto | null) => void }) {
+  const [kept, setKept] = useState(() => photo !== null);
+  if (kept && photo) {
+    return (
+      <div className="rounded-xl border bg-secondary/30 p-3">
+        <div className="space-y-2">
+          <img src={photo.dataUrl} alt="Your stamped attendance photo" className="w-full rounded-lg" />
+          <Button type="button" variant="outline" size="sm" onClick={() => { setKept(false); onChange(null); }}>
+            <RotateCcw className="mr-2 h-3.5 w-3.5" /> Retake
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  // The rough network position is only ever used to stamp the photo
+  return <StampedSelfie onChange={onChange} getPosition={() => getCurrentPosition()} />;
 }
 
 /** "Your class code" strip shown with the student's details. */

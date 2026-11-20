@@ -14,7 +14,7 @@ import {
   type AttendanceLink, type SessionBlock, type AttendanceRecord, type CheckInAttempt,
 } from "@/lib/attendance-store";
 import { needsReview } from "@/components/admin/AdminSidebar";
-import { ATTEMPT_LABEL, Avatar, PageHeader, Panel, PanelTitle, Stat } from "@/components/admin/ui";
+import { ATTEMPT_LABEL, Avatar, PageHeader, Panel, PanelTitle, PinBanners, Stat } from "@/components/admin/ui";
 import { useClassCode, useLiveLink } from "@/routes/admin/index";
 import { LeafletMap, type MapPoint } from "@/components/LeafletMap";
 
@@ -77,6 +77,8 @@ function LivePage() {
           <Button data-tour="open-projector" asChild className="h-10 rounded-xl"><Link to="/admin/projector" search={{ link: live.id }}>Open projector</Link></Button>
         </>}
       />
+
+      <PinBanners records={mine} attempts={attempts} />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 [&>*]:min-w-0">
         <div className="rounded-2xl bg-[#121a2b] px-5 py-4 text-white">
@@ -143,14 +145,18 @@ function Feed({ records, attempts, onBlock }: { records: AttendanceRecord[]; att
             </div>
           );
         }
+        // Being asked for the room code is a step, not a block
+        const asked = it.a.reason === "need_room_code";
         return (
           <div key={`a${it.a.id}`} className="flex items-center gap-3 py-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-xs font-bold text-red-700 dark:bg-red-900/30">✕</span>
+            {asked
+              ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#fdf3e2] text-xs font-bold text-[#92400e] dark:bg-amber-900/30 dark:text-amber-300">?</span>
+              : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-xs font-bold text-red-700 dark:bg-red-900/30">✕</span>}
             <div className="min-w-0 flex-grow">
               <p className="truncate text-sm font-medium">{it.a.matric || "Unknown student"}</p>
-              <p className="text-xs text-red-700 dark:text-red-400">
-                Blocked · {ATTEMPT_LABEL[it.a.reason] ?? it.a.reason}
-                {it.a.reason === "out_of_range" && it.a.detail ? ` · ${it.a.detail} m away` : ""}
+              <p className={`text-xs ${asked ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400"}`}>
+                {asked ? "" : "Blocked · "}{ATTEMPT_LABEL[it.a.reason] ?? it.a.reason}
+                {(it.a.reason === "out_of_range" || asked) && it.a.detail ? ` · ${it.a.detail} m away` : ""}
               </p>
             </div>
             <span className="text-xs text-muted-foreground">{time}</span>
@@ -173,8 +179,8 @@ function CheckInMap({ link, records, attempts }: { link: AttendanceLink; records
       label: `${r.fullName}${r.distanceMeters ? ` · ${r.distanceMeters} m` : ""}`,
     })),
     ...attempts.filter((a) => a.lat != null && a.lng != null).map((a) => ({
-      id: `a${a.id}`, lat: a.lat!, lng: a.lng!, color: "#ef4444",
-      label: `${a.matric ?? "Unknown"} · ${ATTEMPT_LABEL[a.reason] ?? a.reason}${a.reason === "out_of_range" && a.detail ? ` · ${a.detail} m` : ""}`,
+      id: `a${a.id}`, lat: a.lat!, lng: a.lng!, color: a.reason === "need_room_code" ? "#f59e0b" : "#ef4444",
+      label: `${a.matric ?? "Unknown"} · ${ATTEMPT_LABEL[a.reason] ?? a.reason}${(a.reason === "out_of_range" || a.reason === "need_room_code") && a.detail ? ` · ${a.detail} m` : ""}`,
     })),
   ];
   return (

@@ -9,11 +9,13 @@ const REASON: Record<string, string> = {
   weak_gps: "Weak GPS signal",
   out_of_range: "GPS placed them outside the class radius",
   no_gps: "No GPS reading",
+  need_room_code: "GPS was off, no room code yet",
 };
 function reasonText(r: string | null) {
   if (!r) return "GPS problem";
   const [code, n] = r.split(":");
-  return `${REASON[code] ?? "GPS problem"}${n ? code === "weak_gps" ? ` (±${n} m)` : ` (${n} m away)` : ""}`;
+  if (code === "out_of_range" && n === "far") return "GPS placed them far from your pin";
+  return `${REASON[code] ?? "GPS problem"}${n && /^\d+$/.test(n) ? code === "weak_gps" ? ` (±${n} m)` : ` (${n} m away)` : ""}`;
 }
 
 /** Lecturer scans the QR on a student's phone, checks the person, and approves. */

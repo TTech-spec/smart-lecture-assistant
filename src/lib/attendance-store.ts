@@ -1471,14 +1471,16 @@ export type SubmitAttendanceResult = {
 export type CheckInErrorCode =
   | "not_found" | "closed" | "locked" | "wrong_code" | "weak_gps" | "no_gps"
   | "out_of_range" | "duplicate_device" | "duplicate_matric" | "invalid"
-  | "no_location" | "not_configured" | "blocked" | "unknown";
+  | "no_location" | "not_configured" | "blocked" | "need_room_code" | "unknown";
 
 export class CheckInError extends Error {
   code: CheckInErrorCode;
-  /** out_of_range → metres away; weak_gps → reported accuracy in metres */
+  /** out_of_range (older servers) → metres away; weak_gps → reported accuracy in metres */
   meters?: number;
-  /** out_of_range → the allowed radius */
+  /** out_of_range (older servers) → the allowed radius */
   radius?: number;
+  /** out_of_range → the phone is over 1.5 km from the class (no distance is sent back) */
+  far?: boolean;
   constructor(code: CheckInErrorCode, message: string, meters?: number, radius?: number) {
     super(message);
     this.code = code;
@@ -1488,7 +1490,7 @@ export class CheckInError extends Error {
 }
 
 function parseCheckInError(raw: string): CheckInError {
-  const m = raw.match(/(not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|no_location|invalid|blocked)(?::(\d+))?(?::(\d+))?/);
+  const m = raw.match(/(need_room_code|not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|no_location|invalid|blocked)(?::(\d+))?(?::(\d+))?/);
   if (!m) {
     if (/function .*submit_attendance.* does not exist|schema cache/i.test(raw)) {
       return new CheckInError("not_configured", "Check-in isn't switched on yet. Please let your lecturer know.");
@@ -1496,7 +1498,9 @@ function parseCheckInError(raw: string): CheckInError {
     return new CheckInError("unknown", raw);
   }
   const code = m[1] as CheckInErrorCode;
-  return new CheckInError(code, raw, m[2] ? Number(m[2]) : undefined, m[3] ? Number(m[3]) : undefined);
+  const err = new CheckInError(code, raw, m[2] ? Number(m[2]) : undefined, m[3] ? Number(m[3]) : undefined);
+  if (code === "out_of_range" && /out_of_range:far\b/.test(raw)) err.far = true;
+  return err;
 }
 
 /**
@@ -1830,7 +1834,7 @@ export async function refreshRecordsFromSupabase(): Promise<AttendanceRecord[] |
  * onNew with records that weren't there before. Returns a stop function.
  */
 /** Flags that put a check-in on the To review list (keep in sync with needsReview) */
-export const REVIEW_FLAGS = ["face_mismatch", "no_face_check", "different_phone", "matric_changed", "gps_too_still", "gps_round", "same_spot", "on_pin", "off_campus_net"];
+export const REVIEW_FLAGS = ["face_mismatch", "no_face_check", "different_phone", "matric_changed", "gps_too_still", "gps_round", "same_spot", "on_pin", "off_campus_net", "loc_far"];
 
 /**
  * Flagged check-ins straight from the database (any date), merged into the

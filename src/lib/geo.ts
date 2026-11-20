@@ -17,48 +17,6 @@ export function distanceMeters(a: Coords, b: Coords): number {
 }
 
 /**
- * Effective distance accounting for device GPS accuracy.
- * Uses a dynamic buffer based on reported GPS accuracy to handle indoor scenarios
- * where GPS can be off by hundreds of meters. The buffer scales up to 1000m for
- * very poor GPS signals (>100m accuracy reported).
- *
- * IP-based location (accuracy=2000) gets a 2000m buffer — it is only used when
- * the browser denies GPS, so attendance is still prevented from far-away locations
- * by requiring the class code or other controls.
- */
-export function effectiveDistance(studentPos: Coords, classPos: Coords): number {
-  const raw = distanceMeters(studentPos, classPos);
-  const accuracy = studentPos.accuracy ?? 0;
-
-  // IP-based fallback: accuracy is set to 2000. Give a generous buffer since
-  // IP geolocation in Nigeria can be 500–2000m off even on the same campus.
-  // The effective check becomes: is the IP suggesting you're in the same city/area?
-  if (studentPos.source === "ip") {
-    // Allow up to 2000m buffer for IP location — blocks people clearly in other cities
-    const buffer = Math.min(accuracy, 2000);
-    return Math.max(0, raw - buffer);
-  }
-
-  // Hardware GPS: dynamic buffer based on reported accuracy
-  // - Good GPS (<20m): buffer up to 20m
-  // - Fair GPS (20-50m): buffer up to 50m
-  // - Poor GPS (50-100m): buffer up to 200m
-  // - Very poor GPS (>100m): buffer up to 1000m (indoor GPS can be completely wrong)
-  let buffer: number;
-  if (accuracy < 20) {
-    buffer = Math.min(accuracy, 20);
-  } else if (accuracy < 50) {
-    buffer = Math.min(accuracy, 50);
-  } else if (accuracy < 100) {
-    buffer = Math.min(accuracy * 2, 200);
-  } else {
-    buffer = Math.min(accuracy * 3, 1000);
-  }
-
-  return Math.max(0, raw - buffer);
-}
-
-/**
  * Gets current position using browser GPS first (most accurate).
  * If the browser GPS is denied, unavailable, or times out, falls back to
  * Geoapify IP-based location so the app still works without GPS permission.
@@ -87,8 +45,8 @@ async function getGeoapifyPosition(options?: PositionOptions): Promise<Coords> {
       return {
         lat: data.location.latitude,
         lng: data.location.longitude,
-        // IP geolocation is inherently imprecise — treat it as ±2000m accuracy
-        // so effectiveDistance gives a large buffer and doesn't reject nearby students
+        // IP geolocation is inherently imprecise — treat it as ±2000m accuracy.
+        // It is only used to stamp the selfie; it is never sent as a check-in location.
         accuracy: 2000,
         source: "ip" as const,
       };
@@ -123,31 +81,236 @@ function getBrowserPosition(options?: PositionOptions): Promise<Coords> {
   });
 }
 
-/**
- * Combine several GPS readings into one stronger fix:
- * - readings far from the clearest one (a GPS "jump") are dropped,
- * - the rest are averaged, each weighted by how clear it is (1 / accuracy²),
- * - the accuracy reported is the clearest single reading's, never better.
- */
-export function fuseFixes(samples: Coords[]): Coords | null {
-  const gps = samples.filter((s) => s.accuracy != null && s.accuracy > 0);
-  if (!gps.length) return samples[0] ?? null;
-  const best = gps.reduce((m, s) => ((s.accuracy as number) < (m.accuracy as number) ? s : m));
-  const limit = Math.max(30, 2 * (best.accuracy as number));
-  const keep = gps.filter((s) => distanceMeters(s, best) <= limit && (s.accuracy as number) <= 3 * (best.accuracy as number));
-  let wSum = 0, lat = 0, lng = 0;
-  for (const s of keep) {
-    const w = 1 / ((s.accuracy as number) ** 2);
-    wSum += w; lat += s.lat * w; lng += s.lng * w;
-  }
-  return { lat: lat / wSum, lng: lng / wSum, accuracy: best.accuracy, source: "gps" };
+/** Middle value of a list (average of the two middle ones for an even count). */
+function median(values: number[]): number {
+  const v = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
 }
 
-/** Start the phone's GPS early so it has a strong fix by the time it's needed. Returns a stop function. */
+/** Value below which the fraction `p` (0 to 1) of the list falls, interpolated between neighbours. */
+function percentile(values: number[], p: number): number {
+  const v = [...values].sort((a, b) => a - b);
+  const idx = (v.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  return v[lo] + (v[hi] - v[lo]) * (idx - lo);
+}
+
+/** Readings worse than this are too rough to help place a phone. */
+const FUSE_MAX_ACCURACY_M = 1500;
+/** No phone is trusted to better than this, whatever it claims. */
+const FUSE_MIN_ACCURACY_M = 25;
+
+/**
+ * Combine several GPS readings into one steadier fix:
+ * - readings rougher than 1500 m are left out,
+ * - the centre is the middle (median) reading, so one GPS "jump" cannot drag it,
+ * - readings farther than max(40 m, 2 x the middle accuracy) from the centre are dropped,
+ * - the accuracy reported is the largest of: the middle claimed accuracy, how far
+ *   the kept readings really scatter (75th percentile) and 25 m.
+ * A reading that merely claims to be very exact is never picked on its own.
+ * With no usable reading the least rough one is returned unchanged (null when empty).
+ */
+export function fuseFixes(samples: Coords[]): Coords | null {
+  if (!samples.length) return null;
+  const usable = samples.filter(
+    (s) =>
+      Number.isFinite(s.lat) && Number.isFinite(s.lng) &&
+      s.accuracy != null && s.accuracy > 0 && s.accuracy <= FUSE_MAX_ACCURACY_M,
+  );
+  if (!usable.length) {
+    const rank = (s: Coords) => (s.accuracy != null && s.accuracy > 0 ? s.accuracy : Infinity);
+    return samples.reduce((m, s) => (rank(s) < rank(m) ? s : m));
+  }
+  const centreOf = (list: Coords[]): Coords => ({ lat: median(list.map((s) => s.lat)), lng: median(list.map((s) => s.lng)) });
+  const first = centreOf(usable);
+  const limit = Math.max(40, 2 * median(usable.map((s) => s.accuracy as number)));
+  const near = usable.filter((s) => distanceMeters(s, first) <= limit);
+  // The middle lat and middle lng can land between two clusters; never end up with nothing
+  const kept = near.length ? near : usable;
+  const centre = centreOf(kept);
+  const accuracy = Math.max(
+    median(kept.map((s) => s.accuracy as number)),
+    percentile(kept.map((s) => distanceMeters(s, centre)), 0.75),
+    FUSE_MIN_ACCURACY_M,
+  );
+  return { lat: centre.lat, lng: centre.lng, accuracy, source: "gps" };
+}
+
+/* ── Shared GPS sampler ───────────────────────────────────────────────────
+ * One GPS watch for the whole page, started as early as possible and shared
+ * by everything that needs the student's position. Each caller holds it open
+ * with startGpsSampler() and releases it with the function returned.
+ */
+
+/** How the raw GPS readings behaved (fake-GPS apps tend to be perfectly still). */
+export type GpsStats = { n: number; coordDistinct: number; accDistinct: number; spreadM: number };
+
+type GpsSample = { pos: Coords; at: number };
+
+/** Readings older than this, counted back from the newest reading, are forgotten. */
+const SAMPLER_WINDOW_MS = 45_000;
+
+let samplerSamples: GpsSample[] = [];
+let samplerRefs = 0;
+let samplerWatchId: number | null = null;
+let samplerLastTimestamp: number | null = null;
+let samplerError: number | null = null;
+const samplerListeners = new Set<() => void>();
+
+function notifySampler() {
+  for (const cb of [...samplerListeners]) {
+    try { cb(); } catch { /* a listener must never break the GPS */ }
+  }
+}
+
+function onSamplerPosition(p: GeolocationPosition) {
+  // Some phones repeat the same reading; counting it twice would make an honest phone look frozen
+  if (samplerLastTimestamp != null && p.timestamp === samplerLastTimestamp) return;
+  samplerLastTimestamp = p.timestamp;
+  const lat = p.coords.latitude;
+  const lng = p.coords.longitude;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  const at = Date.now();
+  // The window is counted back from the newest reading, so a phone lying still
+  // (which gets very few readings) keeps its last fix instead of losing it.
+  samplerSamples = [...samplerSamples, { pos: { lat, lng, accuracy: p.coords.accuracy, source: "gps" as const }, at }]
+    .filter((x) => at - x.at < SAMPLER_WINDOW_MS);
+  samplerError = null;
+  notifySampler();
+}
+
+function onSamplerFailure(err: GeolocationPositionError) {
+  // Readings already collected stay valid: a late error never wipes a fix
+  samplerError = err.code;
+  notifySampler();
+}
+
+function startSamplerWatch() {
+  if (samplerWatchId != null) return;
+  try {
+    samplerWatchId = navigator.geolocation.watchPosition(onSamplerPosition, onSamplerFailure, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 60_000,
+    });
+  } catch {
+    samplerError = 2;
+  }
+}
+
+function stopSamplerWatch() {
+  if (samplerWatchId == null) return;
+  try { navigator.geolocation.clearWatch(samplerWatchId); } catch { /* already gone */ }
+  samplerWatchId = null;
+}
+
+/** Phones pause the GPS while the page is in the background; start it afresh on return. */
+function onSamplerVisibility() {
+  if (samplerRefs === 0 || document.visibilityState !== "visible") return;
+  stopSamplerWatch();
+  startSamplerWatch();
+}
+
+/**
+ * Start (or join) the shared GPS sampler. Returns a stop function; the GPS
+ * keeps running until every caller has stopped. Safe to call on the server.
+ */
+export function startGpsSampler(): () => void {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return () => {};
+  if (!navigator.geolocation) {
+    samplerError = 2;
+    return () => {};
+  }
+  samplerRefs += 1;
+  if (samplerRefs === 1) {
+    // Readings left over from an earlier visit to the page are too old to trust
+    const nowMs = Date.now();
+    samplerSamples = samplerSamples.filter((x) => nowMs - x.at < SAMPLER_WINDOW_MS);
+    startSamplerWatch();
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onSamplerVisibility);
+  }
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    samplerRefs -= 1;
+    if (samplerRefs > 0) return;
+    stopSamplerWatch();
+    if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onSamplerVisibility);
+  };
+}
+
+/** The best position from the readings collected so far, or null when there are none yet. */
+export function getFusedFix(): Coords | null {
+  return fuseFixes(samplerSamples.map((x) => x.pos));
+}
+
+/** How the readings collected so far behaved (sent with the check-in). */
+export function getSamplerStats(): GpsStats {
+  const samples = samplerSamples;
+  const n = samples.length;
+  if (!n) return { n: 0, coordDistinct: 0, accDistinct: 0, spreadM: 0 };
+  const coords = new Set(samples.map((x) => `${x.pos.lat.toFixed(7)},${x.pos.lng.toFixed(7)}`));
+  const accs = new Set(samples.map((x) => Math.round((x.pos.accuracy ?? 0) * 10)));
+  const lat = samples.reduce((t, x) => t + x.pos.lat, 0) / n;
+  const lng = samples.reduce((t, x) => t + x.pos.lng, 0) / n;
+  const spreadM = Math.max(...samples.map((x) => distanceMeters({ lat, lng }, x.pos)));
+  return { n, coordDistinct: coords.size, accDistinct: accs.size, spreadM: Math.round(spreadM * 10) / 10 };
+}
+
+/** Milliseconds since the oldest reading still kept (0 when there are none). */
+export function getSamplerAgeMs(): number {
+  return samplerSamples.length ? Date.now() - samplerSamples[0].at : 0;
+}
+
+/**
+ * The last GPS error, cleared by the next good reading:
+ * 1 = permission denied, 2 = location unavailable (or not supported), 3 = timed out, null = none.
+ */
+export function getSamplerError(): number | null {
+  return samplerError;
+}
+
+/** Call `cb` after every new reading or error. Returns an unsubscribe function. */
+export function onSamplerUpdate(cb: () => void): () => void {
+  samplerListeners.add(cb);
+  return () => { samplerListeners.delete(cb); };
+}
+
+/**
+ * Give the GPS a little longer, then return the best position (null if there is none).
+ * - Default: returns as soon as there are `minSamples` readings covering `minMs`
+ *   of time, or after `maxMs` at the latest. Returns at once when that is already true.
+ * - When `minMs` is not smaller than `maxMs` it is a plain wait of `maxMs` for
+ *   fresh readings (the quiet re-check after the server asks for more proof).
+ * Returns early when location permission is denied, since nothing more will arrive.
+ */
+export function waitForFix(
+  { minSamples = 3, minMs = 6000, maxMs = 8000 }: { minSamples?: number; minMs?: number; maxMs?: number } = {},
+): Promise<Coords | null> {
+  if (typeof window === "undefined" || maxMs <= 0) return Promise.resolve(getFusedFix());
+  const plainWait = minMs >= maxMs;
+  const enough = () => !plainWait && samplerSamples.length >= minSamples && getSamplerAgeMs() >= minMs;
+  const hopeless = () => samplerError === 1 && !samplerSamples.length;
+  if (enough() || hopeless()) return Promise.resolve(getFusedFix());
+  return new Promise((resolve) => {
+    // Hold the sampler open for the wait, in case nobody else has started it
+    const stop = startGpsSampler();
+    const startedAt = Date.now();
+    const tick = setInterval(() => {
+      if (!enough() && !hopeless() && Date.now() - startedAt < maxMs) return;
+      clearInterval(tick);
+      stop();
+      resolve(getFusedFix());
+    }, 200);
+  });
+}
+
+/** Start the phone's GPS early so it has a steady fix by the time it's needed. Returns a stop function. */
 export function warmUpGps(): () => void {
-  if (typeof navigator === "undefined" || !navigator.geolocation) return () => {};
-  const id = navigator.geolocation.watchPosition(() => {}, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 60_000 });
-  return () => navigator.geolocation.clearWatch(id);
+  return startGpsSampler();
 }
 
 export function formatDistance(m: number): string {
@@ -155,64 +318,97 @@ export function formatDistance(m: number): string {
   return `${(m / 1000).toFixed(2)} km`;
 }
 
+/* ── Lecturer: surveying the class spot ───────────────────────────────── */
+
+/** A surveyed spot: the fused position, how many readings went into it and when it was taken (ms since epoch). */
+export type AnchorSurvey = Coords & { n: number; takenAt: number };
+/** Progress while surveying: readings so far and the accuracy of the position they give together. */
+export type SurveyProgress = { n: number; accuracy: number };
+
 /**
- * Reads a precise GPS fix for the lecturer: watches the GPS for up to
- * `maxWaitMs`, keeps the best readings and averages them. Never falls back
- * to IP location. `onProgress` reports the best accuracy seen so far.
+ * Reads the lecturer's position properly: watches the GPS for at least `minMs`
+ * (a quick first reading is not trusted), stops after that once there are 5 or
+ * more readings, otherwise at `maxMs`, and fuses them with fuseFixes.
+ * Never falls back to IP location. Rejects when no reading arrived.
  */
-export function getPrecisePosition(
-  { maxWaitMs = 20_000, targetAccuracy = 25 }: { maxWaitMs?: number; targetAccuracy?: number } = {},
-  onProgress?: (accuracy: number) => void,
-): Promise<Coords> {
+export function surveyAnchor(
+  { minMs = 12_000, maxMs = 25_000 }: { minMs?: number; maxMs?: number } = {},
+  onProgress?: (progress: SurveyProgress) => void,
+): Promise<AnchorSurvey> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       reject(new Error("Geolocation is not supported on this device."));
       return;
     }
     const samples: Coords[] = [];
+    const startedAt = Date.now();
+    let lastTimestamp: number | null = null;
+    let lastError: Error | null = null;
     let done = false;
+    let id: number | null = null;
+    let tick: ReturnType<typeof setInterval> | null = null;
+    const cleanup = () => {
+      done = true;
+      if (id != null) navigator.geolocation.clearWatch(id);
+      if (tick != null) clearInterval(tick);
+    };
     const finish = () => {
       if (done) return;
-      done = true;
-      navigator.geolocation.clearWatch(id);
-      clearTimeout(timer);
-      if (!samples.length) {
-        reject(new Error("Could not get a GPS reading. Turn on Location (Precise) and try again."));
+      cleanup();
+      const fused = fuseFixes(samples);
+      if (!fused) {
+        reject(lastError ?? new Error("Could not get a GPS reading. Turn on Location (Precise) and try again."));
         return;
       }
-      resolve(fuseFixes(samples) as Coords);
+      resolve({ ...fused, n: samples.length, takenAt: Date.now() });
     };
-    const id = navigator.geolocation.watchPosition(
+    const check = () => {
+      if (done) return;
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= maxMs) finish();
+      // After the minimum time: enough readings, or a GPS that has only reported errors
+      else if (elapsed >= minMs && (samples.length >= 5 || (!samples.length && lastError))) finish();
+    };
+    id = navigator.geolocation.watchPosition(
       (p) => {
+        if (done) return;
+        if (lastTimestamp != null && p.timestamp === lastTimestamp) return;
+        lastTimestamp = p.timestamp;
+        if (!Number.isFinite(p.coords.latitude) || !Number.isFinite(p.coords.longitude)) return;
         const c: Coords = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: "gps" };
         samples.push(c);
-        onProgress?.(Math.min(...samples.map((s) => s.accuracy ?? 999)));
-        const good = samples.filter((s) => (s.accuracy ?? 999) <= targetAccuracy);
-        if (good.length >= 3) finish();
+        onProgress?.({ n: samples.length, accuracy: fuseFixes(samples)?.accuracy ?? c.accuracy ?? 0 });
+        check();
       },
       (err) => {
-        if (!samples.length) {
-          done = true;
-          navigator.geolocation.clearWatch(id);
-          clearTimeout(timer);
-          reject(new Error(err.code === 1
-            ? "Location permission denied. Allow location access and try again."
-            : err.message || "Unable to read your location."));
+        if (done || samples.length) return;
+        if (err.code === 1) {
+          cleanup();
+          reject(new Error("Location permission denied. Allow location access and try again."));
+          return;
         }
+        lastError = new Error(err.code === 3
+          ? "Could not get a GPS reading. Turn on Location (Precise) and try again."
+          : err.message || "Unable to read your location.");
       },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: maxWaitMs },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: maxMs },
     );
-    const timer = setTimeout(finish, maxWaitMs);
+    tick = setInterval(check, 250);
+    if (done) cleanup();
   });
 }
 
 /**
- * Distance check between a student and the lecturer's verified spot.
- * Both GPS readings can be off indoors, so part of each reported accuracy
- * (capped) is allowed as tolerance.
+ * Older name for surveyAnchor, kept for existing callers. Watches the GPS for
+ * at least 12 s (up to `maxWaitMs`) and returns the fused position. Never falls
+ * back to IP location. `onProgress` reports the fused accuracy so far.
  */
-export function isNearAnchor(student: Coords, anchor: Coords, radius: number) {
-  const raw = distanceMeters(student, anchor);
-  const tolerance = Math.min(student.accuracy ?? 0, 75) + Math.min(anchor.accuracy ?? 0, 50);
-  return { raw, inside: raw - tolerance <= radius };
+export function getPrecisePosition(
+  { maxWaitMs = 25_000 }: { maxWaitMs?: number; targetAccuracy?: number } = {},
+  onProgress?: (accuracy: number) => void,
+): Promise<Coords> {
+  return surveyAnchor(
+    { minMs: Math.min(12_000, maxWaitMs), maxMs: maxWaitMs },
+    (p) => onProgress?.(p.accuracy),
+  ).then(({ lat, lng, accuracy, source }) => ({ lat, lng, accuracy, source }));
 }

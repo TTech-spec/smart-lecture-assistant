@@ -64,11 +64,13 @@ export function checkStatus(customFields: Record<string, unknown> | undefined): 
   if (customFields?.addedByLecturer) return { label: "Added by you", tone: "grey" };
   if (f.includes("matric_changed")) return { label: "Matric changed", tone: "amber" };
   if (/gps_too_still|gps_round|same_spot|on_pin|off_campus_net/.test(f)) return { label: "Suspicious location", tone: "amber" };
+  if (f.includes("loc_far")) return { label: "Location unconfirmed", tone: "amber" };
   if (f.includes("gps_help") && !/face_mismatch|different_phone|no_face_check/.test(f)) return { label: "GPS help", tone: "green" };
   if (f.includes("face_mismatch")) return { label: "Face mismatch", tone: "amber" };
   if (f.includes("different_phone")) return { label: "Different phone", tone: "amber" };
   if (f.includes("no_face_check")) return { label: "No face check", tone: "amber" };
   if (f.includes("not_registered")) return { label: "Not registered", tone: "grey" };
+  if (f.includes("loc_code")) return { label: "Room code used", tone: "grey" };
   if (customFields?.serverChecked) {
     const edited = Array.isArray(customFields?.edits) && (customFields.edits as unknown[]).length > 0;
     return { label: edited ? "Verified · edited" : "Verified", tone: "green" };
@@ -82,4 +84,36 @@ export const ATTEMPT_LABEL: Record<string, string> = {
   weak_gps: "Weak GPS",
   no_gps: "Location off",
   closed: "After closing",
+  need_room_code: "Asked for room code",
 };
+
+/**
+ * Warnings for the lecturer when the pin on a link looks misplaced.
+ * `records` and `attempts` must already be limited to one link.
+ */
+export function PinBanners({ records, attempts }: {
+  records: { customFields?: Record<string, unknown> }[];
+  attempts: { reason: string }[];
+}) {
+  const asked = attempts.filter((a) => a.reason === "need_room_code").length
+    + records.filter((r) => /loc_code|loc_far/.test(String(r.customFields?.flags ?? ""))).length;
+  const far = attempts.filter((a) => a.reason === "out_of_range").length;
+  const showAsked = asked >= Math.max(10, Math.ceil(records.length * 0.3));
+  const showFar = far >= 5;
+  if (!showAsked && !showFar) return null;
+  const cls = "rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200";
+  return (
+    <div className="flex flex-col gap-2" role="status">
+      {showFar && (
+        <p className={cls}>
+          <strong>{far} phones were placed over 1.5 km from your pin.</strong> The pin is probably wrong. Create a new link from the hall.
+        </p>
+      )}
+      {showAsked && (
+        <p className={cls}>
+          <strong>{asked} students were asked for the room code.</strong> Your pin may be off. Keep the Projector screen open; next time place the pin on the hall.
+        </p>
+      )}
+    </div>
+  );
+}

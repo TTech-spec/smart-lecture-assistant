@@ -9,7 +9,7 @@ import {
   type AttendanceLink, type CheckInAttempt,
 } from "@/lib/attendance-store";
 import { needsReview } from "@/components/admin/AdminSidebar";
-import { Avatar, Panel, PanelTitle, Stat, StatusPill, checkStatus } from "@/components/admin/ui";
+import { Avatar, Panel, PanelTitle, PinBanners, Stat, StatusPill, checkStatus } from "@/components/admin/ui";
 
 export const Route = createFileRoute("/admin/")({
   head: () => ({ meta: [{ title: "Overview — Attendly" }] }),
@@ -72,6 +72,18 @@ function OverviewPage() {
     fetchAttempts({ sinceDays: 7 }).then(setAttempts);
   }, []);
 
+  // Attempts on the live link only (for the pin warnings), refreshed every 30 s
+  const [liveAttempts, setLiveAttempts] = useState<CheckInAttempt[]>([]);
+  const liveId = live?.id ?? null;
+  useEffect(() => {
+    if (!liveId) { setLiveAttempts([]); return; }
+    let cancelled = false;
+    const load = () => fetchAttempts({ linkId: liveId }).then((a) => { if (!cancelled) setLiveAttempts(a); });
+    load();
+    const t = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [liveId]);
+
   const today = todayKey();
   const liveCount = live ? records.filter((r) => r.linkId === live.id).length : 0;
   const liveFlagged = live ? records.filter((r) => r.linkId === live.id && needsReview(r)).length : 0;
@@ -102,6 +114,8 @@ function OverviewPage() {
           <Link to="/admin/links"><Plus className="mr-2 h-4 w-4" /> Start check-in</Link>
         </Button>
       </div>
+
+      {live && <PinBanners records={records.filter((r) => r.linkId === live.id)} attempts={liveAttempts} />}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {live ? (

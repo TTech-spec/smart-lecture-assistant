@@ -159,17 +159,25 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
     on_pin: "Exactly on your pin (real phones land a few metres away)",
     off_campus_net: `Not on a campus internet address${cf.ip ? ` (network ${cf.ip})` : ""}`,
     gps_help: "You scanned this student in the hall because their GPS failed",
+    loc_far: `Phone's location was ${r.distanceMeters ?? 0} m from your pin and the student used the room code. Check the selfie background.`,
+    loc_code: `GPS put this phone ${r.distanceMeters ?? 0} m from your pin, so the student confirmed with the code on your screen.`,
   };
-  const locReasons = Object.keys(LOC_REASONS).filter((k) => flags.includes(k)).map((k) => LOC_REASONS[k]);
+  // loc_far / loc_code are not signs of a faked location, so they get their own wording
+  const locReasons = Object.keys(LOC_REASONS).filter((k) => !k.startsWith("loc_") && flags.includes(k)).map((k) => LOC_REASONS[k]);
+  const locFar = flags.includes("loc_far");
+  const locCode = flags.includes("loc_code");
+  const locNote = locFar ? LOC_REASONS.loc_far : locCode ? LOC_REASONS.loc_code : null;
   const checks = [
     { label: "Class code", ok: Boolean(cf.roomCodeOk), value: cf.roomCodeOk ? "Correct" : "Not checked" },
-    { label: "Location", ok: Boolean(cf.serverChecked) && locReasons.length === 0, value: locReasons.length ? `Suspicious · ${r.distanceMeters ?? 0} m away` : r.distanceMeters ? `${r.distanceMeters} m away` : "No location" },
+    { label: "Location", ok: Boolean(cf.serverChecked) && locReasons.length === 0 && !locFar, value: locReasons.length ? `Suspicious · ${r.distanceMeters ?? 0} m away` : locFar ? `Unconfirmed · ${r.distanceMeters ?? 0} m away` : locCode ? `Room code · ${r.distanceMeters ?? 0} m away` : r.distanceMeters ? `${r.distanceMeters} m away` : "No location" },
     { label: "Phone", ok: !flags.includes("different_phone"), value: flags.includes("different_phone") ? "Different phone" : "Registered phone" },
     { label: "Face", ok: !flags.includes("face_mismatch") && !flags.includes("no_face_check"), value: flags.includes("no_face_check") ? "Not checked" : matchPct != null ? `${matchPct}% match` : "—" },
   ];
   const edits = (Array.isArray(cf.edits) ? cf.edits : []) as { at: string; from: Record<string, string>; to: Record<string, string> }[];
   const hint = locReasons.length
     ? `The location may be faked: ${locReasons.join("; ")}. Look at the selfie background: is it your lecture hall? If yes, approve; if it's a room or outdoors elsewhere, reject.`
+    : locFar
+    ? "Look at the selfie background: is it your lecture hall? If yes, approve; if it's a room or outdoors elsewhere, reject."
     : flags.includes("matric_changed")
     ? "The student changed the matric number on this check-in after submitting. Make sure the person in the selfie is the student with the new matric number — a swap to an absent friend's number would show here."
     : flags.includes("face_mismatch") && !flags.includes("different_phone")
@@ -216,6 +224,7 @@ function ReviewDetail({ r, registered, onDecide }: { r: AttendanceRecord; regist
         </div>
       )}
 
+      {locNote && <p className="text-[13px] leading-relaxed text-muted-foreground">{locNote}</p>}
       <p className="text-[13px] leading-relaxed text-muted-foreground">{hint}</p>
 
       <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-col-reverse gap-2.5 border-t bg-card px-4 py-4 sm:static sm:m-0 sm:flex-row sm:flex-wrap sm:justify-end sm:border-0 sm:p-0">
