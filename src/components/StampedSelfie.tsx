@@ -288,9 +288,10 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       let fix = getFusedFix();
       let rough = roughAtCapture;
       if (!fix) {
+        const startedAt = Date.now();
         const roughJob = rough ? null : getPosition().catch(() => null);
         fix = await waitForFix({ minSamples: 1, minMs: 0, maxMs: rough ? 4000 : 8000 });
-        if (!fix && roughJob) rough = await within(roughJob, 500, null);
+        if (!fix && roughJob) rough = await within(roughJob, Math.max(500, 8000 - (Date.now() - startedAt)), null);
       }
       // A rough position is enough to stamp the photo. It is never sent as the check-in location.
       // With no position at all the photo is still kept: the check-in then explains the

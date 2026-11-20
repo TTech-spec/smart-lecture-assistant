@@ -11,15 +11,21 @@
 -- Students with GPS trouble are no longer locked out for it, a whole class on
 -- one Wi-Fi address can't lock each other out, and getting a room pass is never
 -- blocked by GPS trouble. Wrong codes still lock a phone after 5 tries.
+-- An out-of-date or mistyped code from the QR / "One more step" screen counts
+-- against that phone only: it never pauses check-in for the other phones on the
+-- same Wi-Fi address. Code guessing from one address is stopped separately
+-- (1000 wrong codes in 5 minutes).
 -- No table changes.
--- Run after gps-help.sql, simple-checkin.sql and qr-checkin.sql. Safe to run more than once.
+-- Run after gps-help.sql, simple-checkin.sql and qr-checkin.sql. Safe to run more than once,
+-- and it brings a database that has an earlier copy of this file up to date.
 -- (If gps-help.sql or scale-2000.sql is ever run again, re-run simple-checkin.sql,
 --  qr-checkin.sql and this file, in that order.)
 
 begin;
 
 -- Swap the code from the QR for a pass (code must be current or the previous one).
--- Same as qr-checkin.sql, except only wrong codes count toward the lock-out.
+-- Same as qr-checkin.sql, except only wrong codes count toward the lock-out, and
+-- one address can't keep guessing by making up new phones.
 create or replace function public.claim_room_pass(p_token text, p_code text, p_device text)
 returns uuid language plpgsql volatile security definer set search_path = public, extensions as $$
 declare
@@ -28,6 +34,7 @@ declare
   v_slot bigint := room_code_slot();
   v_code text := upper(trim(coalesce(p_code, '')));
   v_dev  text := left(coalesce(p_device, ''), 80);
+  v_ip   text := request_ip();
   v_id uuid;
 begin
   if v_dev = '' then return null; end if;
@@ -36,12 +43,19 @@ begin
        where at > now() - interval '5 minutes' and device_id = v_dev and reason = 'wrong_code') >= 5 then
     return null;
   end if;
+  -- Guessing with made-up phones: 1000 wrong codes here in 5 minutes from one address.
+  -- (High on purpose: a full hall shares one Wi-Fi address and each phone gets 5 tries.)
+  if v_ip is not null and (select count(*) from attendance_attempts
+       where at > now() - interval '5 minutes' and ip = v_ip
+         and reason = 'wrong_code' and detail like 'qr:%') >= 1000 then
+    return null;
+  end if;
   select * into l from attendance_links where token = p_token;
   if l.id is null or not l.is_active or l.expires_at <= now() then return null; end if;
   select code_secret into s from attendance_link_secrets where link_id = l.id;
   if s is null or v_code not in (room_code_for(s, v_slot), room_code_for(s, v_slot - 1)) then
     insert into attendance_attempts (link_id, device_id, matric, ip, reason, detail)
-      values (l.id, v_dev, '', request_ip(), 'wrong_code', 'qr:' || left(v_code, 10));
+      values (l.id, v_dev, '', v_ip, 'wrong_code', 'qr:' || left(v_code, 10));
     return null;
   end if;
   delete from room_passes where expires_at < now() - interval '1 day';
@@ -64,8 +78,13 @@ declare
      or (not v_help and (select count(*) from attendance_attempts
        where at > now() - interval ''5 minutes'' and device_id = v_device) >= 20)';
   old_ip   constant text := 'and ip = v_ip) >= 60';
-  new_ip   constant text := 'and ip = v_ip
+  -- What the first copy of this file put in: wrong codes sent to claim_room_pass
+  -- (logged with detail 'qr:...') still counted against everyone on the address
+  ip_v1    constant text := 'and ip = v_ip
          and reason not in (''no_gps'', ''weak_gps'', ''need_room_code'')) >= 60';
+  new_ip   constant text := 'and ip = v_ip
+         and reason not in (''no_gps'', ''weak_gps'', ''need_room_code'')
+         and not (reason = ''wrong_code'' and coalesce(detail, '''') like ''qr:%'')) >= 60';
   section  constant text := $sec$-- gps-zones v1
   -- GPS alone passes only inside the circle (same ceiling as before, honest floors).
   -- A doubtful fix on campus needs the code / QR on the lecturer's screen.
@@ -118,7 +137,15 @@ declare
 begin
   select pg_get_functiondef('public.submit_attendance(jsonb)'::regprocedure) into def;
   if position(marker in def) > 0 then
-    raise notice 'submit_attendance already has gps-zones v1'; return;
+    if position(new_ip in def) > 0 then
+      raise notice 'submit_attendance already has gps-zones v1'; return;
+    end if;
+    -- Patched by the first copy of this file: only the shared-address count changes
+    if position(ip_v1 in def) = 0 then
+      raise exception 'submit_attendance looks different than expected: nothing was changed';
+    end if;
+    execute replace(def, ip_v1, new_ip);
+    raise notice 'submit_attendance updated: gps-zones v1, shared-address count fixed'; return;
   end if;
   if position('v_help' in def) = 0 or position('room_pass_ok(l.id' in def) = 0 then
     raise exception 'run gps-help.sql, simple-checkin.sql and qr-checkin.sql first';

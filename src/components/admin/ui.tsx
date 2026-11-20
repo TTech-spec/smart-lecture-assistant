@@ -87,17 +87,24 @@ export const ATTEMPT_LABEL: Record<string, string> = {
   need_room_code: "Asked for room code",
 };
 
+/** Phones over this distance from the pin are refused outright (same number as gps-zones.sql) */
+const FAR_M = 1500;
+
 /**
  * Warnings for the lecturer when the pin on a link looks misplaced.
  * `records` and `attempts` must already be limited to one link.
+ * Attempts are counted per phone: one student trying again and again is one phone.
  */
 export function PinBanners({ records, attempts }: {
   records: { customFields?: Record<string, unknown> }[];
-  attempts: { reason: string }[];
+  attempts: { reason: string; detail?: string | null; deviceId?: string | null; matric?: string | null }[];
 }) {
-  const asked = attempts.filter((a) => a.reason === "need_room_code").length
+  const phones = (rows: typeof attempts) => new Set(rows.map((a) => a.deviceId || a.matric || "")).size;
+  const asked = phones(attempts.filter((a) => a.reason === "need_room_code"))
     + records.filter((r) => /loc_code|loc_far/.test(String(r.customFields?.flags ?? ""))).length;
-  const far = attempts.filter((a) => a.reason === "out_of_range").length;
+  // Only rows that logged a distance over 1.5 km: before gps-zones.sql is run,
+  // "out_of_range" also covers phones just outside the circle
+  const far = phones(attempts.filter((a) => a.reason === "out_of_range" && Number(a.detail) > FAR_M));
   const showAsked = asked >= Math.max(10, Math.ceil(records.length * 0.3));
   const showFar = far >= 5;
   if (!showAsked && !showFar) return null;

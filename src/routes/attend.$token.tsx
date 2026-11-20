@@ -38,7 +38,7 @@ import {
   type Gender,
 } from "@/lib/attendance-store";
 import {
-  getCurrentPosition, startGpsSampler, getFusedFix, getSamplerStats, getSamplerAgeMs, getSamplerError, waitForFix,
+  getCurrentPosition, startGpsSampler, restartGpsSampler, getFusedFix, getSamplerStats, getSamplerAgeMs, getSamplerError, waitForFix,
   type Coords,
 } from "@/lib/geo";
 import { CheckInErrorScreen } from "@/components/CheckInErrorScreen";
@@ -365,6 +365,8 @@ function AttendTokenPage() {
 
   /** Give the phone a moment when it has only just started reading its location. */
   async function settleLocation() {
+    // Location refused when the page opened and allowed since: the old GPS watch is dead, so start a new one
+    restartGpsSampler();
     if (getSamplerStats().n >= 3 && getSamplerAgeMs() >= 6000) return;
     setBusyNote("Confirming your location…");
     const fix = await waitForFix();
@@ -495,7 +497,10 @@ function AttendTokenPage() {
     }
   }
 
-  /** Location trouble: the photo and details are kept, so read the location again and send straight away. */
+  /**
+   * Location trouble: the photo and details are kept, so read the location again and send straight away.
+   * Returns what attempt() returns.
+   */
   async function resend() {
     setResending(true);
     setSubmitting(true);
@@ -503,7 +508,7 @@ function AttendTokenPage() {
     try {
       lateFixRef.current = null;
       await settleLocation();
-      await attempt(undefined, false);
+      return await attempt(undefined, false);
     } finally {
       setResending(false);
       setSubmitting(false);
@@ -682,6 +687,9 @@ function AttendTokenPage() {
   // ── One more step: the code on the lecturer's screen (photo and details are kept) ──
   if (proofNeeded) {
     return <RoomProofSheet onCode={confirmRoomCode} busy={submitting || helpBusy}
+      // The phone keeps reading its location while this screen is open, so a second look often passes without the code
+      onRecheck={async () => (await resend()) === "need_code"}
+      onBack={() => setProofNeeded(false)}
       onAskHelp={lastInputRef.current ? () => askHelp("need_room_code") : undefined} />;
   }
 

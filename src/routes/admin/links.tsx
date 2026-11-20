@@ -210,9 +210,9 @@ function GenerateLinkForm({
   }
 
   function movePin(p: { lat: number; lng: number }) {
-    const from = anchor ?? roughFix;
-    // A tiny nudge is not a new position
-    if (from && distanceMeters(from, p) < 10) return;
+    // A tiny nudge of a pin that is already set is not a new position. From a
+    // rough reading any move counts: it is the lecturer saying where the hall is.
+    if (anchor && distanceMeters(anchor, p) < 10) return;
     setAnchor({ ...p, accuracy: 40, source: "gps" });
     setAnchorTakenAt(Date.now());
     setRoughFix(null);
@@ -478,9 +478,14 @@ function GenerateLinkForm({
                     : "Is the pin on your lecture hall? If not, drag it onto the exact building."}
                 </p>
               ) : (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
-                  {tooRoughMessage(Math.round(mapCentre.accuracy ?? 0))}
-                </p>
+                <>
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
+                    {tooRoughMessage(Math.round(mapCentre.accuracy ?? 0))}
+                  </p>
+                  <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => movePin({ lat: mapCentre.lat, lng: mapCentre.lng })}>
+                    <MapPin className="mr-2 h-4 w-4" /> The pin is already on my hall
+                  </Button>
+                </>
               )}
               {anchor && !venueId && (
                 <div className="flex gap-2">
