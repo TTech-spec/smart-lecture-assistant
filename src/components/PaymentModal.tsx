@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { studentError } from "@/lib/friendly-error";
-import { Loader2, CreditCard, AlertCircle, CheckCircle2, Info, ExternalLink } from "lucide-react";
+import { Loader2, CreditCard, AlertCircle, CheckCircle2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -183,26 +183,10 @@ export function PaymentModal({
               <DialogDescription>{materialTitle}</DialogDescription>
             </DialogHeader>
 
-            {/* Fee breakdown */}
-            <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800/40 dark:bg-blue-900/20 p-3 text-xs space-y-1.5">
-              <div className="flex items-center gap-1.5 font-semibold text-blue-800 dark:text-blue-300 mb-1">
-                <Info className="h-3.5 w-3.5" /> Payment breakdown
-              </div>
-              <div className="flex justify-between text-blue-700 dark:text-blue-400">
-                <span>Material price</span><span>₦{fees.lecturerPrice.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-blue-700 dark:text-blue-400">
-                <span>Processing fee (gateway)</span><span>₦{fees.platformFee.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-blue-700 dark:text-blue-400">
-                <span>Transfer fee</span><span>₦{fees.transferFee.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-blue-700 dark:text-blue-400">
-                <span>Payment gateway (1.2%)</span><span>₦{fees.squadFee.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between font-bold text-blue-900 dark:text-blue-200 border-t border-blue-200 dark:border-blue-700 pt-1.5">
-                <span>Total you pay</span><span>₦{fees.totalCharge.toLocaleString()}</span>
-              </div>
+            {/* Students see only the total, never how it is split */}
+            <div className="flex items-center justify-between rounded-xl border bg-secondary/60 p-3.5">
+              <span className="text-sm text-muted-foreground">Amount to pay</span>
+              <span className="text-lg font-bold">₦{fees.totalCharge.toLocaleString()}</span>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3">

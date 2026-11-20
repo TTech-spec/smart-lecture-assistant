@@ -1,3 +1,4 @@
+import { calcFees } from "@/lib/squad-fees";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
@@ -280,7 +281,7 @@ function MaterialCard({ material, index, userMatric, onView, onPaymentClick }: {
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
                 <Lock className="h-3 w-3" />
-                Paid · {material.currency} {material.price.toLocaleString()}
+                Paid · {material.currency} {calcFees(material.price).totalCharge.toLocaleString()}
               </span>
             )
           ) : (
@@ -319,7 +320,7 @@ function MaterialCard({ material, index, userMatric, onView, onPaymentClick }: {
             onClick={() => onPaymentClick(material)}
           >
             <Lock className="mr-1.5 h-3.5 w-3.5" />
-            Pay {material.currency} {material.price.toLocaleString()}
+            Pay {material.currency} {calcFees(material.price).totalCharge.toLocaleString()}
           </Button>
         ) : (
           <Button
