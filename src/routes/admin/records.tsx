@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useMemo, useState, useEffect } from "react";
@@ -615,12 +616,12 @@ function RecordsPage() {
     setMatric(""); setDept("all"); setGender("all");
     setLevel("all"); setCourse("all"); setLinkFilter("all"); setClassCodeFilter("all");
   }
-  function clearAll() {
-    if (!confirm("Clear ALL attendance records? This cannot be undone.")) return;
+  async function clearAll() {
+    if (!(await askConfirm("Clear ALL attendance records? This cannot be undone.", { okText: "Clear all" }))) return;
     clearAllRecords(); toast.success("All records cleared.");
   }
-  function deleteRecord(id: string) {
-    if (!confirm("Delete this record?")) return;
+  async function deleteRecord(id: string) {
+    if (!(await askConfirm("Delete this record?", { okText: "Delete" }))) return;
     deleteRecordById(id, records); toast.success("Record deleted.");
   }
   function openAdd() { setModalMode("add"); setEditingRecord(null); }

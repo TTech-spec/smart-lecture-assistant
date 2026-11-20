@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useMemo, useState } from "react";
@@ -972,25 +973,25 @@ function LinksPage() {
     }
   }
 
-  function handleDisable(id: string) {
-    if (!confirm("Disable this link? Students with the URL will no longer be able to use it. Attendance records are preserved.")) return;
+  async function handleDisable(id: string) {
+    if (!(await askConfirm("Disable this link? Students will no longer be able to use it. Attendance records are kept.", { okText: "Disable" }))) return;
     disableLink(id);
     toast.success("Link disabled.");
   }
 
-  function handleDisableTestLink(id: string) {
-    if (!confirm("Disable this test link? Students with the URL will no longer be able to use it. Test records are preserved.")) return;
+  async function handleDisableTestLink(id: string) {
+    if (!(await askConfirm("Disable this test link? Students will no longer be able to use it. Test records are kept.", { okText: "Disable" }))) return;
     deleteTestLink(id);
     toast.success("Test link disabled.");
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     const link = links.find((l) => l.id === id);
     const usedCount = records.filter((r) => r.linkId === id).length;
     const warn = usedCount > 0
       ? `This link has ${usedCount} student record${usedCount !== 1 ? "s" : ""} attached. The attendance records will remain, but they will no longer reference this link title. `
       : "";
-    if (!confirm(`${warn}Delete this link permanently? This cannot be undone.`)) return;
+    if (!(await askConfirm(`${warn}Delete this link permanently? This cannot be undone.`, { okText: "Delete" }))) return;
     deleteLink(id);
     toast.success(`Link "${link?.title ?? ""}" deleted.`);
   }

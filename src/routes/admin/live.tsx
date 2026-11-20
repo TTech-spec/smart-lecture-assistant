@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -71,7 +72,7 @@ function LivePage() {
         title={`${live.courseCode} · ${live.title}`}
         actions={<>
           <Button data-tour="extend" variant="outline" className="h-10 rounded-xl" onClick={() => extend(5)}>+5 minutes</Button>
-          <Button data-tour="end-checkin" variant="outline" className="h-10 rounded-xl text-red-700 hover:text-red-700" onClick={() => { if (confirm("End check-in now?")) { disableLink(live.id); toast.success("Check-in ended."); } }}>End check-in</Button>
+          <Button data-tour="end-checkin" variant="outline" className="h-10 rounded-xl text-red-700 hover:text-red-700" onClick={() => { askConfirm("End check-in now?", { okText: "End check-in" }).then((ok) => { if (ok) { disableLink(live.id); toast.success("Check-in ended."); } }); }}>End check-in</Button>
           <NotifyStudents defaultTitle={`${live.courseCode} check-in is open`} defaultBody="Open Attendly and sign attendance now." />
           <Button data-tour="scan-student" variant="outline" className="h-10 rounded-xl" onClick={() => setScanOpen(true)}><ScanLine className="mr-1.5 h-4 w-4" /> Scan student</Button>
           <Button data-tour="open-projector" asChild className="h-10 rounded-xl"><Link to="/admin/projector" search={{ link: live.id }}>Open projector</Link></Button>
@@ -239,7 +240,7 @@ function BlockPanel({ link, records, allRecords, registerBlock }: {
     } finally { setBusy(null); }
   }, [link.id, allRecords, load]);
 
-  useEffect(() => { registerBlock((m) => { if (window.confirm(`Block ${m} from this session? Their check-in will be removed.`)) block(m); }); }, [registerBlock, block]);
+  useEffect(() => { registerBlock((m) => { askConfirm(`Block ${m} from this session? Their check-in will be removed.`, { okText: "Block" }).then((ok) => { if (ok) block(m); }); }); }, [registerBlock, block]);
 
   async function unblock(m: string) {
     setBusy(m);

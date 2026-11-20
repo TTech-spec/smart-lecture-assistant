@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
@@ -148,7 +149,7 @@ function OverviewPage() {
                 <Button
                   size="sm" variant="outline"
                   className="h-9 flex-1 rounded-lg border-red-300/40 bg-transparent text-red-300 hover:bg-red-500/10 hover:text-red-200"
-                  onClick={() => { if (confirm("End check-in now?")) { disableLink(live.id); toast.success("Check-in ended."); } }}
+                  onClick={() => { askConfirm("End check-in now?", { okText: "End check-in" }).then((ok) => { if (ok) { disableLink(live.id); toast.success("Check-in ended."); } }); }}
                 >
                   End
                 </Button>

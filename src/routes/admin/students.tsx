@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useState } from "react";
@@ -39,7 +40,7 @@ function StudentsPage() {
   const resets = students.filter((s) => s.status === "reset_requested");
 
   async function reset(st: StudentProfile) {
-    if (!confirm(`Remove ${st.fullName}'s registration (${st.matricNumber})? They will register again with a new face scan.`)) return;
+    if (!(await askConfirm(`Remove ${st.fullName}'s registration (${st.matricNumber})? They will register again with a new face scan.`, { okText: "Remove" }))) return;
     try {
       await deleteStudent(st.matricNumber);
       setStudents((all) => all.filter((x) => x.matricNumber !== st.matricNumber));

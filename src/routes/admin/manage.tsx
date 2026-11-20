@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute } from "@tanstack/react-router";
 import { Textarea } from "@/components/ui/textarea";
 import { LeafletMap } from "@/components/LeafletMap";
@@ -751,9 +752,9 @@ function EarningsDisplay() {
 function SessionsPanel({ sessions, records, settings }: { sessions: AttendanceSession[]; records: AttendanceRecord[]; settings: AdminSettings }) {
   const sorted = useMemo(() => [...sessions].sort((a, b) => b.openedAt.localeCompare(a.openedAt)), [sessions]);
 
-  function handleClearSessions() {
+  async function handleClearSessions() {
     if (sorted.length === 0) return;
-    if (!window.confirm(`Are you sure you want to clear all ${sorted.length} sessions? This action cannot be undone.`)) return;
+    if (!(await askConfirm(`Clear all ${sorted.length} sessions? This cannot be undone.`, { okText: "Clear all" }))) return;
     clearSessions();
     // Also reset the session open count in settings
     const updated = { ...loadSettings(), sessionOpenCount: 0, activeSessionId: null };
@@ -990,8 +991,8 @@ function TestManager({ tests }: { tests: TestConfig[] }) {
     setTestActive(t.id, !t.isActive);
     toast.success(t.isActive ? "Test deactivated." : "Test is now live for students.");
   }
-  function handleDelete(t: TestConfig) {
-    if (!confirm(`Delete "${t.title}"? This cannot be undone.`)) return;
+  async function handleDelete(t: TestConfig) {
+    if (!(await askConfirm(`Delete "${t.title}"? This cannot be undone.`, { okText: "Delete" }))) return;
     deleteTest(t.id);
     toast.success("Test deleted.");
   }

@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, ShieldCheck, X } from "lucide-react";
@@ -43,8 +44,8 @@ function ReviewPage() {
   const current = queue.find((r) => r.id === id) ?? queue[0] ?? null;
   const resets = students.filter((s) => s.status === "reset_requested");
 
-  function decide(r: AttendanceRecord, decision: "approved" | "rejected") {
-    if (decision === "rejected" && !confirm(`Reject ${r.fullName}'s check-in? It will be removed and they'll be marked absent.`)) return;
+  async function decide(r: AttendanceRecord, decision: "approved" | "rejected") {
+    if (decision === "rejected" && !(await askConfirm(`Reject ${r.fullName}'s check-in? It will be removed and they'll be marked absent.`, { okText: "Reject" }))) return;
     reviewRecord(r, decision);
     toast.success(decision === "approved" ? "Approved." : "Rejected — check-in removed.");
     const next = queue.find((q) => q.id !== r.id);

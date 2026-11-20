@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Ban, Loader2, Maximize2 } from "lucide-react";
@@ -84,8 +85,8 @@ function ProjectorPage() {
   const closesIn = msLeft > 0 ? `${Math.floor(msLeft / 60000)}:${String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0")}` : "closed";
   const url = buildAttendUrl(link.token);
 
-  function endCheckIn(l: AttendanceLink) {
-    if (!confirm("End check-in now? Students will no longer be able to submit.")) return;
+  async function endCheckIn(l: AttendanceLink) {
+    if (!(await askConfirm("End check-in now? Students will no longer be able to submit.", { okText: "End check-in" }))) return;
     disableLink(l.id);
     toast.success("Check-in ended.");
   }

@@ -1,3 +1,4 @@
+import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { TestResultView } from "@/components/TestResultView";
 import { TestRules } from "@/components/TestRules";
@@ -698,10 +699,10 @@ function TakingTest({
     setAnswers((prev) => { const next = [...prev]; next[order[current]] = optionIndex; return next; });
   }
 
-  function handleSubmitClick() {
+  async function handleSubmitClick() {
     const unanswered = test.questions.length - totalAnswered;
     if (unanswered > 0) {
-      if (!window.confirm(`You have ${unanswered} unanswered question${unanswered !== 1 ? "s" : ""}. Submit anyway?`)) return;
+      if (!(await askConfirm(`You have ${unanswered} unanswered question${unanswered !== 1 ? "s" : ""}. Submit anyway?`, { okText: "Submit", danger: false }))) return;
     }
     onSubmit(answers, false, integrityRef.current, theoryRef.current);
   }

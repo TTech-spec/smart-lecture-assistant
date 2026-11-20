@@ -19,6 +19,7 @@ import "@fontsource/space-grotesk/700.css";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { ConfirmHost } from "@/components/ConfirmHost";
 import { AppLoadingScreen } from "@/components/LoadingScreen";
 import { fetchAllFromSupabaseOnce } from "@/lib/attendance-store";
 
@@ -220,6 +221,7 @@ function RootComponent() {
       <AppLoadingScreen visible={loading} />
       <Outlet />
       <Toaster richColors position="top-center" />
+      <ConfirmHost />
     </QueryClientProvider>
   );
 }
