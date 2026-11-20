@@ -27,6 +27,7 @@ import {
   type StudentProfile,
   getDeviceId,
   claimRoomPass,
+  addMyMatric,
   hasMarkedAttendanceForCourseToday,
   hasDeviceMarkedAttendanceToday,
   hasDeviceMarkedAttendanceTodayRemote,
@@ -671,6 +672,8 @@ function AttendTokenPage() {
             </div>
           )}
 
+          {profile?.needsMatric && <AddMatricCard id={profile.matricNumber} deviceId={deviceId} />}
+
           <div className="mt-6 flex flex-col items-center gap-2">
             <Button asChild variant="outline">
               <Link to="/me">Review or correct my details</Link>
@@ -801,13 +804,14 @@ function AttendTokenPage() {
             </div>
 
             <div className={stage === 1 ? "contents" : "hidden"}>
-            <Field label="Matric number" className="sm:col-span-2">
+            <Field label="Matric number or UTME reg number" className="sm:col-span-2">
               <Input
                 value={form.matricNumber}
                 onChange={(e) => update("matricNumber", e.target.value)}
-                placeholder="CSC/2021/001"
+                placeholder="CSC/2021/001 or your UTME number"
                 autoCapitalize="characters"
               />
+              <p className="mt-1.5 text-[13px] text-muted-foreground">No matric number yet? Use your UTME reg number.</p>
               {profileLoading && (
                 <p className="mt-2 flex items-center gap-2 text-[13px] text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Finding your details…
@@ -821,7 +825,7 @@ function AttendTokenPage() {
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-4 py-3 text-sm">
                     {[
                       ["Full name", profile.fullName],
-                      ["Matric number", profile.matricNumber],
+                      [profile.needsMatric ? "UTME reg number" : "Matric number", profile.matricNumber],
                       ["Department", profile.department || "—"],
                       ["Level", profile.level ? `${profile.level} Level` : "—"],
                       ["Gender", profile.gender ? profile.gender[0].toUpperCase() + profile.gender.slice(1) : "—"],
@@ -1118,6 +1122,60 @@ function HelpQrScreen({ id, state, courseCode, onState, onApproved, onCancel }: 
         <div className="flex-grow" />
         <Button variant="ghost" className="mt-8 h-11 w-full rounded-full" onClick={onCancel}>Back</Button>
       </div>
+    </div>
+  );
+}
+
+/** Shown after check-in to students still on their UTME number. */
+function AddMatricCard({ id, deviceId }: { id: string; deviceId: string }) {
+  const [step, setStep] = useState<"ask" | "form" | "saved" | "later">("ask");
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const clean = (v: string) => v.toUpperCase().replace(/\s+/g, "");
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (clean(a).length < 5) return setErr("Enter your matric number.");
+    if (clean(a) !== clean(b)) return setErr("The two numbers don't match. Check and type them again.");
+    setBusy(true);
+    try { await addMyMatric(id, a, deviceId); setStep("saved"); }
+    catch (e2) { setErr(e2 instanceof Error ? e2.message : "Couldn't save it. Try again."); }
+    finally { setBusy(false); }
+  }
+  if (step === "later") return null;
+  if (step === "saved") {
+    return (
+      <div className="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5 text-center">
+        <p className="font-semibold text-primary">Matric number saved</p>
+        <p className="mt-1 text-sm text-muted-foreground">From now on you can check in with your matric number or your UTME number. Your past attendance moved with you.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-700 dark:bg-amber-900/20">
+      <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-amber-800 dark:text-amber-300">You're using your UTME number</p>
+      <h2 className="mt-1 text-lg font-semibold">Got your matric number now?</h2>
+      {step === "ask" ? (
+        <>
+          <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-200/80">Add it once. After that both numbers work, and your records stay together.</p>
+          <Button className="mt-4 h-12 w-full rounded-full" onClick={() => setStep("form")}>Add my matric number</Button>
+          <button type="button" onClick={() => setStep("later")} className="mt-2 h-10 w-full text-sm text-muted-foreground">Not yet, remind me later</button>
+        </>
+      ) : (
+        <form onSubmit={save} className="mt-3 space-y-3">
+          <label className="block text-sm font-medium">Matric number
+            <Input value={a} onChange={(e) => setA(e.target.value)} autoCapitalize="characters" placeholder="e.g. CSC/2024/031" className="mt-1 h-12 text-base" />
+          </label>
+          <label className="block text-sm font-medium">Type it again
+            <Input value={b} onChange={(e) => setB(e.target.value)} autoCapitalize="characters" className="mt-1 h-12 text-base" />
+          </label>
+          {err && <p className="text-sm font-medium text-red-700 dark:text-red-400">{err}</p>}
+          <Button type="submit" className="h-12 w-full rounded-full" disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save matric number"}</Button>
+          <p className="text-xs text-muted-foreground">This only works on the phone you check in with. Typed it wrong? Your lecturer can fix it.</p>
+        </form>
+      )}
     </div>
   );
 }

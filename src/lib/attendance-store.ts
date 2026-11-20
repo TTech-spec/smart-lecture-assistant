@@ -1589,6 +1589,17 @@ export type StudentProfile = {
   photo?: string | null;
   deviceId?: string;
   createdAt?: string;
+  /** UTME reg number (imported students) */
+  utmeRegNo?: string | null;
+  /** True while the student is still on their UTME number only */
+  needsMatric?: boolean;
+  whatsapp?: string;
+  hostel?: string;
+  nextOfKin?: string;
+  nextOfKinPhone?: string;
+  source?: "registered" | "imported";
+  matricSource?: "student" | "lecturer" | "csv" | null;
+  matricAddedAt?: string | null;
 };
 
 export type RegisterErrorCode = "invalid" | "matric_taken" | "device_taken" | "face_exists" | "not_configured" | "unknown";
@@ -1636,6 +1647,7 @@ export async function fetchStudentProfile(matric: string): Promise<StudentProfil
     matricNumber: row.matric_number, fullName: row.full_name, department: row.department || "",
     level: row.level || "", phone: row.phone || "", gender: (row.gender as Gender) || "other",
     descriptor: (row.descriptor as number[]) || [], status: row.status || "active",
+    utmeRegNo: row.utme_reg_no ?? null, needsMatric: row.needs_matric === true,
   };
 }
 
@@ -1654,7 +1666,92 @@ export async function fetchStudents(): Promise<StudentProfile[]> {
     level: row.level || "", phone: row.phone || "", gender: (row.gender as Gender) || "other",
     descriptor: [], status: row.status || "active", photo: row.photo, deviceId: row.device_id,
     createdAt: row.created_at,
+    utmeRegNo: row.utme_reg_no ?? null,
+    needsMatric: !!row.utme_reg_no && row.utme_reg_no === row.matric_number,
+    whatsapp: row.whatsapp || "", hostel: row.hostel || "", nextOfKin: row.next_of_kin || "",
+    nextOfKinPhone: row.next_of_kin_phone || "", source: row.source === "imported" ? "imported" : "registered",
+    matricSource: row.matric_source ?? null, matricAddedAt: row.matric_added_at ?? null,
   }));
+}
+
+// ── Student list import and matric numbers (student-import.sql) ─────────────
+
+export type ImportStudent = {
+  fullName: string; utme: string; department: string; level: string; gender: string;
+  whatsapp: string; hostel: string; nextOfKin: string; nextOfKinPhone: string;
+  descriptor: number[]; photo: string | null;
+};
+
+/** Lecturer only: add or update students from the uploaded list (matched by UTME number). */
+export async function importStudents(rows: ImportStudent[]): Promise<{ added: number; updated: number }> {
+  if (!supabase) throw new Error("Database not configured.");
+  const utmes = rows.map((r) => r.utme);
+  const existing = new Map<string, { matric_number: string; descriptor: number[] | null; photo: string | null }>();
+  for (let i = 0; i < utmes.length; i += 200) {
+    const { data, error } = await supabase.from("students").select("matric_number, utme_reg_no, descriptor, photo").in("utme_reg_no", utmes.slice(i, i + 200));
+    if (error) throw new Error(/utme_reg_no|does not exist|schema cache/i.test(error.message) ? "Run student-import.sql in Supabase first." : error.message);
+    for (const d of data || []) existing.set(d.utme_reg_no as string, d as never);
+  }
+  let added = 0, updated = 0;
+  const now = new Date().toISOString();
+  const fresh = [];
+  for (const r of rows) {
+    const details = {
+      full_name: r.fullName.slice(0, 120), department: r.department.slice(0, 120), level: r.level.slice(0, 10),
+      gender: (r.gender || "other").slice(0, 10), phone: r.whatsapp.slice(0, 30), whatsapp: r.whatsapp.slice(0, 30),
+      hostel: r.hostel.slice(0, 200), next_of_kin: r.nextOfKin.slice(0, 120), next_of_kin_phone: r.nextOfKinPhone.slice(0, 30),
+      updated_at: now,
+    };
+    const old = existing.get(r.utme);
+    if (old) {
+      // Keep a face already on file unless this upload brought a new one
+      const face = r.descriptor.length === 128 ? { descriptor: r.descriptor, photo: r.photo } : {};
+      const { error } = await supabase.from("students").update({ ...details, ...face }).eq("matric_number", old.matric_number);
+      if (error) throw new Error(error.message);
+      updated++;
+    } else {
+      fresh.push({ ...details, matric_number: r.utme, utme_reg_no: r.utme, source: "imported", device_id: "", descriptor: r.descriptor, photo: r.photo });
+    }
+  }
+  for (let i = 0; i < fresh.length; i += 100) {
+    const { error } = await supabase.from("students").insert(fresh.slice(i, i + 100));
+    if (error) throw new Error(/duplicate key/i.test(error.message) ? "Some UTME numbers in the file are already used by another student." : error.message);
+    added += Math.min(100, fresh.length - i);
+  }
+  return { added, updated };
+}
+
+export type MatricProblem = { utme: string; matric: string; error: string };
+
+/** Lecturer only: attach matric numbers to students by UTME number. */
+export async function setMatricNumbers(rows: { utme: string; matric: string }[], source: "csv" | "lecturer" = "csv"): Promise<{ updated: number; problems: MatricProblem[] }> {
+  if (!supabase) throw new Error("Database not configured.");
+  const { data, error } = await supabase.rpc("set_matric_numbers", { p_rows: rows, p_source: source });
+  if (error) throw new Error(/does not exist|schema cache/i.test(error.message) ? "Run student-import.sql in Supabase first." : error.message);
+  const d = data as { updated: number; problems: MatricProblem[] };
+  return { updated: d.updated ?? 0, problems: d.problems ?? [] };
+}
+
+export const MATRIC_ERROR: Record<string, string> = {
+  not_found: "No student with that UTME number",
+  has_matric: "Already has a matric number",
+  matric_taken: "That matric number is used by another student",
+  invalid: "That doesn't look like a matric number",
+  wrong_phone: "Use the phone you check in with",
+};
+export const matricErrorText = (raw: string) => {
+  const k = Object.keys(MATRIC_ERROR).find((x) => raw.includes(x));
+  return k ? MATRIC_ERROR[k] : "Couldn't save it. Try again.";
+};
+
+/** Student: add a matric number from the phone they check in with. */
+export async function addMyMatric(id: string, matric: string, deviceId: string): Promise<string> {
+  if (!supabase) throw new Error("Database not configured.");
+  const { data, error } = await supabase.rpc("add_my_matric", { p_id: id.trim(), p_matric: matric.trim(), p_device: deviceId });
+  if (error) throw new Error(matricErrorText(error.message));
+  const m = (data as { matricNumber?: string })?.matricNumber ?? matric.trim().toUpperCase();
+  try { localStorage.setItem("att.student.matric", m); } catch { /* ignore */ }
+  return m;
 }
 
 /** Lecturer only: remove a registration so the student can register again. */
