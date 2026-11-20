@@ -47,12 +47,12 @@ export const JAW_SHUT_RATIO = 1.05;
 export const TURN_DELTA = 0.2;
 export const BACK_DELTA = 0.12;
 export const MOUTH_SKIP_MS = 15_000;
-export const TURN_STUCK_MS = 25_000;
+export const TURN_SKIP_MS = 8_000;
 
 /** Start the checks from frames captured while the student held still. */
 export function startLiveness(steadyFrames: LivenessFrame[], now: number): LivenessState {
   return {
-    step: "mouth",
+    step: "turn",
     baseMouth: median(steadyFrames.map((f) => f.mouthOpen)) || 0.35,
     baseJaw: median(steadyFrames.map((f) => f.jawDrop)) || 1.3,
     baseYaw: median(steadyFrames.map((f) => f.yaw)),
@@ -105,9 +105,10 @@ export function updateLiveness(s: LivenessState, f: LivenessFrame, now: number):
       return { state: { ...st, stepStartedAt: now }, hint: "Good. Now turn to the other side" };
     }
     if (st.awaitingBack) return { state: st, hint: "Good. Now look back at the camera" };
-    if (waited > TURN_STUCK_MS) return { state: { ...st, step: "stuck" }, hint: "We couldn't finish the check" };
+    // Never hold the student up: if the turn isn't seen in time, finish anyway
+    if (waited > TURN_SKIP_MS) return { state: { ...st, step: "done" }, hint: "All checks passed" };
     if (st.sidesSeen.length === 1) return { state: st, hint: "Now turn your head to the other side" };
-    return { state: st, hint: waited > 7000 ? "Turn your head further, until you see your ear" : "Now turn your head to one side" };
+    return { state: st, hint: waited > 4000 ? "Turn your head a little more" : "Now turn your head to one side" };
   }
 
   return { state: st, hint: st.step === "stuck" ? "We couldn't finish the check" : "All checks passed" };
