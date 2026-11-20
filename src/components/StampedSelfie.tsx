@@ -1,3 +1,4 @@
+import { CameraHelp } from "@/components/CameraHelp";
 import { studentError } from "@/lib/friendly-error";
 import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, MapPin, RotateCcw } from "lucide-react";
@@ -82,6 +83,8 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
   const [state, setState] = useState<"idle" | "live" | "processing" | "done">("idle");
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Camera blocked: show the step-by-step "turn it on" box
+  const [camHelp, setCamHelp] = useState(false);
 
   // Live data
   const [livePos, setLivePos] = useState<Coords | null>(null);
@@ -247,8 +250,10 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
       streamRef.current = stream;
       setCamReady(false);
       setState("live");
+      setCamHelp(false);
     } catch {
-      setError("Camera access is required. Allow camera permission and try again.");
+      setError("Your camera is switched off for this page.");
+      setCamHelp(true);
     }
   }
 
@@ -429,6 +434,13 @@ export function StampedSelfie({ onChange, getPosition }: Props) {
         </p>
       )}
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+      {camHelp && (
+        <CameraHelp
+          onRetry={() => { void start(); }}
+          onUsePhoneCamera={() => { setCamHelp(false); setError(null); nativeRef.current?.click(); }}
+          onClose={() => setCamHelp(false)}
+        />
+      )}
     </div>
   );
 }

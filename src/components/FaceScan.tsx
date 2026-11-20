@@ -1,3 +1,4 @@
+import { CameraHelp } from "@/components/CameraHelp";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { analyseFace, cropFacePhoto, loadFaceApi, switchToCpuBackend } from "@/lib/face";
@@ -24,12 +25,14 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
   // Set when the checks could not be finished; "Start again" bumps `attempt`
   const [stuck, setStuck] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Camera blocked: show the step-by-step "turn it on" box
+  const [camHelp, setCamHelp] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let raf = 0;
     doneRef.current = false;
-    setStuck(false); setStep("hold"); setFaceSeen(false);
+    setStuck(false); setStep("hold"); setFaceSeen(false); setError(null); setStatus("loading");
     // Liveness state
     let stillFrames = 0;
     // Eye/head readings while holding still → this student's own baseline
@@ -64,8 +67,10 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
         loop();
       } catch (e) {
         setStatus("error");
-        setError(e instanceof Error && /denied|permission/i.test(e.message)
-          ? "Camera permission is needed. Allow it in your browser settings and try again."
+        const blocked = e instanceof Error && (e.name === "NotAllowedError" || /denied|permission/i.test(e.message));
+        if (blocked) setCamHelp(true);
+        setError(blocked
+          ? "Your camera is switched off for this page."
           : "Could not start the face scanner. Check your connection and try again.");
       }
     }
@@ -245,6 +250,12 @@ export function FaceScan({ onDone }: { onDone: (r: FaceScanResult) => void }) {
       </div>
       <p className="text-center text-xs text-muted-foreground">Good light on your face · no cap, mask or dark glasses</p>
       {error && <p className="text-center text-sm text-destructive">{error}</p>}
+      {camHelp && (
+        <CameraHelp
+          onRetry={() => { setCamHelp(false); setAttempt((n) => n + 1); }}
+          onClose={() => setCamHelp(false)}
+        />
+      )}
     </div>
   );
 }
