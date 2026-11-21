@@ -22,13 +22,15 @@ type Props = {
   onMove?: (pos: { lat: number; lng: number }) => void;
   className?: string;
   zoom?: number;
+  /** Show the centre this many pixels above the middle (when a sheet covers the lower part) */
+  centerOffsetY?: number;
 };
 
 /**
  * Free street map (OpenStreetMap tiles via Leaflet) — no API key, no billing.
  * Leaflet touches `window`, so it is only loaded in the browser.
  */
-export function LeafletMap({ center, radius, points = [], draggable, onMove, className, zoom = 17 }: Props) {
+export function LeafletMap({ center, radius, points = [], draggable, onMove, className, zoom = 17, centerOffsetY = 0 }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const lib = useRef<typeof L | null>(null);
@@ -72,7 +74,7 @@ export function LeafletMap({ center, radius, points = [], draggable, onMove, cla
       map.current = m;
       drawPoints();
       // The container may have been sized after mount
-      setTimeout(() => m.invalidateSize(), 50);
+      setTimeout(() => { m.invalidateSize(); if (centerOffsetY) m.panBy([0, centerOffsetY], { animate: false }); }, 50);
     });
     return () => {
       cancelled = true;
@@ -89,6 +91,7 @@ export function LeafletMap({ center, radius, points = [], draggable, onMove, cla
     circle.current?.setLatLng([center.lat, center.lng]);
     if (radius) circle.current?.setRadius(radius);
     map.current.setView([center.lat, center.lng], map.current.getZoom());
+    if (centerOffsetY) map.current.panBy([0, centerOffsetY], { animate: false });
   }, [center.lat, center.lng, radius]);
 
   useEffect(() => { drawPoints(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [points]);

@@ -40,7 +40,7 @@ export function InstallAppButton() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.6, duration: 0.4, ease: "circOut" }}
-        className="fixed bottom-4 left-1/2 z-40 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-2xl border bg-card p-3 pl-4 shadow-soft sm:bottom-6 sm:left-auto sm:right-6 sm:w-auto sm:translate-x-0"
+        className="fixed bottom-[104px] left-1/2 z-40 lg:bottom-6 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-2xl border bg-card p-3 pl-4 shadow-soft sm:bottom-6 sm:left-auto sm:right-6 sm:w-auto sm:translate-x-0"
       >
         <Download className="h-4 w-4 shrink-0 text-primary" />
         <p className="flex-1 text-sm">

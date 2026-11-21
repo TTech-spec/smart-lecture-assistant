@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bell, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -9,10 +9,13 @@ import { supabase } from "@/lib/supabase";
 import { sendNotice } from "@/lib/push-server";
 
 /** Lecturer: send a notice to every student who turned on notifications. */
-export function NotifyStudents({ defaultTitle, defaultBody, defaultUrl = "/attendance", label = "Notify students" }: {
+export function NotifyStudents({ defaultTitle, defaultBody, defaultUrl = "/attendance", label = "Notify students", openSignal, hideTrigger }: {
   defaultTitle: string; defaultBody?: string; defaultUrl?: string; label?: string;
+  /** Bump this number to open the box from elsewhere (the phone Live screen) */
+  openSignal?: number; hideTrigger?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (openSignal) { setTitle(defaultTitle); setBody(defaultBody ?? ""); setOpen(true); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [openSignal]);
   const [title, setTitle] = useState(defaultTitle);
   const [body, setBody] = useState(defaultBody ?? "");
   const [sending, setSending] = useState(false);
@@ -34,9 +37,9 @@ export function NotifyStudents({ defaultTitle, defaultBody, defaultUrl = "/atten
 
   return (
     <>
-      <Button data-tour="notify" variant="outline" className="h-10 rounded-xl" onClick={() => { setTitle(defaultTitle); setBody(defaultBody ?? ""); setOpen(true); }}>
+      {!hideTrigger && <Button data-tour="notify" variant="outline" className="h-10 rounded-xl" onClick={() => { setTitle(defaultTitle); setBody(defaultBody ?? ""); setOpen(true); }}>
         <Bell className="mr-1.5 h-4 w-4" /> {label}
-      </Button>
+      </Button>}
       <AnimatePresence>
         {open && (
           <motion.div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
