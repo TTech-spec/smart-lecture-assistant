@@ -13,7 +13,7 @@ export function needsReview(r: AttendanceRecord): boolean {
   const flags = String(r.customFields?.flags ?? "");
   const decided = r.customFields?.reviewed;
   if (decided) return false;
-  if (/face_mismatch|no_face_check|different_phone|matric_changed|gps_too_still|gps_round|same_spot|on_pin|off_campus_net|loc_far/.test(flags)) return true;
+  if (/same_face_maybe|face_is_other_student|face_mismatch|no_face_check|different_phone|matric_changed|gps_too_still|gps_round|same_spot|on_pin|off_campus_net|loc_far/.test(flags)) return true;
   // Unverified: never went through the server checks (and not added by the lecturer)
   return isUnverified(r);
 }

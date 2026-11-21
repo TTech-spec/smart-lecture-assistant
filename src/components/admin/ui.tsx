@@ -66,6 +66,8 @@ export function checkStatus(customFields: Record<string, unknown> | undefined): 
   if (/gps_too_still|gps_round|same_spot|on_pin|off_campus_net/.test(f)) return { label: "Suspicious location", tone: "amber" };
   if (f.includes("loc_far")) return { label: "Location unconfirmed", tone: "amber" };
   if (f.includes("gps_help") && !/face_mismatch|different_phone|no_face_check/.test(f)) return { label: "GPS help", tone: "green" };
+  if (f.includes("face_is_other_student")) return { label: "Looks like another student", tone: "amber" };
+  if (f.includes("same_face_maybe")) return { label: "Face seen under another name", tone: "amber" };
   if (f.includes("face_mismatch")) return { label: "Face mismatch", tone: "amber" };
   if (f.includes("different_phone")) return { label: "Different phone", tone: "amber" };
   if (f.includes("no_face_check")) return { label: "No face check", tone: "amber" };
@@ -80,6 +82,7 @@ export function checkStatus(customFields: Record<string, unknown> | undefined): 
 
 export const ATTEMPT_LABEL: Record<string, string> = {
   out_of_range: "Out of range",
+  same_face: "Same face, different name",
   wrong_code: "Wrong class code",
   weak_gps: "Weak GPS",
   no_gps: "Location off",

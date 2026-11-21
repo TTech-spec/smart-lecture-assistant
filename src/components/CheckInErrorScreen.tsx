@@ -194,6 +194,14 @@ function describe(e: CheckInError, course: string): View {
         body: `This phone has already been used to mark attendance for ${course} today. Only one student per phone per course per day.`,
         note: "If this is a mistake, speak to your lecturer.",
       };
+    case "same_face":
+      return {
+        tone: "red",
+        icon: <UserX className="h-6 w-6" />,
+        title: "This face already checked in",
+        body: `The face in this selfie has already marked attendance for ${course} under a different name. Each student signs for themselves only.`,
+        note: "If this is a mistake (for example twins), speak to your lecturer.",
+      };
     case "blocked":
       return {
         tone: "red",

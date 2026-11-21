@@ -276,19 +276,26 @@ function AttendTokenPage() {
     navigator.clipboard?.writeText(code).then(() => { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }).catch(() => {});
   }
 
-  // Compare the selfie with the registered face as soon as both exist
+  // Read the selfie's face once it's taken: compared with the registered face
+  // here, and sent to the server so one face can't check in under two names
+  const selfieDescRef = useRef<number[] | null>(null);
+  const selfieJobRef = useRef<Promise<unknown> | null>(null);
   useEffect(() => {
-    if (!photo || !profile || profile.descriptor.length !== 128) { setFace(null); return; }
+    selfieDescRef.current = null;
+    if (!photo) { setFace(null); return; }
+    const hasFace = !!profile && profile.descriptor.length === 128;
     let cancelled = false;
-    setFace({ state: "checking" });
-    analyseFace(photo.frame, { withDescriptor: true })
+    if (hasFace) setFace({ state: "checking" }); else setFace(null);
+    selfieJobRef.current = analyseFace(photo.frame, { withDescriptor: true })
       .then((f) => {
         if (cancelled) return;
-        if (!f || f.descriptor.length !== 128) { setFace({ state: "noface" }); return; }
-        const d = faceDistance(f.descriptor, profile.descriptor);
+        if (!f || f.descriptor.length !== 128) { if (hasFace) setFace({ state: "noface" }); return; }
+        selfieDescRef.current = Array.from(f.descriptor);
+        if (!hasFace) return;
+        const d = faceDistance(f.descriptor, profile!.descriptor);
         setFace({ state: d <= FACE_MATCH_THRESHOLD ? "match" : "mismatch", distance: d });
       })
-      .catch(() => { if (!cancelled) setFace({ state: "noface" }); });
+      .catch(() => { if (!cancelled && hasFace) setFace({ state: "noface" }); });
     return () => { cancelled = true; };
   }, [photo, profile]);
 
@@ -386,6 +393,8 @@ function AttendTokenPage() {
     // The rough network position is only ever stamped on the photo; it is never sent.
     const pos = getFusedFix() ?? (photo.pos?.source === "gps" ? photo.pos : lateFixRef.current);
     const stored = uploadRef.current?.dataUrl === photo.dataUrl ? await withTimeout(uploadRef.current.job, 8000) : null;
+    // The selfie's face reading is usually done by now; wait a moment if not
+    if (!selfieDescRef.current && selfieJobRef.current) await withTimeout(selfieJobRef.current, 4000).catch(() => null);
     const input: SubmitAttendanceInput = {
       id: crypto.randomUUID(),
       token,
@@ -404,6 +413,7 @@ function AttendTokenPage() {
       lng: pos ? pos.lng : null,
       accuracy: pos ? (pos.accuracy ?? null) : null,
       faceDistance: face?.distance ?? null,
+      faceDescriptor: selfieDescRef.current,
       gps: getSamplerStats(),
       customFields: {
         photo: stored?.photo ?? photo.dataUrl,

@@ -1444,6 +1444,8 @@ export type SubmitAttendanceInput = {
   accuracy: number | null;
   /** Distance between the selfie and the registered face (lower = closer); null if not registered */
   faceDistance: number | null;
+  /** The selfie's face fingerprint, so the server can spot one face checking in under two names */
+  faceDescriptor?: number[] | null;
   /** How the GPS behaved while the selfie camera was open (for fake-GPS flags) */
   gps?: { n: number; coordDistinct: number; accDistinct: number; spreadM: number };
   customFields: Record<string, string>;
@@ -1484,7 +1486,7 @@ export type SubmitAttendanceResult = {
 export type CheckInErrorCode =
   | "not_found" | "closed" | "locked" | "wrong_code" | "weak_gps" | "no_gps"
   | "out_of_range" | "duplicate_device" | "duplicate_matric" | "invalid"
-  | "no_location" | "not_configured" | "blocked" | "need_room_code" | "unknown";
+  | "no_location" | "not_configured" | "blocked" | "need_room_code" | "same_face" | "unknown";
 
 export class CheckInError extends Error {
   code: CheckInErrorCode;
@@ -1503,7 +1505,7 @@ export class CheckInError extends Error {
 }
 
 function parseCheckInError(raw: string): CheckInError {
-  const m = raw.match(/(need_room_code|not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|no_location|invalid|blocked)(?::(\d+))?(?::(\d+))?/);
+  const m = raw.match(/(need_room_code|same_face|not_found|closed|locked|wrong_code|weak_gps|no_gps|out_of_range|duplicate_device|duplicate_matric|no_location|invalid|blocked)(?::(\d+))?(?::(\d+))?/);
   if (!m) {
     if (/function .*submit_attendance.* does not exist|schema cache/i.test(raw)) {
       return new CheckInError("not_configured", "Check-in isn't switched on yet. Please let your lecturer know.");
@@ -1970,7 +1972,7 @@ export async function refreshRecordsFromSupabase(): Promise<AttendanceRecord[] |
  * onNew with records that weren't there before. Returns a stop function.
  */
 /** Flags that put a check-in on the To review list (keep in sync with needsReview) */
-export const REVIEW_FLAGS = ["face_mismatch", "no_face_check", "different_phone", "matric_changed", "gps_too_still", "gps_round", "same_spot", "on_pin", "off_campus_net", "loc_far"];
+export const REVIEW_FLAGS = ["same_face_maybe", "face_is_other_student", "face_mismatch", "no_face_check", "different_phone", "matric_changed", "gps_too_still", "gps_round", "same_spot", "on_pin", "off_campus_net", "loc_far"];
 
 /**
  * Flagged check-ins straight from the database (any date), merged into the
