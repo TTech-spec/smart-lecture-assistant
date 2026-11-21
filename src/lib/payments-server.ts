@@ -115,3 +115,41 @@ export const lookupBankAccount = createServerFn({ method: "POST" })
       return { ok: false as const, message: `Account check isn't set up right now${test ? " (Squad test key)" : ""}: ${msg.slice(0, 80) || "the bank service didn't answer"}. Type the name exactly as on the account.` };
     }
   });
+
+/**
+ * Lecturer: a plain-language check of the payment setup, plus the exact answer
+ * Squad gives for one account lookup. Shows no secrets, only how the key starts.
+ */
+export const paymentSetupCheck = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({
+    accessToken: z.string().min(10),
+    bankCode: z.string().regex(/^\d{3,6}$/).optional(),
+    accountNumber: z.string().regex(/^\d{10}$/).optional(),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    try { await requireLecturer(adminClient(), data.accessToken); } catch { return { ok: false as const, message: "Sign in as a lecturer." }; }
+    const raw = (process.env.SQUAD_SECRET_KEY || "").trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+    const keyKind = !raw ? "missing" : /^sandbox_/i.test(raw) ? "test (sandbox)" : /^sk_/i.test(raw) ? "live" : /^pk_/i.test(raw) ? "PUBLIC key (wrong one: use the secret key)" : "unknown format";
+    const host = /^sandbox_/i.test(raw) ? "sandbox-api-d.squadco.com" : /^sk_/i.test(raw) ? "api-d.squadco.com" : ((process.env.SQUAD_ENV || "sandbox").toLowerCase() === "production" ? "api-d.squadco.com" : "sandbox-api-d.squadco.com");
+    const plat = platform();
+    const lines: string[] = [
+      `Squad key: ${keyKind}${raw ? ` (starts with ${raw.slice(0, 4)}…, ${raw.length} characters)` : ""}`,
+      `Squad server used: ${host}`,
+      `Merchant ID for transfers: ${(process.env.SQUAD_MERCHANT_ID || "").trim() ? "set" : "not set"}`,
+      `Platform payout account: ${plat ? `••••${plat.account.slice(-4)} at bank ${plat.bank}` : "not set"}`,
+    ];
+    let lookup: string | null = null;
+    if (data.bankCode && data.accountNumber && raw) {
+      try {
+        const res = await fetch(`https://${host}/payout/account/lookup`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${raw}` },
+          body: JSON.stringify({ bank_code: data.bankCode, account_number: data.accountNumber }),
+        });
+        const text = await res.text();
+        lookup = `Squad answered HTTP ${res.status}: ${text.slice(0, 300)}`;
+      } catch (e) {
+        lookup = `Couldn't reach Squad: ${e instanceof Error ? e.message : "network error"}`;
+      }
+    }
+    return { ok: true as const, lines, lookup };
+  });

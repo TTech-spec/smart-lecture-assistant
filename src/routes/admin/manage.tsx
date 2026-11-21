@@ -24,7 +24,7 @@ import { surveyAnchor } from "@/lib/geo";
 import { changeLecturerPassword } from "@/lib/lecturer-auth";
 import { AccountSettings } from "@/components/admin/AccountSettings";
 import { useStore } from "@/hooks/use-store";
-import { lecturerPayOutstanding, lecturerPaymentsSummary } from "@/lib/payments-server";
+import { lecturerPayOutstanding, lecturerPaymentsSummary, paymentSetupCheck } from "@/lib/payments-server";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/admin/manage")({
@@ -665,6 +665,22 @@ function EarningsDisplay() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  const [check, setCheck] = useState<{ lines: string[]; lookup: string | null } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [testBank, setTestBank] = useState("100004");
+  const [testAcct, setTestAcct] = useState("");
+
+  async function runCheck() {
+    const t = await token();
+    if (!t) return;
+    setChecking(true);
+    try {
+      const ok = /^\d{10}$/.test(testAcct) && /^\d{3,6}$/.test(testBank);
+      const r = await paymentSetupCheck({ data: { accessToken: t, ...(ok ? { bankCode: testBank, accountNumber: testAcct } : {}) } });
+      if (r.ok) setCheck({ lines: r.lines, lookup: r.lookup }); else toast.error(r.message);
+    } catch { toast.error("Couldn't run the check."); }
+    finally { setChecking(false); }
+  }
 
   async function token() {
     const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
@@ -709,8 +725,24 @@ function EarningsDisplay() {
     <section className="rounded-2xl border bg-card p-4 shadow-soft sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 data-tour="earnings" className="flex items-center gap-2 text-lg font-semibold">Earnings from materials</h2>
-        <Button variant="ghost" size="sm" onClick={load}>Refresh</Button>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" onClick={load}>Refresh</Button>
+          <Button variant="outline" size="sm" onClick={runCheck} disabled={checking}>{checking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Check payment setup"}</Button>
+        </div>
       </div>
+      {check && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-200">
+          <p className="font-semibold">Payment setup</p>
+          <ul className="mt-1 list-disc pl-4">{check.lines.map((l) => <li key={l}>{l}</li>)}</ul>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Input value={testBank} onChange={(e) => setTestBank(e.target.value)} placeholder="Bank code, e.g. 100004" className="h-9 w-40 bg-white text-xs dark:bg-background" aria-label="Bank code" />
+            <Input value={testAcct} onChange={(e) => setTestAcct(e.target.value)} placeholder="10-digit account number" className="h-9 w-48 bg-white text-xs dark:bg-background" aria-label="Account number" />
+            <Button size="sm" variant="outline" className="h-9" onClick={runCheck} disabled={checking}>Test this account</Button>
+          </div>
+          {check.lookup && <p className="mt-2 break-all font-mono">{check.lookup}</p>}
+          <p className="mt-2">Send a screenshot of this box to get help. It shows no secret keys.</p>
+        </div>
+      )}
       {error ? (
         <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">{error}</p>
       ) : !summary ? (
