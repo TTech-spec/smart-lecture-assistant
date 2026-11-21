@@ -33,40 +33,40 @@ export function MobileTabBar({ links, records, onMore }: { links: AttendanceLink
 
   const tabButton = (t: Tab) => (
     <Link key={t.key} to={t.to} aria-current={active(t) ? "page" : undefined} onClick={() => setPlusOpen(false)}
-      className="flex min-h-[48px] min-w-[54px] flex-col items-center justify-center gap-[3px] text-[#9fb0c4] aria-[current=page]:text-white">
-      <span className="relative grid h-8 w-[52px] place-items-center">
-        {active(t) && <motion.span layoutId="m-tab-pill" className="absolute inset-0 rounded-xl bg-white/10" transition={{ type: "spring", stiffness: 500, damping: 34 }} />}
-        <t.icon className="relative h-[21px] w-[21px]" strokeWidth={2.1} />
-        {t.key === "live" && live && <span className="absolute right-2.5 top-1 h-2 w-2 rounded-full bg-[#4fd8a8] ring-2 ring-[#121a2b]" />}
+      className={`flex min-h-[48px] min-w-[54px] flex-col items-center justify-center gap-[3px] ${onLive ? "text-[#7f8ea3] aria-[current=page]:text-white" : "text-muted-foreground aria-[current=page]:text-foreground"}`}>
+      <span className="relative grid h-7 w-[52px] place-items-center">
+        <t.icon className="relative h-[21px] w-[21px]" strokeWidth={active(t) ? 2.3 : 1.8} />
+        {active(t) && <motion.span layoutId="m-tab-pill" className="absolute -bottom-[19px] h-[3px] w-5 rounded-full bg-current" transition={{ type: "spring", stiffness: 500, damping: 34 }} />}
+        {t.key === "live" && live && <span className="absolute right-3 top-0.5 h-[7px] w-[7px] rounded-full bg-[#12b886]" />}
         {t.key === "review" && reviewCount > 0 && (
-          <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute -top-1 right-1 rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-4 text-white">
+          <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute -top-1 right-1.5 rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold leading-4 text-white">
             {reviewCount > 99 ? "99+" : reviewCount}
           </motion.span>
         )}
       </span>
-      <span className="text-[10.5px] font-semibold">{t.label}</span>
+      <span className="text-[10.5px] font-medium">{t.label}</span>
     </Link>
   );
 
   return (
     <>
       <nav aria-label="Main"
-        className={`fixed inset-x-3 z-[45] flex h-[70px] items-center justify-around rounded-[24px] px-1 shadow-[0_10px_30px_rgba(10,20,35,0.35)] lg:hidden ${onLive ? "bg-[#16233a] ring-1 ring-[#22304a]" : "bg-[#121a2b]"}`}
-        style={{ bottom: "calc(14px + env(safe-area-inset-bottom, 0px))" }}>
+        className={`fixed inset-x-0 bottom-0 z-[45] flex items-center justify-around border-t px-2 pt-2 backdrop-blur-md lg:hidden ${onLive ? "border-white/10 bg-[#0c1322]/95" : "border-[rgba(27,36,57,0.08)] bg-background/95"}`}
+        style={{ paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))" }}>
         {LEFT.map(tabButton)}
         <motion.button type="button" onClick={() => setPlusOpen((o) => !o)} aria-label={plusOpen ? "Close" : "Start a check-in"} aria-expanded={plusOpen}
           whileTap={{ scale: 0.88 }} animate={{ rotate: plusOpen ? 135 : 0 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-          className={`-mt-9 grid h-[60px] w-[60px] place-items-center rounded-[20px] border-4 bg-[#12b886] text-white shadow-[0_10px_24px_rgba(18,184,134,0.5)] ${onLive ? "border-[#0c1322]" : "border-[#f6f8f8]"}`}>
-          <Plus className="h-7 w-7" strokeWidth={2.6} />
+          className={`grid h-12 w-12 place-items-center rounded-full ${onLive ? "bg-white text-[#0c1322]" : "bg-foreground text-background"}`}>
+          <Plus className="h-6 w-6" strokeWidth={2.2} />
         </motion.button>
         {RIGHT.map(tabButton)}
         <button type="button" onClick={() => { setPlusOpen(false); onMore(); }}
-          className={`flex min-h-[48px] min-w-[54px] flex-col items-center justify-center gap-[3px] ${known ? "text-[#9fb0c4]" : "text-white"}`}>
-          <span className="relative grid h-8 w-[52px] place-items-center">
-            {!known && <motion.span layoutId="m-tab-pill" className="absolute inset-0 rounded-xl bg-white/10" />}
+          className={`flex min-h-[48px] min-w-[54px] flex-col items-center justify-center gap-[3px] ${known ? (onLive ? "text-[#7f8ea3]" : "text-muted-foreground") : (onLive ? "text-white" : "text-foreground")}`}>
+          <span className="relative grid h-7 w-[52px] place-items-center">
             <MoreHorizontal className="relative h-[21px] w-[21px]" />
+            {!known && <motion.span layoutId="m-tab-pill" className="absolute -bottom-[19px] h-[3px] w-5 rounded-full bg-current" />}
           </span>
-          <span className="text-[10.5px] font-semibold">More</span>
+          <span className="text-[10.5px] font-medium">More</span>
         </button>
       </nav>
 
@@ -76,7 +76,7 @@ export function MobileTabBar({ links, records, onMore }: { links: AttendanceLink
             <motion.button type="button" aria-label="Close" className="fixed inset-0 z-[43] bg-[rgba(8,12,20,0.45)] lg:hidden"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPlusOpen(false)} />
             <motion.section role="dialog" aria-label="Start" className="fixed inset-x-0 bottom-0 z-[44] rounded-t-[28px] bg-white px-4 pt-2 text-[#13202f] lg:hidden dark:bg-[#151e2c] dark:text-white"
-              style={{ paddingBottom: "calc(110px + env(safe-area-inset-bottom, 0px))", touchAction: "none" }}
+              style={{ paddingBottom: "calc(92px + env(safe-area-inset-bottom, 0px))", touchAction: "none" }}
               initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", stiffness: 360, damping: 34 }}
               drag="y" dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 0.6 }} onDragEnd={(_, i) => { if (i.offset.y > 90) setPlusOpen(false); }}>
               <div className="mx-auto mb-3 mt-1 h-[5px] w-11 rounded-full bg-[#d3dbe3]" aria-hidden="true" />
@@ -98,11 +98,11 @@ export function MobileTabBar({ links, records, onMore }: { links: AttendanceLink
 function SheetRow({ icon, title, sub, onClick, tone }: { icon: React.ReactNode; title: string; sub: string; onClick: () => void; tone?: "green" }) {
   return (
     <motion.button type="button" onClick={onClick} whileTap={{ scale: 0.98 }} variants={{ h: { opacity: 0, y: 12 }, s: { opacity: 1, y: 0 } }}
-      className={`flex min-h-[64px] items-center gap-3 rounded-2xl border px-4 text-left ${tone === "green" ? "border-transparent bg-[#12b886] text-white" : "border-[#e1e7ec] dark:border-white/10"}`}>
-      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${tone === "green" ? "bg-white/20" : "bg-[#e6f6ef] text-[#0b8f69] dark:bg-emerald-900/30"}`}>{icon}</span>
+      className={`flex min-h-[64px] items-center gap-3 rounded-2xl border px-4 text-left ${tone === "green" ? "border-transparent bg-foreground text-background" : "border-[rgba(27,36,57,0.1)] dark:border-white/10"}`}>
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${tone === "green" ? "bg-white/15" : "bg-secondary"}`}>{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] font-semibold">{title}</span>
-        <span className={`block truncate text-[12.5px] ${tone === "green" ? "text-white/85" : "text-muted-foreground"}`}>{sub}</span>
+        <span className={`block truncate text-[12.5px] ${tone === "green" ? "opacity-70" : "text-muted-foreground"}`}>{sub}</span>
       </span>
       <ChevronRight className="h-4 w-4 opacity-60" />
     </motion.button>

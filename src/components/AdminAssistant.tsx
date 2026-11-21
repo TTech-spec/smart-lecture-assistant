@@ -28,9 +28,9 @@ export function AdminAssistant() {
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} aria-label="Open the AI assistant"
-        className={`fixed bottom-[104px] right-4 z-40 h-12 ${onLive ? "hidden lg:flex" : "flex"} items-center gap-2 rounded-full bg-[#152033] pl-4 pr-5 font-semibold text-white shadow-[0_10px_30px_rgba(21,32,51,0.35)] transition-transform hover:scale-[1.03] active:scale-95 lg:bottom-6 lg:right-6`}
+        className={`fixed bottom-[88px] right-4 z-40 h-12 ${onLive ? "hidden lg:flex" : "flex"} w-12 items-center justify-center gap-2 rounded-full bg-[#152033] font-semibold lg:w-auto lg:pl-4 lg:pr-5 text-white shadow-[0_10px_30px_rgba(21,32,51,0.35)] transition-transform hover:scale-[1.03] active:scale-95 lg:bottom-6 lg:right-6`}
         style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}>
-        <Sparkles className="h-5 w-5 text-[#3ddc9f]" /> Ask AI
+        <Sparkles className="h-5 w-5 text-[#3ddc9f]" /> <span className="hidden lg:inline">Ask AI</span>
       </button>
       <AnimatePresence>
         {open && (
