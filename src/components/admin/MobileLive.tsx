@@ -58,17 +58,17 @@ export function MobileLive({ live, records, attempts, expected, code, now, onSca
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-[57px] z-[30] flex flex-col overflow-hidden bg-[#0c1322] text-[#eef2f7] lg:hidden">
+    <div className="fixed inset-x-0 bottom-0 top-[57px] z-[30] flex flex-col overflow-hidden bg-background text-foreground lg:hidden">
       <div className="relative z-[5] flex items-center justify-between gap-2 px-4 pb-2 pt-3">
-        <span className="flex min-w-0 items-center gap-1.5 rounded-full bg-[#16233a] px-2.5 py-1.5 text-xs font-semibold text-[#4fd8a8]">
-          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#4fd8a8]" />
-          <span className="truncate">LIVE · {live.courseCode}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-[#0f8a66]">
+          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#12b886]" />
+          <span className="truncate">{live.courseCode} · live</span>
         </span>
-        <div className="flex shrink-0 rounded-xl bg-[#16233a] p-[3px]" role="tablist" aria-label="Live view">
+        <div className="flex shrink-0 rounded-full bg-secondary p-[3px]" role="tablist" aria-label="Live view">
           {([["ring", "Ring", Gauge], ["map", "Map", MapIcon]] as const).map(([k, label, Icon]) => (
             <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)}
-              className={`relative flex items-center gap-1.5 rounded-[9px] px-3 py-[7px] text-[12.5px] font-semibold ${view === k ? "text-[#0c1322]" : "text-[#9fb0c4]"}`}>
-              {view === k && <motion.span layoutId="live-seg" className="absolute inset-0 rounded-[9px] bg-[#4fd8a8]" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
+              className={`relative flex items-center gap-1.5 rounded-full px-3 py-[6px] text-[12.5px] font-medium ${view === k ? "text-background" : "text-muted-foreground"}`}>
+              {view === k && <motion.span layoutId="live-seg" className="absolute inset-0 rounded-full bg-foreground" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
               <Icon className="relative h-[15px] w-[15px]" /><span className="relative">{label}</span>
             </button>
           ))}
@@ -113,40 +113,40 @@ function RingView({ live, count, expected, recent, left, flagged, code, onExtend
   return (
     <div className="flex min-h-full flex-col items-center pb-[110px]">
       <div className="relative mt-3 h-[240px] w-[240px] shrink-0">
-        <div ref={glow} className="absolute inset-[18px] rounded-full opacity-25" style={{ background: "radial-gradient(circle, rgba(79,216,168,.35), transparent 65%)" }} />
+        <div ref={glow} className="hidden" />
         <svg viewBox="0 0 240 240" width="240" height="240" className="relative" aria-hidden="true">
-          <circle cx="120" cy="120" r={R} fill="none" stroke="#1b2840" strokeWidth="16" />
-          <circle ref={arc} cx="120" cy="120" r={R} fill="none" stroke="url(#live-ring)" strokeWidth="16" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C} transform="rotate(-90 120 120)" />
-          <defs><linearGradient id="live-ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#4fd8a8" /><stop offset="1" stopColor="#0ea371" /></linearGradient></defs>
+          <circle cx="120" cy="120" r={R} fill="none" stroke="currentColor" className="text-[rgba(27,36,57,0.08)] dark:text-white/10" strokeWidth="5" />
+          <circle ref={arc} cx="120" cy="120" r={R} fill="none" stroke="#12b886" strokeWidth="5" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C} transform="rotate(-90 120 120)" />
+          
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <CountUp value={count} className="text-[58px] font-extrabold leading-none tracking-tight" />
-          <span className="mt-1 text-[13px] text-[#9fb0c4]">{expected ? `of ${expected} checked in` : "checked in"}</span>
+          <CountUp value={count} className="font-display text-[64px] font-bold leading-none tracking-tight" />
+          <span className="mt-1 text-[13px] text-muted-foreground">{expected ? `of ${expected} checked in` : "checked in"}</span>
           <AnimatePresence mode="popLayout">
-            <motion.span key={recent} className="mt-2 text-[12.5px] font-semibold text-[#4fd8a8]" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -10, opacity: 0 }}>
+            <motion.span key={recent} className="mt-2 text-[12.5px] font-medium text-[#0f8a66]" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -10, opacity: 0 }}>
               {recent > 0 ? `+${recent} in the last minute` : "Waiting for the next student"}
             </motion.span>
           </AnimatePresence>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 px-4 text-[13px] text-[#9fb0c4]">
-        <span><b className="tabular-nums text-white">{left}</b> left</span>
-        <Link to="/admin/review" className="hover:underline"><b className={flagged ? "text-amber-300" : "text-white"}>{flagged}</b> to review</Link>
-        {live.requireRoomCode && <span><b className="font-mono tracking-wider text-white">{code ?? "····"}</b> code</span>}
+      <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 px-4 text-[13px] text-muted-foreground">
+        <span><b className="font-semibold tabular-nums text-foreground">{left}</b> left</span>
+        <Link to="/admin/review" className="hover:underline"><b className={`font-semibold ${flagged ? "text-amber-600" : "text-foreground"}`}>{flagged}</b> to review</Link>
+        {live.requireRoomCode && <span><b className="font-mono font-semibold tracking-wider text-foreground">{code ?? "····"}</b> code</span>}
       </div>
 
-      <div className="mt-5 w-full overflow-hidden pl-4">
-        <motion.div className="flex w-max gap-3 pr-4" drag="x" dragConstraints={{ left: -500, right: 0 }} dragElastic={0.12} style={{ touchAction: "pan-y" }}>
-          <ActionCard i={0} icon={<MonitorPlay className="h-5 w-5 text-[#4fd8a8]" />} title="Projector" sub="Show QR + code" to={{ to: "/admin/projector", search: { link: live.id } }} />
-          <ActionCard i={1} icon={<Clock className="h-5 w-5 text-[#4fd8a8]" />} title="+5 minutes" sub="Extend the window" onClick={onExtend} />
-          <ActionCard i={2} icon={<ScanLine className="h-5 w-5 text-[#4fd8a8]" />} title="Scan student" sub="Help with GPS" onClick={onScan} />
-          <ActionCard i={3} icon={<Bell className="h-5 w-5 text-[#4fd8a8]" />} title="Notify" sub="Ping the class" onClick={onNotify} />
-          <ActionCard i={4} icon={<Ban className="h-5 w-5 text-[#ff9a9a]" />} title="Block student" sub="Sent someone out?" onClick={onBlock} />
-        </motion.div>
+      <div className="mt-6 w-full px-5">
+        <div className="border-t border-[rgba(27,36,57,0.08)] dark:border-white/10">
+          <ActionCard i={0} icon={<MonitorPlay className="h-[18px] w-[18px]" />} title="Projector" sub="Show QR + code" to={{ to: "/admin/projector", search: { link: live.id } }} />
+          <ActionCard i={1} icon={<Clock className="h-[18px] w-[18px]" />} title="+5 minutes" sub="Extend the window" onClick={onExtend} />
+          <ActionCard i={2} icon={<ScanLine className="h-[18px] w-[18px]" />} title="Scan student" sub="Help with GPS" onClick={onScan} />
+          <ActionCard i={3} icon={<Bell className="h-[18px] w-[18px]" />} title="Notify students" sub="Ping the class" onClick={onNotify} />
+          <ActionCard i={4} icon={<Ban className="h-[18px] w-[18px]" />} title="Block a student" sub="Sent someone out?" onClick={onBlock} />
+        </div>
       </div>
 
-      <div className="mt-auto w-full px-4 pt-6"><HoldToEnd onEnd={() => { disableLink(live.id); toast.success("Check-in ended."); }} /></div>
+      <div className="mt-auto w-full px-5 pt-6"><HoldToEnd onEnd={() => { disableLink(live.id); toast.success("Check-in ended."); }} /></div>
     </div>
   );
 }
@@ -154,11 +154,16 @@ function RingView({ live, count, expected, recent, left, flagged, code, onExtend
 function ActionCard({ i, icon, title, sub, onClick, to }: {
   i: number; icon: React.ReactNode; title: string; sub: string; onClick?: () => void; to?: { to: string; search: Record<string, string> };
 }) {
-  const cls = "flex min-h-[104px] w-[150px] flex-col gap-0.5 rounded-[20px] bg-[#16233a] p-3.5 text-left";
-  const body = <>{icon}<span className="mt-2 font-bold">{title}</span><span className="text-xs text-[#9fb0c4]">{sub}</span></>;
+  const cls = "flex h-[54px] w-full items-center gap-3 border-b border-[rgba(27,36,57,0.08)] text-left dark:border-white/10";
+  const body = <>
+    <span className="text-muted-foreground">{icon}</span>
+    <span className="flex-1 text-[15px]">{title}</span>
+    <span className="text-[12.5px] text-muted-foreground">{sub}</span>
+    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+  </>;
   return (
-    <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.08 + i * 0.07 }} whileTap={{ scale: 0.95 }}>
-      {to ? <Link to={to.to} search={to.search as never} className={cls} draggable={false}>{body}</Link>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 + i * 0.05 }} whileTap={{ scale: 0.985 }}>
+      {to ? <Link to={to.to} search={to.search as never} className={cls}>{body}</Link>
           : <button type="button" onClick={onClick} className={cls}>{body}</button>}
     </motion.div>
   );
@@ -175,9 +180,9 @@ function HoldToEnd({ onEnd }: { onEnd: () => void }) {
   return (
     <button type="button" data-tour="end-checkin" onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !done) finish(); }}
-      className="relative grid h-[52px] w-full select-none place-items-center overflow-hidden rounded-2xl border border-[#4a2330] bg-[#2a1720]" style={{ touchAction: "none" }}>
-      <span ref={fill} className="absolute inset-0 origin-left scale-x-0 bg-[#7f1d2d]" />
-      <span className="relative font-bold text-[#ff9a9a]">{done ? "Check-in ended" : "Hold to end check-in"}</span>
+      className="relative grid h-[52px] w-full select-none place-items-center overflow-hidden rounded-full border border-red-200 bg-transparent dark:border-red-900/50" style={{ touchAction: "none" }}>
+      <span ref={fill} className="absolute inset-0 origin-left scale-x-0 bg-red-100 dark:bg-red-900/40" />
+      <span className="relative text-[15px] font-semibold text-red-600 dark:text-red-400">{done ? "Check-in ended" : "Hold to end check-in"}</span>
     </button>
   );
 }
@@ -219,23 +224,23 @@ function MapView({ live, records, attempts, expected, flagged }: {
       {live.anchorLat != null && live.anchorLng != null ? (
         <LeafletMap center={{ lat: live.anchorLat, lng: live.anchorLng }} radius={live.anchorRadius ?? 100} points={points} centerOffsetY={Math.round(h * 0.2)} className="absolute inset-0 h-full w-full" />
       ) : (
-        <p className="absolute inset-x-6 top-16 text-center text-sm text-[#9fb0c4]">This check-in has no verified location, so there is no map. The list below still updates.</p>
+        <p className="absolute inset-x-6 top-16 text-center text-sm text-muted-foreground">This check-in has no verified location, so there is no map. The list below still updates.</p>
       )}
-      <motion.div className="pointer-events-none absolute inset-0 z-[400] bg-[#0c1322]" style={{ opacity: dim }} />
+      <motion.div className="pointer-events-none absolute inset-0 z-[400] bg-black" style={{ opacity: dim }} />
 
-      <motion.section aria-label="Checked-in students" className="absolute inset-x-0 top-0 z-[500] flex flex-col rounded-t-[28px] bg-white text-[#13202f] shadow-[0_-12px_30px_rgba(10,20,35,0.22)] dark:bg-[#151e2c] dark:text-white"
+      <motion.section aria-label="Checked-in students" className="absolute inset-x-0 top-0 z-[500] flex flex-col rounded-t-[22px] border-t bg-background text-foreground shadow-[0_-6px_20px_rgba(10,20,35,0.10)]"
         style={{ y, height: h, touchAction: "none" }} drag="y" dragConstraints={{ top: snaps[2], bottom: snaps[0] }} dragElastic={0.08} onDragEnd={settle}>
         <div className="mx-auto mb-1.5 mt-2.5 h-[5px] w-11 shrink-0 rounded-full bg-[#d3dbe3]" aria-hidden="true" />
         <div className="flex shrink-0 items-baseline justify-between px-4">
-          <h2 className="text-[21px] font-extrabold"><CountUp value={records.length} /> checked in</h2>
+          <h2 className="text-[19px] font-semibold"><CountUp value={records.length} /> checked in</h2>
           {expected ? <span className="text-[12.5px] font-bold text-[#0b8f69]">of {expected}</span> : null}
         </div>
         <LayoutGroup>
           <div className="flex shrink-0 gap-2 px-4 pb-2 pt-3">
             {([["all", "All"], ["review", `To review ${flagged}`], ["blocked", `Blocked ${blocked.length}`]] as const).map(([k, label]) => (
               <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}
-                className={`relative rounded-full px-3 py-[7px] text-[12.5px] font-semibold ${filter === k ? "text-white" : "bg-[#eef2f5] text-[#13202f] dark:bg-white/10 dark:text-white"}`}>
-                {filter === k && <motion.span layoutId="live-filter" className="absolute inset-0 rounded-full bg-[#121a2b]" transition={{ type: "spring", stiffness: 500, damping: 34 }} />}
+                className={`relative rounded-full px-3 py-[7px] text-[12.5px] font-semibold ${filter === k ? "text-background" : "bg-secondary text-foreground"}`}>
+                {filter === k && <motion.span layoutId="live-filter" className="absolute inset-0 rounded-full bg-foreground" transition={{ type: "spring", stiffness: 500, damping: 34 }} />}
                 <span className="relative">{label}</span>
               </button>
             ))}

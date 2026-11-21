@@ -33,7 +33,7 @@ export function MobileTabBar({ links, records, onMore }: { links: AttendanceLink
 
   const tabButton = (t: Tab) => (
     <Link key={t.key} to={t.to} aria-current={active(t) ? "page" : undefined} onClick={() => setPlusOpen(false)}
-      className={`flex min-h-[48px] min-w-[54px] flex-col items-center justify-center gap-[3px] ${onLive ? "text-[#7f8ea3] aria-[current=page]:text-white" : "text-muted-foreground aria-[current=page]:text-foreground"}`}>
+      className={`flex min-h-[48px] min-w-[54px] flex-col items-center justify-center gap-[3px] text-muted-foreground aria-[current=page]:text-foreground`}>
       <span className="relative grid h-7 w-[52px] place-items-center">
         <t.icon className="relative h-[21px] w-[21px]" strokeWidth={active(t) ? 2.3 : 1.8} />
         {active(t) && <motion.span layoutId="m-tab-pill" className="absolute -bottom-[19px] h-[3px] w-5 rounded-full bg-current" transition={{ type: "spring", stiffness: 500, damping: 34 }} />}
@@ -51,17 +51,17 @@ export function MobileTabBar({ links, records, onMore }: { links: AttendanceLink
   return (
     <>
       <nav aria-label="Main"
-        className={`fixed inset-x-0 bottom-0 z-[45] flex items-center justify-around border-t px-2 pt-2 backdrop-blur-md lg:hidden ${onLive ? "border-white/10 bg-[#0c1322]/95" : "border-[rgba(27,36,57,0.08)] bg-background/95"}`}
+        className={`fixed inset-x-0 bottom-0 z-[45] flex items-center justify-around border-t px-2 pt-2 backdrop-blur-md lg:hidden border-[rgba(27,36,57,0.08)] bg-background/95`}
         style={{ paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))" }}>
         {LEFT.map(tabButton)}
         <motion.button type="button" onClick={() => setPlusOpen((o) => !o)} aria-label={plusOpen ? "Close" : "Start a check-in"} aria-expanded={plusOpen}
           whileTap={{ scale: 0.88 }} animate={{ rotate: plusOpen ? 135 : 0 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-          className={`grid h-12 w-12 place-items-center rounded-full ${onLive ? "bg-white text-[#0c1322]" : "bg-foreground text-background"}`}>
+          className={`grid h-12 w-12 place-items-center rounded-full bg-foreground text-background`}>
           <Plus className="h-6 w-6" strokeWidth={2.2} />
         </motion.button>
         {RIGHT.map(tabButton)}
         <button type="button" onClick={() => { setPlusOpen(false); onMore(); }}
-          className={`flex min-h-[48px] min-w-[54px] flex-col items-center justify-center gap-[3px] ${known ? (onLive ? "text-[#7f8ea3]" : "text-muted-foreground") : (onLive ? "text-white" : "text-foreground")}`}>
+          className={`flex min-h-[48px] min-w-[54px] flex-col items-center justify-center gap-[3px] ${known ? "text-muted-foreground" : "text-foreground"}`}>
           <span className="relative grid h-7 w-[52px] place-items-center">
             <MoreHorizontal className="relative h-[21px] w-[21px]" />
             {!known && <motion.span layoutId="m-tab-pill" className="absolute -bottom-[19px] h-[3px] w-5 rounded-full bg-current" />}
