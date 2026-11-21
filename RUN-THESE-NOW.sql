@@ -436,4 +436,50 @@ end $$;
 -- Imported students have no phone yet: allow an empty device id
 alter table public.students alter column device_id set default '';
 
+-- 8. Imported students add their own face (no registration) ----------------
+-- Only while the record has no face yet, and only from the student's own
+-- phone once one is linked. The lecturer sees "Face added by student".
+alter table public.students add column if not exists face_source text;   -- import | student | registered
+
+drop function if exists public.get_student_profile(text);
+create function public.get_student_profile(p_matric text)
+returns table (matric_number text, full_name text, department text, level text, gender text,
+               descriptor double precision[], status text, utme_reg_no text, needs_matric boolean,
+               has_face boolean)
+language sql stable security definer set search_path = public as $$
+  select s.matric_number, s.full_name, s.department, s.level, s.gender, s.descriptor, s.status,
+         s.utme_reg_no,
+         (s.utme_reg_no is not null and s.matric_number = s.utme_reg_no),
+         coalesce(array_length(s.descriptor, 1), 0) = 128
+    from students s
+   where s.matric_number = public.resolve_student_key(p_matric);
+$$;
+revoke all on function public.get_student_profile(text) from public;
+grant execute on function public.get_student_profile(text) to anon, authenticated;
+
+-- Errors: not_found | has_face | wrong_phone | invalid | face_exists
+create or replace function public.add_my_face(p_id text, p_device text, p_descriptor jsonb, p_photo text)
+returns jsonb language plpgsql volatile security definer set search_path = public as $$
+declare st students%rowtype; v_desc double precision[]; v_dev text := left(coalesce(p_device, ''), 80); v_other text;
+begin
+  select * into st from students where matric_number = resolve_student_key(p_id);
+  if st.matric_number is null then raise exception 'not_found'; end if;
+  if coalesce(array_length(st.descriptor, 1), 0) = 128 then raise exception 'has_face'; end if;
+  if v_dev = '' then raise exception 'invalid'; end if;
+  if coalesce(st.device_id, '') <> '' and st.device_id <> v_dev then raise exception 'wrong_phone'; end if;
+  select array_agg(x::double precision) into v_desc from jsonb_array_elements_text(p_descriptor) as t(x);
+  if coalesce(array_length(v_desc, 1), 0) <> 128 then raise exception 'invalid'; end if;
+  select matric_number into v_other from students
+   where matric_number <> st.matric_number and coalesce(array_length(descriptor, 1), 0) = 128
+     and face_distance(descriptor, v_desc) < 0.45
+   order by face_distance(descriptor, v_desc) limit 1;
+  if v_other is not null then raise exception 'face_exists'; end if;
+  update students set descriptor = v_desc, photo = left(coalesce(p_photo, ''), 200000),
+         device_id = v_dev, face_source = 'student', status = 'active', updated_at = now()
+   where matric_number = st.matric_number;
+  return jsonb_build_object('matricNumber', st.matric_number, 'fullName', st.full_name);
+end $$;
+revoke all on function public.add_my_face(text, text, jsonb, text) from public;
+grant execute on function public.add_my_face(text, text, jsonb, text) to anon, authenticated;
+
 commit;

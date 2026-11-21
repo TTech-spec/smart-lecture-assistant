@@ -837,6 +837,11 @@ function AttendTokenPage() {
                     ))}
                   </dl>
                   {myCode && <MyCodeRow code={myCode} copied={codeCopied} onCopy={() => copyMyCode(myCode)} />}
+                  {profile.hasFace === false && (
+                    <p className="border-t border-primary/20 px-4 py-2.5 text-[13px] text-muted-foreground">
+                      No face on file yet. You can still check in. <Link to="/face" search={{ id: profile.matricNumber }} className="font-semibold text-primary">Add your face</Link> so your check-ins are matched to you.
+                    </p>
+                  )}
                   <p className="border-t border-primary/20 px-4 py-2 text-[12px] text-muted-foreground">
                     Not you? <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={() => update("matricNumber", "")}>Use a different matric number</button>
                   </p>

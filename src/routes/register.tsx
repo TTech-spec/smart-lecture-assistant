@@ -59,7 +59,12 @@ function RegisterPage() {
       setCheckingMatric(true);
       const existing = await fetchStudentProfile(m).catch(() => null);
       setCheckingMatric(false);
-      if (existing) return toast.error("This matric number is already registered. If it's yours and you changed phones, speak to your lecturer.");
+      if (existing && !existing.hasFace) {
+        // On the lecturer's list already: only the face is missing
+        window.location.href = `/face?id=${encodeURIComponent(m)}`;
+        return;
+      }
+      if (existing) return toast.error("This number is already registered. If it's yours and you changed phones, speak to your lecturer.");
       return setScreen(3);
     }
     if (screen === 3) {

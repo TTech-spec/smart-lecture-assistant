@@ -197,7 +197,9 @@ function Row({ st, onReset, onChanged, label }: { st: StudentProfile; onReset: (
           <Detail k="Next of kin" v={st.nextOfKin || "—"} />
           <Detail k="Next of kin's number" v={st.nextOfKinPhone || "—"} />
           <div className="sm:col-span-2 flex flex-wrap items-center gap-2"><Tag st={st} />
-            {!st.photo && <span className="text-xs text-amber-700 dark:text-amber-300">No face photo on file: check-ins can't be face-matched.</span>}
+            {!st.photo ? <span className="text-xs text-amber-700 dark:text-amber-300">No face yet. Ask the student to open <strong>/face</strong> and add it (no registration needed).</span>
+              : st.faceSource === "student" ? <span className="text-xs text-muted-foreground">Face added by the student</span>
+              : st.faceSource === "import" ? <span className="text-xs text-muted-foreground">Face from passport photo</span> : null}
           </div>
           {st.utmeRegNo && st.needsMatric && (
             <div className="sm:col-span-2">

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AttendanceRouteImport } from './routes/attendance'
+import { Route as FaceRouteImport } from './routes/face'
 import { Route as MaterialsRouteImport } from './routes/materials'
 import { Route as MeRouteImport } from './routes/me'
 import { Route as RegisterRouteImport } from './routes/register'
@@ -48,6 +49,11 @@ const AppRoute = AppRouteImport.update({
 const AttendanceRoute = AttendanceRouteImport.update({
   id: '/attendance',
   path: '/attendance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FaceRoute = FaceRouteImport.update({
+  id: '/face',
+  path: '/face',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MaterialsRoute = MaterialsRouteImport.update({
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/app': typeof AppRoute
   '/attendance': typeof AttendanceRoute
+  '/face': typeof FaceRoute
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
@@ -157,6 +164,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
   '/attendance': typeof AttendanceRoute
+  '/face': typeof FaceRoute
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
@@ -180,6 +188,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/app': typeof AppRoute
   '/attendance': typeof AttendanceRoute
+  '/face': typeof FaceRoute
   '/materials': typeof MaterialsRoute
   '/me': typeof MeRoute
   '/register': typeof RegisterRoute
@@ -204,6 +213,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/attendance'
+    | '/face'
     | '/materials'
     | '/me'
     | '/register'
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/attendance'
+    | '/face'
     | '/materials'
     | '/me'
     | '/register'
@@ -247,6 +258,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/attendance'
+    | '/face'
     | '/materials'
     | '/me'
     | '/register'
@@ -270,6 +282,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AppRoute: typeof AppRoute
   AttendanceRoute: typeof AttendanceRoute
+  FaceRoute: typeof FaceRoute
   MaterialsRoute: typeof MaterialsRoute
   MeRoute: typeof MeRoute
   RegisterRoute: typeof RegisterRoute
@@ -307,6 +320,13 @@ declare module '@tanstack/react-router' {
       path: '/attendance'
       fullPath: '/attendance'
       preLoaderRoute: typeof AttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/face': {
+      id: '/face'
+      path: '/face'
+      fullPath: '/face'
+      preLoaderRoute: typeof FaceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/materials': {
@@ -455,6 +475,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   AppRoute: AppRoute,
   AttendanceRoute: AttendanceRoute,
+  FaceRoute: FaceRoute,
   MaterialsRoute: MaterialsRoute,
   MeRoute: MeRoute,
   RegisterRoute: RegisterRoute,

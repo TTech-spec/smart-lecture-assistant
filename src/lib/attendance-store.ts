@@ -1600,6 +1600,9 @@ export type StudentProfile = {
   source?: "registered" | "imported";
   matricSource?: "student" | "lecturer" | "csv" | null;
   matricAddedAt?: string | null;
+  /** A face is on file (imported students may not have one yet) */
+  hasFace?: boolean;
+  faceSource?: "import" | "student" | "registered" | null;
 };
 
 export type RegisterErrorCode = "invalid" | "matric_taken" | "device_taken" | "face_exists" | "not_configured" | "unknown";
@@ -1648,6 +1651,7 @@ export async function fetchStudentProfile(matric: string): Promise<StudentProfil
     level: row.level || "", phone: row.phone || "", gender: (row.gender as Gender) || "other",
     descriptor: (row.descriptor as number[]) || [], status: row.status || "active",
     utmeRegNo: row.utme_reg_no ?? null, needsMatric: row.needs_matric === true,
+    hasFace: row.has_face === undefined ? ((row.descriptor as number[] | null)?.length === 128) : row.has_face === true,
   };
 }
 
@@ -1671,6 +1675,7 @@ export async function fetchStudents(): Promise<StudentProfile[]> {
     whatsapp: row.whatsapp || "", hostel: row.hostel || "", nextOfKin: row.next_of_kin || "",
     nextOfKinPhone: row.next_of_kin_phone || "", source: row.source === "imported" ? "imported" : "registered",
     matricSource: row.matric_source ?? null, matricAddedAt: row.matric_added_at ?? null,
+    hasFace: !!row.photo, faceSource: row.face_source ?? null,
   }));
 }
 
@@ -1705,12 +1710,12 @@ export async function importStudents(rows: ImportStudent[]): Promise<{ added: nu
     const old = existing.get(r.utme);
     if (old) {
       // Keep a face already on file unless this upload brought a new one
-      const face = r.descriptor.length === 128 ? { descriptor: r.descriptor, photo: r.photo } : {};
+      const face = r.descriptor.length === 128 ? { descriptor: r.descriptor, photo: r.photo, face_source: "import" } : {};
       const { error } = await supabase.from("students").update({ ...details, ...face }).eq("matric_number", old.matric_number);
       if (error) throw new Error(error.message);
       updated++;
     } else {
-      fresh.push({ ...details, matric_number: r.utme, utme_reg_no: r.utme, source: "imported", device_id: "", descriptor: r.descriptor, photo: r.photo });
+      fresh.push({ ...details, matric_number: r.utme, utme_reg_no: r.utme, source: "imported", device_id: "", descriptor: r.descriptor, photo: r.photo, face_source: r.descriptor.length === 128 ? "import" : null });
     }
   }
   for (let i = 0; i < fresh.length; i += 100) {
@@ -1743,6 +1748,27 @@ export const matricErrorText = (raw: string) => {
   const k = Object.keys(MATRIC_ERROR).find((x) => raw.includes(x));
   return k ? MATRIC_ERROR[k] : "Couldn't save it. Try again.";
 };
+
+export const FACE_ERROR: Record<string, string> = {
+  not_found: "We can't find that number on your lecturer's list.",
+  has_face: "Your face is already on file. If it needs changing, ask your lecturer.",
+  wrong_phone: "Use the phone you check in with. Changed phones? Ask your lecturer.",
+  face_exists: "This face is already linked to another student. Ask your lecturer.",
+  invalid: "The face scan didn't come through. Try again.",
+};
+
+/** Student on the lecturer's list: add their face without registering. */
+export async function addMyFace(id: string, deviceId: string, descriptor: number[], photo: string): Promise<{ matricNumber: string; fullName: string }> {
+  if (!supabase) throw new Error("Database not configured.");
+  const { data, error } = await supabase.rpc("add_my_face", { p_id: id.trim(), p_device: deviceId, p_descriptor: descriptor, p_photo: photo });
+  if (error) {
+    const k = Object.keys(FACE_ERROR).find((x) => error.message.includes(x));
+    throw new Error(k ? FACE_ERROR[k] : /does not exist|schema cache/i.test(error.message) ? "This isn't switched on yet. Let your lecturer know." : "We couldn't save your face. Check your internet and try again.");
+  }
+  const d = data as { matricNumber: string; fullName: string };
+  try { localStorage.setItem("att.student.matric", d.matricNumber); } catch { /* ignore */ }
+  return d;
+}
 
 /** Student: add a matric number from the phone they check in with. */
 export async function addMyMatric(id: string, matric: string, deviceId: string): Promise<string> {
