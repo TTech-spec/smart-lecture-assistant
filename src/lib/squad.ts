@@ -116,7 +116,7 @@ export function generateTransactionRef(): string {
 /**
  * Banks for payouts, using the 6-digit NIBSS (NIP) institution codes that
  * transfer APIs such as Squad expect. Lecturers can also type any other code
- * via "Other bank". Checked against Squad's bank list. Moniepoint is not in it: use Other bank.
+ * via "Other bank". Checked against Squad's bank list (Moniepoint is listed there as Teamapt).
  */
 export const NG_BANKS: { code: string; name: string }[] = [
   { code: "000014", name: "Access Bank" },
@@ -124,6 +124,7 @@ export const NG_BANKS: { code: string; name: string }[] = [
   { code: "000009", name: "Citibank" },
   { code: "000010", name: "Ecobank" },
   { code: "090551", name: "FairMoney MFB" },
+  { code: "090328", name: "Eyowo" },
   { code: "000003", name: "FCMB" },
   { code: "000007", name: "Fidelity Bank" },
   { code: "000016", name: "First Bank" },
@@ -137,6 +138,7 @@ export const NG_BANKS: { code: string; name: string }[] = [
   { code: "090267", name: "Kuda MFB" },
   { code: "000029", name: "Lotus Bank" },
   { code: "120003", name: "MoMo PSB" },
+  { code: "110007", name: "Moniepoint (Teamapt)" },
   { code: "120001", name: "9PSB" },
   { code: "100026", name: "One Finance (Carbon)" },
   { code: "100004", name: "OPay" },
