@@ -672,6 +672,16 @@ function AttendTokenPage() {
             </div>
           )}
 
+          {profile && profile.hasFace === false && (
+            <div className="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-primary">One last thing</p>
+              <h2 className="mt-1 text-lg font-semibold">Add your face (30 seconds)</h2>
+              <p className="mt-1 text-sm text-muted-foreground">You don't have a face on file yet. Add it once, on this phone, so your check-ins are matched to you. No need to register.</p>
+              <Button asChild className="mt-4 h-12 w-full rounded-full">
+                <Link to="/face" search={{ id: profile.matricNumber }}>Add my face now</Link>
+              </Button>
+            </div>
+          )}
           {profile?.needsMatric && <AddMatricCard id={profile.matricNumber} deviceId={deviceId} />}
 
           <div className="mt-6 flex flex-col items-center gap-2">
