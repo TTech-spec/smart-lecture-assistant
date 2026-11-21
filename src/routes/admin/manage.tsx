@@ -735,9 +735,10 @@ function EarningsDisplay() {
               <p className="text-xs font-semibold text-muted-foreground">Recent transfers</p>
               <div className="mt-2 divide-y rounded-xl border">
                 {summary.payouts.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                  <div key={i} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
                     <span className="text-muted-foreground">{new Date(p.created_at as string).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {p.kind === "platform" ? "Platform fee" : "To lecturer"} {p.account_number ?? ""}</span>
                     <span className={p.status === "sent" ? "font-medium" : "font-medium text-red-600"}>₦{Number(p.amount).toLocaleString()} {p.status === "sent" ? "" : "· failed"}</span>
+                    {p.status !== "sent" && p.message ? <span className="w-full text-xs text-red-600">Reason from Squad: {String(p.message).slice(0, 160)}</span> : null}
                   </div>
                 ))}
               </div>

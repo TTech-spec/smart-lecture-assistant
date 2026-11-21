@@ -91,7 +91,9 @@ export async function startPayment(
     lecturerPaid: false,
   });
   const email = `${matric.toLowerCase().replace(/[^a-z0-9]/g, "")}@student.attendly.app`;
-  const checkoutUrl = await squad.initiate({ ref, amountNGN: fees.totalCharge, email, name: input.name.trim(), title: m.title, callbackUrl: input.callbackUrl });
+  // Squad sends the student back here after paying; the reference lets the page confirm and unlock
+  const callbackUrl = `${input.callbackUrl}${input.callbackUrl.includes("?") ? "&" : "?"}paid=${encodeURIComponent(ref)}`;
+  const checkoutUrl = await squad.initiate({ ref, amountNGN: fees.totalCharge, email, name: input.name.trim(), title: m.title, callbackUrl });
   return { transactionRef: ref, checkoutUrl, totalCharge: fees.totalCharge };
 }
 

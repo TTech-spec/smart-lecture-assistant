@@ -150,7 +150,10 @@ export function PaymentModal({
       setTxRef(res.transactionRef);
       const url = res.checkoutUrl;
       setCheckoutUrl(url);
-      window.open(url, "_blank", "noopener,noreferrer");
+      // Remember the payment, then go to the payment page in this same tab. When the
+      // student finishes, Squad brings them back to Materials, which confirms and unlocks.
+      try { localStorage.setItem("att.pay.pending", JSON.stringify({ ref: res.transactionRef, materialId, at: Date.now() })); } catch { /* private mode */ }
+      window.location.href = url;
       setStep("processing");
     } catch (err) {
       console.error("Payment initiation error:", err);

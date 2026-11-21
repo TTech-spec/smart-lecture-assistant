@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft, BookOpen, FileText, Video, Globe,
   File, Lock, ExternalLink, Search, GraduationCap, CheckCircle2,
-  X, Download,
+  X, Download, Loader2,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,8 @@ import { loadMaterials, syncMaterialsFromSupabase, type Material, type MaterialF
 import { loadSettings } from "@/lib/attendance-store";
 import { PaymentModal } from "@/components/PaymentModal";
 import { toast } from "sonner";
-import { getPurchaseToken, hasUserPaidForMaterial } from "@/lib/squad";
-import { getMaterialLink } from "@/lib/payments-server";
+import { getPurchaseToken, hasUserPaidForMaterial, savePurchaseToken } from "@/lib/squad";
+import { confirmMaterialPayment, getMaterialLink } from "@/lib/payments-server";
 
 export const Route = createFileRoute("/materials")({
   head: () => ({
@@ -95,6 +95,44 @@ function MaterialsPage() {
     return matchCourse && matchSearch;
   });
 
+  // Back from the payment page: confirm the payment and unlock the material
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => {
+    let pending: { ref: string; materialId: string; at: number } | null = null;
+    try { pending = JSON.parse(localStorage.getItem("att.pay.pending") || "null"); } catch { pending = null; }
+    const q = new URLSearchParams(window.location.search);
+    const ref = q.get("paid") || q.get("reference") || q.get("transaction_ref") || (pending && Date.now() - pending.at < 2 * 60 * 60_000 ? pending.ref : null);
+    if (!ref) return;
+    let cancelled = false; let tries = 0;
+    setConfirming(true);
+    const done = (msg?: string, ok = false) => {
+      setConfirming(false);
+      try { localStorage.removeItem("att.pay.pending"); } catch { /* ignore */ }
+      if (q.has("paid") || q.has("reference")) window.history.replaceState(null, "", window.location.pathname);
+      if (msg) (ok ? toast.success : toast.error)(msg, { duration: 8000 });
+    };
+    const check = async () => {
+      if (cancelled) return;
+      tries++;
+      const r = await confirmMaterialPayment({ data: { transactionRef: ref } }).catch(() => null);
+      if (cancelled) return;
+      if (r?.state === "success") {
+        savePurchaseToken(r.materialId, r.accessToken);
+        syncMaterialsFromSupabase();
+        setPaidTick((n) => n + 1);
+        return done("Payment successful. Your material is unlocked.", true);
+      }
+      if (r?.state === "failed") return done("The payment wasn't completed. You have not been charged for this material.");
+      if (r?.state === "amount_mismatch") return done("The amount paid didn't match the price. Contact your lecturer with your payment reference.");
+      if (r?.state === "not_found") return done();
+      if (tries >= 30) return done("We couldn't confirm your payment yet. If you were charged, reopen this page in a minute.");
+      setTimeout(check, 2000);
+    };
+    check();
+    return () => { cancelled = true; };
+  }, []);
+  const [, setPaidTick] = useState(0);
+
   const handlePaymentSuccess = () => {
     // Refresh materials to update access status
     syncMaterialsFromSupabase();
@@ -102,6 +140,11 @@ function MaterialsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-hero">
+      {confirming && (
+        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-2 bg-primary px-4 py-3 text-sm font-medium text-primary-foreground" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" /> Confirming your payment…
+        </div>
+      )}
       {/* Header */}
       <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6 sm:py-6">
         <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">

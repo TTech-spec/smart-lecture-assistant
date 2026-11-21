@@ -50,6 +50,15 @@ export function platformAccount() {
   };
 }
 
+/**
+ * Squad only accepts a transfer whose reference starts with the merchant ID
+ * (shown on the Squad dashboard), e.g. "SBABC123_PAY-LEC-…". Set SQUAD_MERCHANT_ID.
+ */
+export function transferReference(ref: string): string {
+  const id = getEnv("SQUAD_MERCHANT_ID").trim();
+  return id && !ref.startsWith(`${id}_`) ? `${id}_${ref}` : ref;
+}
+
 // ── Shared fetch helper ───────────────────────────────────────────────────────
 export async function squadFetch(path: string, body: Record<string, unknown>) {
   const key = secretKey();
@@ -126,7 +135,7 @@ export async function runPayoutToLecturer(data: PayoutInput) {
   try {
     // Squad Transfer API: POST /transfer/initiate
     const body: Record<string, unknown> = {
-      transaction_reference: data.transferRef,
+      transaction_reference: transferReference(data.transferRef),
       amount:                Math.round(data.amountNGN * 100), // kobo
       bank_code:             data.lecturerBankCode,
       account_number:        data.lecturerAccountNumber,
@@ -180,7 +189,7 @@ export async function runPayoutToPlatform(data: PlatformPayoutInput) {
 
   try {
     const body: Record<string, unknown> = {
-      transaction_reference: data.transferRef,
+      transaction_reference: transferReference(data.transferRef),
       amount:                Math.round(data.amountNGN * 100),
       bank_code:             bankCode,
       account_number:        accountNumber,
