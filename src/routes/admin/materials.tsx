@@ -611,6 +611,14 @@ function MaterialsAdmin() {
                             {lookup.state === "checking" && <><AcctSpin className="h-3.5 w-3.5 animate-spin" /> Checking with the bank…</>}
                             {lookup.state === "ok" && <><AcctOk className="h-3.5 w-3.5" /> Verified with the bank. Make sure this is your name.</>}
                             {lookup.state === "fail" && <><AcctBad className="h-3.5 w-3.5" /> {lookup.message}</>}
+                          </p>
+                          {lookup.state === "fail" && (
+                            <button type="button" className="mt-1.5 text-xs font-semibold text-primary underline underline-offset-2"
+                              onClick={() => setLookup({ state: "unavailable", message: "Type the name exactly as it appears on the account. Payouts go to this account, so double-check the number." })}>
+                              These details are correct. Let me type the name myself
+                            </button>
+                          )}
+                          <p className="hidden">
                             {lookup.state === "unavailable" && (lookup.message ?? "Couldn't check the account automatically.")}
                           </p>
                         </div>

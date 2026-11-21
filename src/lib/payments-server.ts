@@ -103,7 +103,15 @@ export const lookupBankAccount = createServerFn({ method: "POST" })
       return { ok: true as const, accountName: name };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
+      console.warn("Squad account lookup failed:", msg);
       if (/secret key not configured/i.test(msg)) return { ok: false as const, message: "Account check isn't set up: SQUAD_SECRET_KEY is missing on the server." };
-      return { ok: false as const, message: "No account found for that number at this bank. Check both and try again." };
+      // Only say "no account" when the bank really said so; anything else is a problem on our side
+      const notFound = /account.*(not found|invalid|does not exist|not exist)|invalid account|could not (resolve|verify)|unable to (resolve|verify|validate)|no record/i.test(msg);
+      if (notFound) return { ok: false as const, message: "No account found for that number at this bank. Check both and try again." };
+      const test = /^sandbox_/i.test((process.env.SQUAD_SECRET_KEY || "").trim());
+      if (/key|unauthori[sz]ed|forbidden|merchant|permission|not (enabled|allowed|activated)|kyc/i.test(msg)) {
+        return { ok: false as const, message: `Account check isn't set up: Squad refused the request (${msg.slice(0, 80)}).${test ? " The Squad key on the server is a test (sandbox) key." : ""}` };
+      }
+      return { ok: false as const, message: `Account check isn't set up right now${test ? " (Squad test key)" : ""}: ${msg.slice(0, 80) || "the bank service didn't answer"}. Type the name exactly as on the account.` };
     }
   });
