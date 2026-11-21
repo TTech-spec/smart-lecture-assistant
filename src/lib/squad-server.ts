@@ -161,7 +161,7 @@ export async function runPayoutToLecturer(data: PayoutInput) {
 // account from lecturer-only data. Until that exists, withdraw from the
 // Squad dashboard.
 
-// ── 4. Platform payout (₦1,000 → platform account) ───────────────────────────
+// ── 4. Platform payout (₦50 → platform account) ───────────────────────────
 const PlatformPayoutSchema = z.object({
   transferRef: z.string(),
   amountNGN:   z.number(),

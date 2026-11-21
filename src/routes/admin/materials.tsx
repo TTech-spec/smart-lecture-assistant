@@ -553,7 +553,7 @@ function MaterialsAdmin() {
                         <Lock className="h-4 w-4" /> Your payout bank details
                       </p>
                       <p className="text-xs text-amber-700 dark:text-amber-400">
-                        Payments go directly to your bank account after each purchase. A ₦1,000 processing fee covers payment gateway charges.
+                        Payments go directly to your bank account after each purchase. A ₦50 processing fee covers payment gateway charges.
                       </p>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>

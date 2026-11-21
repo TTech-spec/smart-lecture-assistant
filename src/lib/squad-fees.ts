@@ -6,7 +6,7 @@ export const SQUAD_FEE_CAP     = 1500;   // ₦
 // Transfer payout fee (₦10–₦50 flat; we charge ₦50 to be safe)
 export const TRANSFER_FEE      = 50;     // ₦
 // Payment gateway processing fee charged to the student on every transaction
-export const PLATFORM_FEE      = 1000;   // ₦
+export const PLATFORM_FEE      = 50;     // ₦
 
 /**
  * Given the lecturer's listed price (what they want to receive),
