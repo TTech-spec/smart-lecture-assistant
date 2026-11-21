@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "claude/beautiful-bell-pytfpo": false
+    }
+  },
   "headers": [
     {
       "source": "/models/(.*)",
