@@ -2,14 +2,14 @@ import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { CountUp } from "@/components/admin/MobileLive";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/hooks/use-store";
 import {
   disableLink, fetchAttempts, fetchRoomCode, fetchStudents, isLinkValid, todayKey,
-  type AttendanceLink, type CheckInAttempt,
+  type AttendanceLink, type AttendanceRecord, type CheckInAttempt,
 } from "@/lib/attendance-store";
 import { needsReview } from "@/components/admin/AdminSidebar";
 import { Avatar, Panel, PanelTitle, PinBanners, Stat, StatusPill, checkStatus } from "@/components/admin/ui";
@@ -106,8 +106,13 @@ function OverviewPage() {
   const closesIn = `${Math.floor(msLeft / 60000)}:${String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0")}`;
   const outOfRange = attempts.filter((a) => a.reason === "out_of_range").length;
 
+  const reviewTotal = records.filter(needsReview).length;
   return (
-    <main className="mx-auto flex max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-8 lg:py-7">
+    <>
+    <MobileHome live={live} liveCount={liveCount} registered={registered} closesIn={closesIn} reviewTotal={reviewTotal}
+      review={review} todayCount={todayCount} blocked={attempts.length} latest={latest} history={history} maxN={maxN}
+      banners={live ? <PinBanners records={records.filter((r) => r.linkId === live.id)} attempts={liveAttempts} /> : null} />
+    <main className="mx-auto hidden max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-8 lg:flex lg:py-7">
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-grow">
           <p className="text-[13px] text-muted-foreground">{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
@@ -274,5 +279,134 @@ function OverviewPage() {
         </Panel>
       </div>
     </main>
+    </>
+  );
+}
+
+const rise = { h: { opacity: 0, y: 16 }, s: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 26 } } };
+
+/** Phone home: greeting, live card (or start card), four tiles, review and latest check-ins */
+function MobileHome({ live, liveCount, registered, closesIn, reviewTotal, review, todayCount, blocked, latest, history, maxN, banners }: {
+  live: AttendanceLink | null; liveCount: number; registered: number | null; closesIn: string; reviewTotal: number;
+  review: AttendanceRecord[]; todayCount: number; blocked: number; latest: AttendanceRecord[];
+  history: { l: AttendanceLink; n: number }[]; maxN: number; banners: React.ReactNode;
+}) {
+  return (
+    <motion.main className="flex flex-col gap-3.5 px-4 pb-6 pt-5 lg:hidden" initial="h" animate="s" variants={{ s: { transition: { staggerChildren: 0.07 } } }}>
+      <motion.div variants={rise}>
+        <p className="text-[13px] text-muted-foreground">{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
+        <h1 className="font-display text-[26px] font-bold leading-tight">{greeting()}</h1>
+      </motion.div>
+
+      {banners}
+
+      {live ? (
+        <motion.div variants={rise} whileTap={{ scale: 0.98 }}>
+          <Link to="/admin/live" className="block rounded-[24px] p-[18px] text-white shadow-[0_12px_30px_rgba(18,184,134,0.35)]"
+            style={{ background: "radial-gradient(120% 120% at 100% 0%, #22d3a0 0%, transparent 55%), linear-gradient(140deg, #12b886, #08855f)" }}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-1 text-xs font-semibold"><span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-white" /><span className="truncate">Live · {live.courseCode}</span></span>
+              <span className="shrink-0 text-[13px] tabular-nums opacity-90">closes in {closesIn}</span>
+            </div>
+            <p className="mt-3.5 text-[46px] font-extrabold leading-none tracking-tight"><CountUp value={liveCount} />{registered ? <span className="text-[19px] font-semibold opacity-85"> / {registered}</span> : null}</p>
+            <p className="mt-1 text-[13px] opacity-90">students checked in · tap to open</p>
+            <div className="mt-3 h-[7px] overflow-hidden rounded-full bg-white/25"><div className="h-full rounded-full bg-white transition-all duration-700" style={{ width: `${registered ? Math.min(100, (liveCount / registered) * 100) : 0}%` }} /></div>
+          </Link>
+        </motion.div>
+      ) : (
+        <motion.div variants={rise} className="relative overflow-hidden rounded-[24px] bg-[#121a2b] p-5 text-white">
+          <motion.span aria-hidden className="absolute -right-10 -top-10 h-40 w-40 rounded-full border border-[#4fd8a8]/30"
+            animate={{ scale: [1, 1.25, 1], opacity: [0.5, 0, 0.5] }} transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }} />
+          <span aria-hidden className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-[#12b886]/15" />
+          <p className="relative text-xs font-semibold uppercase tracking-[0.1em] text-[#4fd8a8]">Ready when you are</p>
+          <p className="relative mt-1.5 font-display text-[22px] font-bold leading-7">No check-in running</p>
+          <p className="relative mt-1 text-[13.5px] leading-5 text-[#aeb9cb]">Stand in the hall, verify your location, and students can start signing.</p>
+          <motion.div whileTap={{ scale: 0.97 }} className="relative mt-4">
+            <Link to="/admin/links" search={{ new: "attendance" }} className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#12b886] text-[15px] font-semibold text-white shadow-[0_8px_20px_rgba(18,184,134,0.4)]">
+              <Plus className="h-[18px] w-[18px]" /> Start check-in
+            </Link>
+          </motion.div>
+        </motion.div>
+      )}
+
+      <motion.div variants={rise} className="grid grid-cols-2 gap-2.5">
+        <Link to="/admin/review" className={`rounded-[18px] border p-3.5 ${reviewTotal ? "border-[#f6e2b3] bg-[#fff7e6] dark:border-amber-800/40 dark:bg-amber-900/20" : "bg-card"}`}>
+          <p className="text-[12.5px] text-muted-foreground">To review</p>
+          <p className={`mt-0.5 text-[26px] font-extrabold leading-8 ${reviewTotal ? "text-[#8a5a00] dark:text-amber-300" : ""}`}><CountUp value={reviewTotal} /></p>
+        </Link>
+        <Link to="/admin/records" className="rounded-[18px] border bg-card p-3.5">
+          <p className="text-[12.5px] text-muted-foreground">Checked in today</p>
+          <p className="mt-0.5 text-[26px] font-extrabold leading-8"><CountUp value={todayCount} /></p>
+        </Link>
+        <Link to="/admin/students" className="rounded-[18px] border bg-card p-3.5">
+          <p className="text-[12.5px] text-muted-foreground">Students</p>
+          <p className="mt-0.5 text-[26px] font-extrabold leading-8">{registered == null ? "—" : <CountUp value={registered} />}</p>
+        </Link>
+        <div className="rounded-[18px] border bg-card p-3.5">
+          <p className="text-[12.5px] text-muted-foreground">Blocked · 7 days</p>
+          <p className="mt-0.5 text-[26px] font-extrabold leading-8"><CountUp value={blocked} /></p>
+        </div>
+      </motion.div>
+
+      {review.length > 0 && (
+        <motion.section variants={rise}>
+          <div className="mb-2 mt-2 flex items-center justify-between px-0.5">
+            <p className="text-[11.5px] font-bold uppercase tracking-[0.09em] text-muted-foreground">Needs your review</p>
+            <Link to="/admin/review" className="text-[13px] font-semibold text-[#0f8a66]">View all</Link>
+          </div>
+          <div className="overflow-hidden rounded-[18px] border bg-card">
+            {review.map((r, i) => (
+              <Link key={r.id} to="/admin/review" search={{ id: r.id }} className={`flex h-[60px] items-center gap-3 px-3.5 ${i ? "border-t" : ""}`}>
+                <Avatar src={r.customFields?.photoThumb || r.customFields?.photo} name={r.fullName} size={36} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14.5px] font-semibold">{r.fullName}</p>
+                  <p className="truncate text-[12.5px] text-amber-700 dark:text-amber-400">{checkStatus(r.customFields).label}</p>
+                </div>
+                <span className="rounded-full bg-[#fff3dc] px-2.5 py-1 text-xs font-semibold text-[#7a4f00] dark:bg-amber-900/30 dark:text-amber-300">Review</span>
+              </Link>
+            ))}
+          </div>
+        </motion.section>
+      )}
+
+      {history.length > 0 && (
+        <motion.section variants={rise} className="rounded-[18px] border bg-card p-3.5">
+          <p className="text-[12.5px] text-muted-foreground">Check-ins · last {history.length} sessions</p>
+          <div className="mt-2 flex h-[64px] items-end gap-1.5" role="img" aria-label="Bar chart of check-ins per session">
+            {history.map(({ l, n }, i) => (
+              <motion.span key={l.id} title={`${l.title}: ${n}`} className={`flex-1 origin-bottom rounded-[5px] ${i === history.length - 1 ? "bg-[#12b886]" : "bg-[#cdeee1] dark:bg-emerald-900/40"}`}
+                style={{ height: `${Math.max(8, (n / maxN) * 100)}%` }} initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ delay: 0.35 + i * 0.05, type: "spring", stiffness: 260, damping: 22 }} />
+            ))}
+          </div>
+        </motion.section>
+      )}
+
+      <motion.section variants={rise}>
+        <div className="mb-2 mt-2 flex items-center justify-between px-0.5">
+          <p className="text-[11.5px] font-bold uppercase tracking-[0.09em] text-muted-foreground">Latest check-ins</p>
+          <Link to="/admin/records" className="text-[13px] font-semibold text-[#0f8a66]">All records</Link>
+        </div>
+        <div className="overflow-hidden rounded-[18px] border bg-card">
+          {latest.length === 0 ? <p className="px-4 py-6 text-center text-sm text-muted-foreground">No check-ins yet.</p> : (
+            <AnimatePresence initial={false}>
+              {latest.slice(0, 5).map((r, i) => {
+                const st = checkStatus(r.customFields);
+                return (
+                  <motion.div key={r.id} layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 58 }} exit={{ opacity: 0, height: 0 }}
+                    className={`flex items-center gap-3 overflow-hidden px-3.5 ${i ? "border-t" : ""}`}>
+                    <Avatar src={r.customFields?.photoThumb || r.customFields?.photo} name={r.fullName} size={36} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14.5px] font-semibold">{r.fullName}</p>
+                      <p className="truncate text-[12.5px] text-muted-foreground">{new Date(r.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{r.distanceMeters ? ` · ${r.distanceMeters} m away` : ""}</p>
+                    </div>
+                    <StatusPill tone={st.tone}>{st.label}</StatusPill>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          )}
+        </div>
+      </motion.section>
+    </motion.main>
   );
 }
