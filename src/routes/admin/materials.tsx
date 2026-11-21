@@ -3,7 +3,7 @@ import { friendlyError } from "@/lib/friendly-error";
 import { useEffect, useState, useMemo } from "react";
 import {
   Upload, BookOpen, Globe, Lock, FileText, Video, File,
-  Plus, Trash2, ExternalLink, Sparkles, CheckCircle2,
+  Plus, Pencil, Trash2, ExternalLink, Sparkles, CheckCircle2,
   X, ChevronDown, ChevronUp, Info,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  loadMaterials, addMaterial, deleteMaterial, syncMaterialsFromSupabase,
+  loadMaterials, addMaterial, updateMaterial, deleteMaterial, syncMaterialsFromSupabase,
   uploadMaterialFile, deleteMaterialFile, type Material, type MaterialFileType, type MaterialAccessType,
 } from "@/lib/materials-store";
 import { calcFees, NG_BANKS, OTHER_BANK } from "@/lib/squad";
@@ -89,6 +89,8 @@ function MaterialsAdmin() {
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  // The material being edited (null = adding a new one)
+  const [editing, setEditing] = useState<Material | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -137,7 +139,21 @@ function MaterialsAdmin() {
     setDraft((d) => ({ ...d, [k]: v }));
   }
 
+  function openEditForm(m: Material) {
+    setEditing(m);
+    setDraft({
+      title: m.title, description: m.description, fileType: m.fileType, accessType: m.accessType,
+      price: m.price ? String(m.price) : "", currency: m.currency || "NGN", url: m.url,
+      courseCode: m.courseCode, topic: m.topic, file: null,
+      lecturerAccountNumber: m.lecturerAccountNumber ?? "", lecturerBankCode: m.lecturerBankCode ?? "", lecturerAccountName: m.lecturerAccountName ?? "",
+    });
+    setFormOpen(true);
+    setPromptAnswer(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function openAddForm() {
+    setEditing(null);
     setDraft(emptyDraft);
     setFormOpen(true);
     setPromptAnswer(true);
@@ -173,6 +189,12 @@ function MaterialsAdmin() {
       }
     }
 
+    // An uploaded file lives in the free or the paid storage; switching needs the file again
+    if (editing && !draft.file && draft.accessType !== editing.accessType && draft.url.trim() === editing.url
+        && (editing.url.startsWith("storage:") || /\/storage\/v1\/object\//.test(editing.url))) {
+      return toast.error(`To change this from ${editing.accessType} to ${draft.accessType}, choose the file again so it can be moved.`, { duration: 8000 });
+    }
+
     setSaving(true);
     let finalUrl = draft.url.trim();
     let uploadedPath: string | null = null;
@@ -185,8 +207,8 @@ function MaterialsAdmin() {
         finalUrl = await uploadMaterialFile(draft.file, tempId, draft.accessType === "paid");
       }
 
-      await addMaterial({
-        id: crypto.randomUUID(),
+      await (editing ? updateMaterial : addMaterial)({
+        id: editing?.id ?? crypto.randomUUID(),
         title: draft.title.trim(),
         description: draft.description.trim(),
         fileType: draft.fileType,
@@ -196,14 +218,15 @@ function MaterialsAdmin() {
         url: finalUrl,
         courseCode: draft.courseCode.trim().toUpperCase(),
         topic: draft.topic.trim(),
-        uploadedAt: new Date().toISOString(),
+        uploadedAt: editing?.uploadedAt ?? new Date().toISOString(),
         ...(draft.accessType === "paid" && {
           lecturerAccountNumber: draft.lecturerAccountNumber.trim(),
           lecturerBankCode: draft.lecturerBankCode.trim(),
           lecturerAccountName: draft.lecturerAccountName.trim(),
         }),
       });
-      toast.success("Material uploaded and shared with students.");
+      toast.success(editing ? "Changes saved." : "Material uploaded and shared with students.");
+      setEditing(null);
       setDraft(emptyDraft);
       setFormOpen(false);
       refresh();
@@ -211,7 +234,7 @@ function MaterialsAdmin() {
       // The file may have already landed in storage before this step failed —
       // remove it so a failed save never leaves an orphaned file students can't see.
       if (uploadedPath) await deleteMaterialFile(uploadedPath, draft.accessType === "paid");
-      toast.error(`Your file wasn't published, so nothing was saved. ${friendlyError(err, "Check your internet connection and try again.")}`, { duration: 8000 });
+      toast.error(`${editing ? "Your changes weren't saved." : "Your file wasn't published, so nothing was saved."} ${friendlyError(err, "Check your internet connection and try again.")}`, { duration: 8000 });
     } finally {
       setSaving(false);
     }
@@ -227,6 +250,9 @@ function MaterialsAdmin() {
       setDeletingId(null);
     }
   }
+
+  // Editing a material whose file was uploaded here: the file stays unless a new one is chosen
+  const keepsFile = Boolean(editing && draft.url === editing.url && (editing.url.startsWith("storage:") || /\/storage\/v1\/object\//.test(editing.url)));
 
   const fees = useMemo(() => {
     const p = Number(draft.price);
@@ -351,7 +377,7 @@ function MaterialsAdmin() {
             className="mt-6 rounded-2xl border bg-card p-5 shadow-soft sm:p-6"
           >
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Add New Material</h2>
+              <h2 className="font-semibold">{editing ? `Edit: ${editing.title}` : "Add New Material"}</h2>
               <button
                 type="button"
                 onClick={() => setFormOpen(false)}
@@ -397,11 +423,13 @@ function MaterialsAdmin() {
                   onChange={(e) => upd("file", e.target.files?.[0] || null)}
                   className="mt-1.5"
                 />
-                <p className="mt-1 text-xs text-muted-foreground">Upload a file directly. Stored in Supabase Storage. Recommended max: 50MB.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {keepsFile ? "Your current file is kept. Choose a file only if you want to replace it." : "Upload a file directly. Stored in Supabase Storage. Recommended max: 50MB."}
+                </p>
               </div>
 
               {/* URL */}
-              <div className="sm:col-span-2">
+              <div className={keepsFile ? "hidden" : "sm:col-span-2"}>
                 <Label htmlFor="mat-url">Or paste URL / Link</Label>
                 <Input
                   id="mat-url"
@@ -633,7 +661,7 @@ function MaterialsAdmin() {
               <Button type="submit" disabled={saving} className="gap-2">
                 {saving
                   ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> Saving…</>
-                  : <><CheckCircle2 className="h-4 w-4" /> Save Material</>
+                  : <><CheckCircle2 className="h-4 w-4" /> {editing ? "Save changes" : "Save Material"}</>
                 }
               </Button>
               <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
@@ -730,6 +758,9 @@ function MaterialsAdmin() {
                             {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                           </Button>
                         )}
+                        <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Edit ${mat.title}`} onClick={() => openEditForm(mat)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
                         <Button
                           size="icon" variant="ghost"
                           className="h-8 w-8 text-destructive hover:bg-destructive/10"

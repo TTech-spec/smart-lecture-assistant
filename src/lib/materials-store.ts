@@ -124,6 +124,15 @@ export async function addMaterial(m: Material): Promise<void> {
   saveMaterials(all);
 }
 
+/** Save changes to a material that already exists (same id). */
+export async function updateMaterial(m: Material): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.from("materials").upsert(materialToDb(m));
+    if (error) throw new Error(error.message);
+  }
+  saveMaterials(loadMaterials().map((x) => (x.id === m.id ? m : x)));
+}
+
 export function deleteMaterial(id: string) {
   saveMaterials(loadMaterials().filter((m) => m.id !== id));
   if (supabase) {
