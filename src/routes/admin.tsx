@@ -19,7 +19,6 @@ import {
 import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { IOSInstallHelp } from "@/components/IOSInstallHelp";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { MobileTabBar } from "@/components/admin/MobileTabBar";
 import { useStore } from "@/hooks/use-store";
 import { isLecturerSignedIn, onLecturerAuthChange, signInLecturer, signOutLecturer, usesSupabaseAuth, sendLecturerPasswordReset, verifyPasswordResetCode, currentLecturerEmail } from "@/lib/lecturer-auth";
 
@@ -263,6 +262,13 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
             className="flex h-9 w-9 items-center justify-center rounded-full bg-[#12b886]/20 text-xs font-semibold text-[#4fd8a8] ring-1 ring-white/10 hover:ring-[#4fd8a8]/60">
             {(myEmail ?? "L").slice(0, 2).toUpperCase()}
           </button>
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open menu"
+            className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-white/10"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
       </header>
       {accountOpen && <AccountSettings onClose={() => setAccountOpen(false)} onSignOut={onLogout} />}
@@ -285,7 +291,6 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
       <div className="min-w-0 flex-grow">
       <Outlet />
       </div>
-      <MobileTabBar links={links} records={records} onMore={() => setMobileMenuOpen(true)} />
       <InstallAppButton />
       <AdminAssistant />
       <TourPlayer />

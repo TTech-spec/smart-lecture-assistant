@@ -2,14 +2,12 @@ import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
-import { CountUp } from "@/components/admin/MobileLive";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/hooks/use-store";
 import {
   disableLink, fetchAttempts, fetchRoomCode, fetchStudents, isLinkValid, todayKey,
-  type AttendanceLink, type AttendanceRecord, type CheckInAttempt,
+  type AttendanceLink, type CheckInAttempt,
 } from "@/lib/attendance-store";
 import { needsReview } from "@/components/admin/AdminSidebar";
 import { Avatar, Panel, PanelTitle, PinBanners, Stat, StatusPill, checkStatus } from "@/components/admin/ui";
@@ -106,19 +104,14 @@ function OverviewPage() {
   const closesIn = `${Math.floor(msLeft / 60000)}:${String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0")}`;
   const outOfRange = attempts.filter((a) => a.reason === "out_of_range").length;
 
-  const reviewTotal = records.filter(needsReview).length;
   return (
-    <>
-    <MobileHome live={live} liveCount={liveCount} registered={registered} closesIn={closesIn} reviewTotal={reviewTotal}
-      todayCount={todayCount} latest={latest}
-      banners={live ? <PinBanners records={records.filter((r) => r.linkId === live.id)} attempts={liveAttempts} /> : null} />
-    <main className="mx-auto hidden max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-8 lg:flex lg:py-7">
+    <main className="mx-auto flex max-w-[1240px] flex-col gap-5 px-4 py-6 sm:px-8 lg:py-7">
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-grow">
           <p className="text-[13px] text-muted-foreground">{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
           <h1 className="mt-0.5 font-display text-2xl font-semibold sm:text-[28px]">{greeting()}</h1>
         </div>
-        <Button asChild className="hidden h-11 rounded-xl px-5 lg:inline-flex">
+        <Button asChild className="h-11 rounded-xl px-5">
           <Link to="/admin/links"><Plus className="mr-2 h-4 w-4" /> Start check-in</Link>
         </Button>
       </div>
@@ -127,21 +120,7 @@ function OverviewPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         {live ? (
-          <>
-          {/* Phones: one big tappable card that opens the live screen */}
-          <motion.div className="lg:hidden" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 260, damping: 24 }} whileTap={{ scale: 0.98 }}>
-            <Link to="/admin/live" className="block rounded-[24px] p-[18px] text-white shadow-[0_12px_30px_rgba(18,184,134,0.35)]"
-              style={{ background: "radial-gradient(120% 120% at 100% 0%, #22d3a0 0%, transparent 55%), linear-gradient(140deg, #12b886, #08855f)" }}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex min-w-0 items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-1 text-xs font-semibold"><span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-white" /><span className="truncate">Live · {live.courseCode}</span></span>
-                <span className="shrink-0 text-[13px] tabular-nums opacity-90">closes in {closesIn}</span>
-              </div>
-              <p className="mt-3.5 text-[46px] font-extrabold leading-none tracking-tight"><CountUp value={liveCount} />{registered ? <span className="text-[19px] font-semibold opacity-85"> / {registered}</span> : null}</p>
-              <p className="mt-1 text-[13px] opacity-90">students checked in · tap to open</p>
-              <div className="mt-3 h-[7px] overflow-hidden rounded-full bg-white/25"><div className="h-full rounded-full bg-white transition-all duration-700" style={{ width: `${registered ? Math.min(100, (liveCount / registered) * 100) : 0}%` }} /></div>
-            </Link>
-          </motion.div>
-          <section className="hidden flex-col gap-6 rounded-[18px] bg-[#121a2b] p-6 text-[#f1f5f4] sm:flex-row sm:items-center lg:col-span-2 lg:flex">
+          <section className="flex flex-col gap-6 rounded-[18px] bg-[#121a2b] p-6 text-[#f1f5f4] sm:flex-row sm:items-center lg:col-span-2">
             <div className="flex min-w-0 flex-grow flex-col gap-3">
               <p className="flex items-center gap-2 text-[13px] text-[#9aa6b8]">
                 <span className="h-2 w-2 rounded-full bg-[#4fd8a8]" /> Live now · {live.courseCode} · {live.title}
@@ -177,7 +156,6 @@ function OverviewPage() {
               </div>
             </div>
           </section>
-          </>
         ) : (
           <section className="flex flex-col items-start justify-center gap-3 rounded-[18px] border border-dashed border-[rgba(27,36,57,0.18)] bg-[#f6f9f8] p-6 lg:col-span-2">
             <p className="font-display text-xl font-semibold">No check-in running</p>
@@ -279,91 +257,5 @@ function OverviewPage() {
         </Panel>
       </div>
     </main>
-    </>
-  );
-}
-
-const rise = { h: { opacity: 0, y: 16 }, s: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 26 } } };
-
-/** Phone home, kept minimal: the running class (or one Start button), three numbers, the latest names */
-function MobileHome({ live, liveCount, registered, closesIn, reviewTotal, todayCount, latest, banners }: {
-  live: AttendanceLink | null; liveCount: number; registered: number | null; closesIn: string; reviewTotal: number;
-  todayCount: number; latest: AttendanceRecord[]; banners: React.ReactNode;
-}) {
-  const dot = (tone: string) => tone === "green" ? "bg-[#12b886]" : tone === "amber" ? "bg-amber-500" : "bg-[#c3ccd6]";
-  return (
-    <motion.main className="flex flex-col px-5 pb-8 pt-6 lg:hidden" initial="h" animate="s" variants={{ s: { transition: { staggerChildren: 0.08 } } }}>
-      <motion.p variants={rise} className="text-[13px] text-muted-foreground">
-        {greeting()} · {new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
-      </motion.p>
-
-      {banners && <div className="mt-4">{banners}</div>}
-
-      {/* One thing on the screen: the class that is running, or the button to start one */}
-      {live ? (
-        <motion.div variants={rise} className="mt-7">
-          <Link to="/admin/live" className="block">
-            <p className="flex items-center gap-2 text-[13px] font-medium text-[#0f8a66]">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-[#12b886]" /> {live.courseCode} · live · closes in <span className="tabular-nums">{closesIn}</span>
-            </p>
-            <p className="mt-2 font-display text-[72px] font-bold leading-none tracking-tight">
-              <CountUp value={liveCount} />{registered ? <span className="text-[24px] font-medium text-muted-foreground"> / {registered}</span> : null}
-            </p>
-            <div className="mt-4 h-[3px] overflow-hidden rounded-full bg-[rgba(27,36,57,0.08)]">
-              <div className="h-full rounded-full bg-[#12b886] transition-all duration-700" style={{ width: `${registered ? Math.min(100, (liveCount / registered) * 100) : 0}%` }} />
-            </div>
-            <p className="mt-3 text-sm font-medium">Open live <span aria-hidden>→</span></p>
-          </Link>
-        </motion.div>
-      ) : (
-        <motion.div variants={rise} className="mt-7">
-          <h1 className="font-display text-[30px] font-bold leading-9 tracking-tight">No check-in running</h1>
-          <p className="mt-1.5 text-[15px] text-muted-foreground">Start one when you're in the hall.</p>
-          <motion.div whileTap={{ scale: 0.98 }} className="mt-5">
-            <Link to="/admin/links" search={{ new: "attendance" }} className="flex h-[52px] items-center justify-center rounded-full bg-foreground text-[15px] font-semibold text-background">
-              Start check-in
-            </Link>
-          </motion.div>
-        </motion.div>
-      )}
-
-      {/* Three numbers, no boxes */}
-      <motion.div variants={rise} className="mt-9 grid grid-cols-3 border-y border-[rgba(27,36,57,0.08)] py-4">
-        {([["/admin/review", reviewTotal, "to review", reviewTotal > 0], ["/admin/records", todayCount, "today", false], ["/admin/students", registered ?? 0, "students", false]] as const).map(([to, n, label, warn], i) => (
-          <Link key={label} to={to} className={`flex flex-col ${i ? "border-l border-[rgba(27,36,57,0.08)] pl-4" : ""}`}>
-            <span className={`text-[24px] font-semibold leading-7 tabular-nums ${warn ? "text-amber-600" : ""}`}><CountUp value={n} /></span>
-            <span className="text-[12.5px] text-muted-foreground">{label}</span>
-          </Link>
-        ))}
-      </motion.div>
-
-      <motion.section variants={rise} className="mt-7">
-        <div className="flex items-baseline justify-between">
-          <p className="text-[13px] font-medium">Latest</p>
-          <Link to="/admin/records" className="text-[13px] text-muted-foreground">All records</Link>
-        </div>
-        {latest.length === 0 ? <p className="py-8 text-sm text-muted-foreground">No check-ins yet.</p> : (
-          <div className="mt-1">
-            <AnimatePresence initial={false}>
-              {latest.slice(0, 6).map((r) => {
-                const st = checkStatus(r.customFields);
-                const flagged = needsReview(r);
-                return (
-                  <motion.div key={r.id} layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 52 }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden border-b border-[rgba(27,36,57,0.06)]">
-                    <Link to={flagged ? "/admin/review" : "/admin/records"} search={(flagged ? { id: r.id } : {}) as never} className="flex h-[52px] items-center gap-3">
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${dot(flagged ? "amber" : st.tone)}`} aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-[15px]">{r.fullName}</span>
-                      <span className={`shrink-0 text-[12.5px] ${flagged ? "text-amber-600" : "text-muted-foreground"}`}>
-                        {flagged ? st.label : new Date(r.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </Link>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-        )}
-      </motion.section>
-    </motion.main>
   );
 }

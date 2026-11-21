@@ -1,7 +1,7 @@
 import { askConfirm } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { friendlyError } from "@/lib/friendly-error";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Link2, Plus, X, Copy, Ban, ChevronDown, ChevronUp,
   Clock, CheckCircle2, XCircle, Users, RefreshCw, QrCode, Trash2, KeyRound, FileQuestion,
@@ -27,9 +27,6 @@ import { useStore } from "@/hooks/use-store";
 
 export const Route = createFileRoute("/admin/links")({
   head: () => ({ meta: [{ title: "Attendance links — Attendly" }] }),
-  // ?new=attendance or ?new=test opens the new-link form straight away (the phone + button)
-  validateSearch: (s: Record<string, unknown>): { new?: "attendance" | "test" } =>
-    s.new === "attendance" || s.new === "test" ? { new: s.new } : {},
   component: LinksPage,
 });
 
@@ -134,18 +131,16 @@ function tooRoughMessage(acc: number): string {
 function GenerateLinkForm({
   courses,
   onCreated,
-  initialType = null,
 }: {
   courses: string[];
   onCreated: (link: AttendanceLink) => void;
-  initialType?: "attendance" | "test" | null;
 }) {
   const [title, setTitle] = useState("");
   const [courseCode, setCourseCode] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [expiryMinutes, setExpiryMinutes] = useState(15);
   const [creating, setCreating] = useState(false);
-  const [linkType, setLinkType] = useState<"attendance" | "test" | null>(initialType); // null = not answered yet
+  const [linkType, setLinkType] = useState<"attendance" | "test" | null>(null); // null = not answered yet
   const [assignClassCode, setAssignClassCode] = useState<boolean | null>(null); // null = not answered yet
   const [requireRoomCode, setRequireRoomCode] = useState(false); // projector code: off unless the lecturer wants it
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null); // for test links
@@ -923,9 +918,7 @@ function TestLinkRow({
 // ── Main page ─────────────────────────────────────────────────────────────────
 function LinksPage() {
   const { links, records, settings, testLinks } = useStore();
-  const { new: openNew } = Route.useSearch();
-  const [showForm, setShowForm] = useState(Boolean(openNew));
-  useEffect(() => { if (openNew) setShowForm(true); }, [openNew]);
+  const [showForm, setShowForm] = useState(false);
   const [qrLink, setQrLink] = useState<{ url: string; title: string; isTest: boolean } | null>(null);
 
   function handleShowQr(link: AttendanceLink) {
@@ -1071,7 +1064,7 @@ function LinksPage() {
               <h2 className="mb-4 text-base font-semibold flex items-center gap-2">
                 <Plus className="h-4 w-4 text-[color:var(--color-primary)]" /> Generate new attendance link
               </h2>
-              <GenerateLinkForm courses={courses} onCreated={handleCreated} initialType={openNew ?? null} key={openNew ?? "form"} />
+              <GenerateLinkForm courses={courses} onCreated={handleCreated} />
             </div>
           </motion.div>
         )}

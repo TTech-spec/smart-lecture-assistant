@@ -11,14 +11,13 @@ import { HelpScanner } from "@/components/admin/HelpScanner";
 import { NotifyStudents } from "@/components/admin/NotifyStudents";
 import { useStore } from "@/hooks/use-store";
 import {
-  blockStudent, deleteRecordById, disableLink, fetchAttempts, fetchStudents, fetchSessionBlocks, setLinkExpiry, unblockStudent,
+  blockStudent, deleteRecordById, disableLink, fetchAttempts, fetchSessionBlocks, setLinkExpiry, unblockStudent,
   type AttendanceLink, type SessionBlock, type AttendanceRecord, type CheckInAttempt,
 } from "@/lib/attendance-store";
 import { needsReview } from "@/components/admin/AdminSidebar";
 import { ATTEMPT_LABEL, Avatar, PageHeader, Panel, PanelTitle, PinBanners, Stat } from "@/components/admin/ui";
 import { useClassCode, useLiveLink } from "@/routes/admin/index";
 import { LeafletMap, type MapPoint } from "@/components/LeafletMap";
-import { MobileLive } from "@/components/admin/MobileLive";
 
 export const Route = createFileRoute("/admin/live")({
   head: () => ({ meta: [{ title: "Live session — Attendly" }] }),
@@ -32,18 +31,6 @@ function LivePage() {
   const [attempts, setAttempts] = useState<CheckInAttempt[]>([]);
   const blockRef = useRef<((matric: string) => void) | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
-  const [notifySignal, setNotifySignal] = useState(0);
-  const [blockOpen, setBlockOpen] = useState(false);
-  const [expected, setExpected] = useState<number | null>(null);
-  useEffect(() => { fetchStudents().then((s) => setExpected(s.length || null)).catch(() => setExpected(null)); }, []);
-  // Phones get the command-centre layout; the map inside it must not be built twice
-  const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1023px)");
-    const on = () => setPhone(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
 
   // Refresh blocked attempts every 10 s while live
   useEffect(() => {
@@ -76,26 +63,6 @@ function LivePage() {
   function extend(minutes: number) {
     setLinkExpiry(live!.id, new Date(Math.max(end.getTime(), Date.now()) + minutes * 60_000).toISOString());
     toast.success(`Check-in extended by ${minutes} minutes.`);
-  }
-
-  if (phone) {
-    return (
-      <>
-        <MobileLive live={live} records={mine} attempts={attempts} expected={expected} code={code} now={now}
-          onScan={() => setScanOpen(true)} onNotify={() => setNotifySignal((n) => n + 1)} onBlock={() => setBlockOpen(true)} />
-        <NotifyStudents hideTrigger openSignal={notifySignal} defaultTitle={`${live.courseCode} check-in is open`} defaultBody="Open Attendly and sign attendance now." />
-        <AnimatePresence>{scanOpen && <HelpScanner onClose={() => setScanOpen(false)} />}</AnimatePresence>
-        {blockOpen && (
-          <div className="fixed inset-0 z-[60] flex items-end bg-black/55" role="dialog" aria-modal="true" aria-label="Blocked students"
-            onClick={(e) => { if (e.target === e.currentTarget) setBlockOpen(false); }}>
-            <div className="max-h-[85svh] w-full overflow-y-auto rounded-t-[28px] bg-[#f6f8f8] p-3 pb-8">
-              <BlockPanel link={live} records={mine} allRecords={records} registerBlock={(fn) => { blockRef.current = fn; }} />
-              <Button variant="outline" className="mt-3 h-12 w-full rounded-xl" onClick={() => setBlockOpen(false)}>Close</Button>
-            </div>
-          </div>
-        )}
-      </>
-    );
   }
 
   return (

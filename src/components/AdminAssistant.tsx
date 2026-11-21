@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Sparkles, X } from "lucide-react";
-import { useRouterState } from "@tanstack/react-router";
 import { useStore } from "@/hooks/use-store";
 import { checkStatus } from "@/components/admin/ui";
 import { AskAiChat, type AiRow } from "@/components/AskAiChat";
@@ -10,8 +9,6 @@ import { AskAiChat, type AiRow } from "@/components/AskAiChat";
 export function AdminAssistant() {
   const [open, setOpen] = useState(false);
   const { records } = useStore();
-  // The phone Live screen is full-screen; the floating button would cover its controls
-  const onLive = useRouterState({ select: (st) => st.location.pathname.startsWith("/admin/live") });
   const rows: AiRow[] = useMemo(() => [...records].sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)).map((r) => ({
     name: r.fullName, matric: r.matricNumber, dept: r.department, level: r.level, gender: r.gender,
     course: r.courseCode, status: checkStatus(r.customFields).label, distance: r.distanceMeters || undefined,
@@ -28,9 +25,9 @@ export function AdminAssistant() {
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} aria-label="Open the AI assistant"
-        className={`fixed bottom-[88px] right-4 z-40 h-12 ${onLive ? "hidden lg:flex" : "flex"} w-12 items-center justify-center gap-2 rounded-full bg-[#152033] font-semibold lg:w-auto lg:pl-4 lg:pr-5 text-white shadow-[0_10px_30px_rgba(21,32,51,0.35)] transition-transform hover:scale-[1.03] active:scale-95 lg:bottom-6 lg:right-6`}
+        className="fixed bottom-24 right-4 z-40 flex h-14 items-center gap-2 rounded-full bg-[#152033] pl-4 pr-5 font-semibold text-white shadow-[0_10px_30px_rgba(21,32,51,0.35)] transition-transform hover:scale-[1.03] active:scale-95 lg:bottom-6 lg:right-6"
         style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}>
-        <Sparkles className="h-5 w-5 text-[#3ddc9f]" /> <span className="hidden lg:inline">Ask AI</span>
+        <Sparkles className="h-5 w-5 text-[#3ddc9f]" /> Ask AI
       </button>
       <AnimatePresence>
         {open && (
