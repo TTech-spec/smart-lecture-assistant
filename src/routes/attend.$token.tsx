@@ -3,7 +3,9 @@ import { studentError } from "@/lib/friendly-error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2, XCircle, Loader2, ArrowLeft, ArrowRight, MapPin, ChevronDown, KeyRound, Copy, RotateCcw,
+  ScanFace, IdCard, X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -672,17 +674,19 @@ function AttendTokenPage() {
             </div>
           )}
 
-          {profile && profile.hasFace === false && (
-            <div className="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-primary">One last thing</p>
-              <h2 className="mt-1 text-lg font-semibold">Add your face (30 seconds)</h2>
-              <p className="mt-1 text-sm text-muted-foreground">You don't have a face on file yet. Add it once, on this phone, so your check-ins are matched to you. No need to register.</p>
-              <Button asChild className="mt-4 h-12 w-full rounded-full">
-                <Link to="/face" search={{ id: profile.matricNumber }}>Add my face now</Link>
-              </Button>
-            </div>
+          {profile && (profile.hasFace === false || profile.needsMatric) && (
+            <NextSteps>
+              {profile.hasFace === false && (
+                <NextStep key="face" icon={<ScanFace className="h-5 w-5" />} title="Add your face" sub="30 seconds · no registration">
+                  <Link to="/face" search={{ id: profile.matricNumber }}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg bg-foreground px-3.5 text-[13px] font-semibold text-background transition active:scale-95">
+                    Add <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </NextStep>
+              )}
+              {profile.needsMatric && <AddMatricCard key="matric" id={profile.matricNumber} deviceId={deviceId} />}
+            </NextSteps>
           )}
-          {profile?.needsMatric && <AddMatricCard id={profile.matricNumber} deviceId={deviceId} />}
 
           <div className="mt-6 flex flex-col items-center gap-2">
             <Button asChild variant="outline">
@@ -1141,6 +1145,54 @@ function HelpQrScreen({ id, state, courseCode, onState, onApproved, onCancel }: 
   );
 }
 
+const ease = [0.22, 1, 0.36, 1] as const;
+
+/** Small cards that slide up one after another once the check-in tick has landed. */
+function NextSteps({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div className="mt-7 space-y-2.5" initial="hidden" animate="show"
+      variants={{ hidden: {}, show: { transition: { delayChildren: 0.55, staggerChildren: 0.12 } } }}>
+      <motion.p variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }}
+        className="px-1 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Finish setting up</motion.p>
+      {children}
+    </motion.div>
+  );
+}
+
+const stepAnim = {
+  hidden: { opacity: 0, y: 14, scale: 0.98, filter: "blur(4px)" },
+  show: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: { duration: 0.45, ease } },
+};
+
+function NextStep({ icon, title, sub, children, onDismiss, below }: {
+  icon: React.ReactNode; title: string; sub: string; children?: React.ReactNode; onDismiss?: () => void; below?: React.ReactNode;
+}) {
+  return (
+    <motion.div variants={stepAnim} layout className="overflow-hidden rounded-xl border bg-card/90 shadow-[0_1px_2px_rgba(16,24,40,0.06)] backdrop-blur">
+      <div className="flex items-center gap-3 p-3">
+        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          {icon}
+          {/* one soft ping as the card arrives */}
+          <motion.span aria-hidden className="absolute inset-0 rounded-lg ring-2 ring-primary/40"
+            initial={{ opacity: 0.8, scale: 1 }} animate={{ opacity: 0, scale: 1.45 }} transition={{ delay: 1.1, duration: 0.9, ease: "easeOut" }} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-semibold leading-5">{title}</p>
+          <p className="truncate text-[12.5px] leading-4 text-muted-foreground">{sub}</p>
+        </div>
+        {children}
+        {onDismiss && (
+          <button type="button" onClick={onDismiss} aria-label="Not now"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      <AnimatePresence initial={false}>{below}</AnimatePresence>
+    </motion.div>
+  );
+}
+
 /** Shown after check-in to students still on their UTME number. */
 function AddMatricCard({ id, deviceId }: { id: string; deviceId: string }) {
   const [step, setStep] = useState<"ask" | "form" | "saved" | "later">("ask");
@@ -1153,7 +1205,7 @@ function AddMatricCard({ id, deviceId }: { id: string; deviceId: string }) {
     e.preventDefault();
     setErr(null);
     if (clean(a).length < 5) return setErr("Enter your matric number.");
-    if (clean(a) !== clean(b)) return setErr("The two numbers don't match. Check and type them again.");
+    if (clean(a) !== clean(b)) return setErr("The two numbers don't match.");
     setBusy(true);
     try { await addMyMatric(id, a, deviceId); setStep("saved"); }
     catch (e2) { setErr(e2 instanceof Error ? e2.message : "Couldn't save it. Try again."); }
@@ -1162,35 +1214,35 @@ function AddMatricCard({ id, deviceId }: { id: string; deviceId: string }) {
   if (step === "later") return null;
   if (step === "saved") {
     return (
-      <div className="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5 text-center">
-        <p className="font-semibold text-primary">Matric number saved</p>
-        <p className="mt-1 text-sm text-muted-foreground">From now on you can check in with your matric number or your UTME number. Your past attendance moved with you.</p>
-      </div>
+      <NextStep icon={<CheckCircle2 className="h-5 w-5" />} title="Matric number saved" sub="Both numbers work from now on" />
     );
   }
   return (
-    <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-700 dark:bg-amber-900/20">
-      <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-amber-800 dark:text-amber-300">You're using your UTME number</p>
-      <h2 className="mt-1 text-lg font-semibold">Got your matric number now?</h2>
-      {step === "ask" ? (
-        <>
-          <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-200/80">Add it once. After that both numbers work, and your records stay together.</p>
-          <Button className="mt-4 h-12 w-full rounded-full" onClick={() => setStep("form")}>Add my matric number</Button>
-          <button type="button" onClick={() => setStep("later")} className="mt-2 h-10 w-full text-sm text-muted-foreground">Not yet, remind me later</button>
-        </>
-      ) : (
-        <form onSubmit={save} className="mt-3 space-y-3">
-          <label className="block text-sm font-medium">Matric number
-            <Input value={a} onChange={(e) => setA(e.target.value)} autoCapitalize="characters" placeholder="e.g. CSC/2024/031" className="mt-1 h-12 text-base" />
-          </label>
-          <label className="block text-sm font-medium">Type it again
-            <Input value={b} onChange={(e) => setB(e.target.value)} autoCapitalize="characters" className="mt-1 h-12 text-base" />
-          </label>
-          {err && <p className="text-sm font-medium text-red-700 dark:text-red-400">{err}</p>}
-          <Button type="submit" className="h-12 w-full rounded-full" disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save matric number"}</Button>
-          <p className="text-xs text-muted-foreground">This only works on the phone you check in with. Typed it wrong? Your lecturer can fix it.</p>
-        </form>
+    <NextStep icon={<IdCard className="h-5 w-5" />} title="Got your matric number?" sub="Add it once · records stay together"
+      onDismiss={step === "ask" ? () => setStep("later") : undefined}
+      below={step === "form" ? (
+        <motion.form key="f" onSubmit={save} initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.3, ease }} className="border-t">
+          <div className="space-y-2 p-3">
+            <Input value={a} onChange={(e) => setA(e.target.value)} autoCapitalize="characters" placeholder="Matric number" aria-label="Matric number" className="h-11 rounded-lg text-[15px]" />
+            <Input value={b} onChange={(e) => setB(e.target.value)} autoCapitalize="characters" placeholder="Type it again" aria-label="Type it again" className="h-11 rounded-lg text-[15px]" />
+            {err && <p className="text-[13px] font-medium text-red-700 dark:text-red-400">{err}</p>}
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => { setStep("ask"); setErr(null); }} className="h-10 rounded-lg px-3 text-[13px] text-muted-foreground hover:bg-secondary">Cancel</button>
+              <button type="submit" disabled={busy} className="flex h-10 flex-1 items-center justify-center rounded-lg bg-foreground text-[13px] font-semibold text-background transition active:scale-[0.98] disabled:opacity-60">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save matric number"}
+              </button>
+            </div>
+            <p className="text-[11.5px] text-muted-foreground">Works only on the phone you check in with.</p>
+          </div>
+        </motion.form>
+      ) : null}>
+      {step === "ask" && (
+        <button type="button" onClick={() => setStep("form")}
+          className="inline-flex h-9 items-center gap-1 rounded-lg border px-3.5 text-[13px] font-semibold transition hover:bg-secondary active:scale-95">
+          Add
+        </button>
       )}
-    </div>
+    </NextStep>
   );
 }
